@@ -1,0 +1,251 @@
+PAYMENTS CONTROLS PRIORITISATION AT PACE – PROOF OF CONCEPT (PAYMENTS RISK)
+May 2026
+
+SLIDE 1 – COVER
+Payments Risk
+Controls Prioritisation at Pace
+Proof of Concept
+
+SLIDE 2 – AGENDA
+Proof of concept approach to prioritise and strengthen payments controls at pace
+
+Current state
+
+Insights over our payment risk profile across the bank
+Improved direction and reduce complexity to the operation of 1st line controls based on an end to end process view
+
+
+Early outcomes from the PoC and actions to accelerate delivery
+
+
+SLIDE 3 – CURRENT STATE
+WHAT IS PAYMENTS RISK
+Payment processing is the series of actions that securely transfer funds between a payer and a payee, involving various stakeholders, technologies, third-parties etc. to ensure efficient and secure transactions.
+RISK CAUSES
+Data
+Third party
+Cyber
+Technology
+Business disruption
+Change execution
+Fraud and scams
+Compliance
+Corporate security
+Cause leads to Impact
+CURRENT STATE
+
+Limited ability to prioritise risk burn down at a group level
+Controls mixture may not be aligned to the inherent risk
+The overall environment creates scalability constraints and resilience risks under stress
+
+POC OBJECTIVE
+
+Provide insights over our group level payment risk profile
+Improved direction and reduce complexity to the operation of 1st line controls based on an end to end process view
+
+
+SLIDE 4 – POC APPROACH
+
+PRIORITISE OBLIGATIONS AND REQUIREMENTS
+
+Objective
+Identify the universe of Payments risks, controls and applicable Divisions.
+Key Activities
+1.1 Validate the scope of the risk and prioritise payment processes based on inherent risk
+1.2 Define measures aligned to Risk Appetite
+1.3 Identify inventory of Payments risk and compliance requirements (including obligations)
+1.4 Prioritise view of relevant obligations and control requirements
+
+
+INTELLIGENT DISCOVERY OF RELEVANT CONTROLS (AI ENABLED)
+
+Objective
+Rationalisation and discovery of current documented control environment.
+Key Activities
+2.1 Rapid analysis of existing control environment
+
+Identification and propose removal of duplicate controls
+Detection of control documentation gaps and misalignment against requirements
+Identification of best of breed controls
+
+2.2 Classification of controls by risk coverage, control type, and automation level
+2.3 Creation of a data-driven control baseline to inform uplift and ongoing monitoring
+
+
+CONTROL IMPROVEMENT AND IMPLEMENTATION (AI ENABLED)
+
+Objective
+Control uplift through targeted automation, simplification and standardisation.
+Key Activities
+3.1 Align controls to priority risks and obligations
+3.2 Standardise control design across divisions
+3.3 Apply pre-designed control patterns aligned to prioritised risks and obligations
+
+
+ENHANCED CONTROL MONITORING
+
+Objective
+Enable risk proportionate control monitoring across the three lines of defence.
+Key Activities
+4.1 Define monitoring aligned to prioritised risks and obligations
+
+Focus monitoring on higher-risk, higher-impact controls
+Define assurance approach based on risk proportionality
+Improve visibility through consolidated reporting and insights
+
+AI CAPABILITIES
+
+Ingestion and analysis of control documentation
+Automated mapping of controls to obligations and risks
+Identification of duplicate and overlapping controls
+Detection of gaps and misalignment
+Classification by coverage, type, and automation
+Creation of a data-driven control baseline
+
+
+SLIDE 5 – EARLY OUTCOMES
+PRIORITISED PAYMENT TYPES
+Customer to Customer – High
+Institution to Customer – High
+Customer to Institution – Medium
+Institution to Institution – Medium
+Non-customer payments (supplier, contractor, employee) – Low
+
+28 CONTROL OBLIGATIONS
+CT1  Data input validation
+CT2  Payment processing error detection
+CT3  Duplicate interface and processing validation
+CT4  Payment interface and batch error resolution
+CT5  Incident response
+CT6  Master/reference data validation
+CT7  Service provider ongoing review
+CT8  Service provider onboarding
+CT9  Change management testing
+CT10 Critical service chain mapping and risk identification
+CT11 Rollback plans
+CT12 System recovery capability
+CT13 Business continuity plan
+CT14 Logging and monitoring
+CT15 Secure IT design
+CT16 Vulnerability management
+CT17 Access provision and deprovision
+CT18 Access monitoring
+CT19 Patch management
+CT20 Physical security controls
+CT21 Privileged access
+CT22 Mistaken internet payment reports
+CT23 Customer confirmations and notifications
+CT24 Unauthorised and disputed transaction handling
+CT25 GRP payments systems
+CT26 Regulatory horizon scanning
+CT27 Records retention
+CT28 Crisis management planning and testing
+
+DATA SOURCES
+JUNO – 7,147 controls
+Holocentric and Business Data Flows – 169,800 rows
+ALEX – 117,952 rows
+Alfabet – 93 payment applications
+
+CONTROL OPTIMISATION
+Strengthen
+
+Automated and manual controls
+Best of breed controls
+Preventative vs detective
+
+Rationalise
+
+Duplicate controls
+Non-key controls
+
+GAPS
+
+Missing controls
+Incorrect placement
+
+AI INGESTION
+
+Analyse control documentation
+Map controls to obligations and risks
+Identify duplicates
+Identify gaps
+Classify controls
+Build baseline for uplift and monitoring
+Build scalable AI architecture
+
+
+SLIDE 6 – AI TRAINING AID (CUSTOMER TO CUSTOMER)
+PROCESS CONTROLS
+CT1 validation of transaction details
+CT6 master data validation
+CT3 duplication detection
+CT4 batch and interface error detection
+CT14 logging and monitoring
+CT27 records retention
+CT2 error detection
+CT22 mistaken payment reporting
+CT23 confirmations and notifications
+CT5 incident response
+CT24 unauthorised payment handling
+SYSTEM AND THIRD PARTY CONTROLS
+CT14 logging and monitoring
+CT15 secure IT design
+CT16 vulnerability management
+CT19 patch management
+CT18 access monitoring
+CT21 privileged access
+CT8 service provider review
+CT12 system recovery capability
+
+PAYMENT LIFECYCLE
+Customer initiates payment
+Validate details and authentication
+Payment released into processing
+Clearing and settlement
+Posting to accounts
+Customer notifications and reporting
+Investigation and resolution of issues
+
+SUPPORTING ACTIVITIES
+
+Inventory of payment processes
+Identify incorrect control placement
+Remove duplicate or non-key controls
+Identify gaps for critical systems and third parties
+Remove governance controls from risk frameworks
+
+PERVASIVE CONTROLS
+Controls covering change, resilience and third-party governance
+AI REQUIREMENTS
+Initiation, validation and authorisation
+Execution and early processing assurance
+Clearing and settlement
+Posting and accounting
+Notification and reporting
+Incident response and recovery
+
+SLIDE 7 – ROLES AND RESPONSIBILITIES
+DATE: 14/05/2026
+COMMERCIAL IN CONFIDENCE
+KEY ACTIVITIES AND OWNERSHIP
+1.1 Validate scope and prioritise processes
+R: RCO  A: NFR  S: dBCM  C: COO  I: GBCM
+1.2 Define risk appetite measures
+R: RCO  A: NFR  S: dBCM  C: COO  I: GBCM
+1.3 Identify risks and obligations
+R: RCO  A: NFR  S: dBCM  C: COO  I: GBCM
+1.4 Prioritise obligations and controls
+R: RCO  A: NFR  S: dBCM  C: COO  I: GBCM
+2.1 Analyse control environment
+R: COO  A: RCO  S: dBCM  C: dCRO  I: GBCM
+2.2 Classify controls
+R: COO  A: RCO  S: dBCM  C: dCRO  I: GBCM
+2.3 Create control baseline
+R: COO  A: RCO  S: dBCM  C: dCRO  I: GBCM
+3.1 Align controls
+R: COO  A: RCO  S: dBCM  C: dCRO  I: GBCM
+3.2 Standardise controls
+R: COO  A: RCO  S: dBCM  C: dCRO  I: GBCM
+3.3 Apply control patterns
+R: COO  A: RCO  S: dBCM  C: dCRO  I: GBCM
