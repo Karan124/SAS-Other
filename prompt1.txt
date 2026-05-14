@@ -1,0 +1,243 @@
+
+## 16) Questions, Challenges, and Required Refinements
+
+The current runbook is strong overall, however several areas require clarification, refinement, or simplification to ensure the approach is executable, unambiguous, and aligned to best outcomes.
+
+The LRM must review and respond to the following points, and where required, update the approach accordingly.
+
+---
+
+### 16.1 Execution Platform Alignment (SAS + Teradata SQL pass-through)
+
+Clarification / correction: Data processing will be performed using SAS as the primary transformation language, but Teradata SQL will still be used via SAS pass-through for datasets resident in the Teradata DW (especially JUNO tables and linkages). CSV-based datasets (Holocentric, Alfabet, ALEX and potentially other extracts) will be ingested and processed in SAS.
+
+Requirement:
+- Update the runbook to assume a two-engine execution model:
+  1) Teradata SQL (executed via SAS pass-through) for extraction, filtering, and heavy joins on warehouse-resident sources (JUNO controls + ratings, and any obligations/incidents/issues/link tables that exist in Teradata).
+  2) SAS for reading CSV extracts, standardising schemas, building crosswalks, assembling the bridge table, and producing analytical outputs.
+
+The LRM must:
+- For each step in the runbook, specify:
+  - which parts should be executed in Teradata SQL (pass-through) vs SAS
+  - what intermediate datasets should be materialised (e.g., “TD extract → SAS staging table”)
+  - how keys are preserved and reconciled across TD and CSV sources
+- Provide a practical execution plan that minimises data movement:
+  - push down filtering/joins to Teradata where possible
+  - keep only necessary extracts in SAS for the bridge and reporting
+- Confirm that output artefacts remain identical (coverage heatmaps, gap register, duplicate clusters, best-of-breed, monitoring baseline), regardless of whether a step is implemented in SAS vs pass-through SQL.
+
+---
+
+### 16.2 Inclusion Path Logic (Steps 2 and 4)
+
+Clarification required on inclusion paths (e.g. PP1–PP6, P1–P6):
+
+Key question:
+- Are inclusion paths sequential OR parallel?
+
+Expected behaviour:
+- All inclusion paths should be evaluated independently (in parallel), not sequentially
+- A process/control can satisfy multiple inclusion paths
+- The output should capture:
+  - all paths that fired
+  - a primary path (based on confidence hierarchy)
+  - an overall confidence score
+
+The LRM must:
+- explicitly define execution logic:
+  - how paths are evaluated
+  - how conflicts are handled
+  - how confidence is assigned
+- confirm that inclusion is based on **logical OR (any path fires)**, not sequential filtering
+
+---
+
+### 16.3 Enrichment Signals (Step 4)
+
+The runbook introduces “Enrichment Signals” (e.g. owner clustering, process adjacency).
+
+Concern:
+- These appear to introduce unnecessary complexity at the PoC stage
+- Risk of diluting signal or introducing noise
+
+Requirement:
+- Reassess whether enrichment signals are required for the PoC
+- If retained:
+  - clearly define their role (must NOT drive inclusion)
+  - ensure they are used only for:
+    - prioritisation
+    - SME review queues
+
+Otherwise:
+- Recommend removing or deferring to a later phase
+
+---
+
+### 16.4 Definition of Duplicate Controls (CORE GAP)
+
+There is currently no explicit definition of what constitutes a “duplicate control”.
+
+This is a core analytical requirement.
+
+The LRM must define:
+
+- What makes two controls duplicates:
+  - same CT outcome
+  - same Payment Nature
+  - same lifecycle stage
+  - same process or system scope
+  - similar intent or mechanism
+
+- Clustering logic:
+  - how controls are grouped into duplicate clusters
+  - thresholds or similarity criteria
+
+- Output expectations:
+  - cluster ID
+  - controls in cluster
+  - rationale for duplication
+
+This must be deterministic and explainable.
+
+---
+
+### 16.5 Definition of Best-of-Breed Controls (CORE GAP)
+
+There is currently no explicit scoring or selection framework for “best-of-breed” controls.
+
+The LRM must define a clear selection model based on:
+
+1) Control effectiveness (Design + Operating ratings)
+2) Automation level (automated vs manual)
+3) Incident / issue history (controls not linked to recurring failures preferred)
+4) Clarity and specificity of control design
+5) Coverage breadth relative to process scope
+
+The LRM must:
+- define how these factors are weighted
+- provide a reproducible scoring mechanism
+- ensure selection is explainable and not subjective
+
+---
+
+### 16.6 Misplacement of Controls Across Lifecycle Stages
+
+The runbook identifies “misplacement” as a gap type, however the detection logic requires further clarity.
+
+Key question:
+- How do we objectively determine that a control is in the wrong lifecycle stage?
+
+The current approach suggests:
+- LLM placement
+- structural comparison using process steps
+
+Requirement:
+- Clearly define:
+  - how expected lifecycle stage is derived
+  - how deviations are detected
+  - whether this is purely LLM-driven or hybrid
+
+Critical question:
+- Does this step require additional LLM calls, or can it be handled deterministically via process-step alignment?
+
+The LRM must:
+- provide a concrete detection method
+- define thresholds for “misplacement”
+- specify how results are validated
+
+---
+
+### 16.7 Role of SME vs LRM (important clarification)
+
+The runbook assumes significant SME involvement.
+
+However, for this PoC:
+- A dedicated LRM within AMP Code will act as a “digital SME”
+
+Question:
+- Can the LRM act as a reliable SME substitute across all steps?
+
+The LRM must:
+- assess which decisions:
+  - can be fully automated via LRM
+  - require human SME involvement
+
+- recommend:
+  - where LRM-as-SME is acceptable
+  - where human validation is still required (e.g. golden sets, edge cases)
+
+- define a practical hybrid model:
+  - LRM-driven
+  - human-validated only where necessary
+
+---
+
+### 16.8 Convergence Loop Safeguards (critical refinement)
+
+The convergence loop (Step 6) is a key strength but carries risk.
+
+The LRM must confirm:
+
+- Only high-confidence signals can drive expansion:
+  - PP1, PP2, PP4 (process side)
+  - P1, P2, P3 (control side)
+
+- Low-confidence signals:
+  - keyword-only (PP5/P5)
+  - embedding-only (PP6/P6)
+  must NOT independently propagate through the loop
+
+The LRM must:
+- define safeguards to prevent noise amplification
+- explicitly track confidence propagation across iterations
+
+---
+
+### 16.9 Separation of Coverage vs Effective Coverage
+
+The current approach mixes:
+- control existence
+- control effectiveness
+
+The LRM must explicitly separate:
+
+1) Structural coverage → control exists
+2) Effective coverage → control is working (ratings)
+3) Failing coverage → control exists but incidents/issues contradict effectiveness
+
+Outputs must clearly reflect this distinction.
+
+---
+
+### 16.10 Pragmatic Execution for PoC
+
+While the runbook is comprehensive, the LRM must:
+
+- identify a **minimum viable execution path**
+- clearly distinguish:
+  - critical steps required for initial insights
+  - optional / advanced steps that can be deferred
+
+The LRM must propose:
+- a simplified execution roadmap
+- without compromising analytical integrity
+
+---
+
+### 16.11 Expected Outcome of This Review
+
+The LRM must:
+- respond to each of the above points
+- update the runbook where necessary
+- provide a refined version of the approach that:
+  - removes ambiguity
+  - strengthens core logic
+  - improves executability
+  - maintains audit defensibility
+
+The LRM must respond to all points above in a structured manner and provide:
+1) Direct answers to each question
+2) Proposed changes to the runbook
+3) A refined version of the approach incorporating these improvements
+
+
