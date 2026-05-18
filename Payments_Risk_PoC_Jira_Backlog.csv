@@ -1,0 +1,132 @@
+Issue Type,Summary,Description,Epic Link,Epic Name,Acceptance Criteria,Sprint Suggestion
+Epic,Foundations,"Data discovery, environment setup, profiling, and groundwork for all subsequent work.",,Foundations,,
+Epic,Build the populations,"Find the payment processes (step 2), the JUNO payment controls (step 4), the bespoke controls (step 5), and run the convergence loop (step 6).",,Build the populations,,
+Epic,Classification,"Classify Payment Nature on processes (step 3), Payment Nature on controls (step 7), Master Controls (step 8), and lifecycle stage (step 9).",,Classification,,
+Epic,Bridge table,Compose all upstream outputs into the master analytical bridge table (step 10).,,Bridge table,,
+Epic,Analytical outputs,"Produce the eight outputs in step 11: coverage heatmaps, strengthen view, duplicates, governance controls, gap register, registration backlog, obligations coverage, monitoring baseline.",,Analytical outputs,,
+Epic,Validation and audit,Independent LRM validation gates across all LLM-driven steps (step 12) plus the audit trail capture.,,Validation and audit,,
+Story,Provision LLM-capable analytics tooling and verify access,"Provision access to LLM-capable analytics tooling (such as Amp Code) supporting at least two different model families, alongside the existing SAS and Teradata environment. Verify both models are reachable and a basic prompt-response round trip works.",Foundations,,"1. Two different model families accessible from the analytics environment
+2. Sample prompt returns structured JSON output from both models
+3. Tooling access is documented and reproducible by another team member",Sprint 1
+Story,Ingest and profile JUNO control register,"Pull the full JUNO control universe via Teradata SQL pass-through. Profile row count, column distributions, null rates on key fields (CTRL_ID, risk_library_id, control type, automation level, owner, effectiveness ratings, status), and identify orphan keys.",Foundations,,"1. JUNO extract loaded into SAS staging
+2. Profile report generated covering all key columns
+3. Orphan keys (if any) documented with downstream impact assessment",Sprint 1
+Story,Ingest and profile Holocentric process repository,"Load the full Holocentric process universe (CSV extracts) into SAS. Profile L2 / L3 hierarchies, value stream coverage, step descriptions, application references. Verify join keys reconcile to JUNO via the linkage table.",Foundations,,"1. Holocentric extract loaded into SAS staging
+2. Profile report covering hierarchy, value streams, applications
+3. Join-key reconciliation confirmed against JUNO and linkage table",Sprint 1
+Story,"Ingest and profile linkage tables, obligations, incidents, issues","Load the four linkage tables (Control to Process, Obligation, Incident, Issue) plus the underlying Obligations, Incidents, Issues datasets. Profile and verify key resolution.",Foundations,,"1. All four linkage tables and supporting datasets loaded
+2. Profile report covering linkage densities, severities, payment-relevant subsets
+3. Join paths verified end-to-end",Sprint 1
+Story,Ingest and profile ALEX and Alfabet (if available),"Load ALEX and Alfabet extracts. Identify payment-relevant applications, configuration metadata, role definitions. If ALEX configuration data is unavailable, document the gap and its impact on step 5 stream B.",Foundations,,"1. ALEX and Alfabet extracts loaded or gap formally documented
+2. Payment-relevant application list extracted
+3. Configuration data availability assessed for downstream step 5 stream B",Sprint 1
+Story,Produce consolidated schema dictionary and data discovery report,"Combine the per-source profiling outputs into a single schema dictionary covering all data sources used in the PoC. Produce a one-page data discovery summary highlighting surprises, gaps, and downstream risks.",Foundations,,"1. Consolidated schema dictionary covers all sources with field-level detail
+2. Data discovery summary signed off by lead engineer
+3. Any go / no-go calls for downstream steps documented",Sprint 1
+Story,Design and version-control the prompt library for LLM steps,"Draft initial prompts for the six LLM-driven steps (2, 3, 5, 7, 8, 9). Each prompt includes inputs, expected JSON schema, confidence rubric, and rationale-grounding requirement. Prompts stored in version control with a hash captured for audit.",Foundations,,"1. Initial prompts drafted for steps 2, 3, 5, 7, 8, 9
+2. Each prompt has a defined JSON output schema
+3. Prompt versioning mechanism in place (hash recorded per prompt)",Sprint 2
+Story,Build the audit trail capture framework,"Implement the audit trail records table per the runbook. Every LLM call writes prompt version, model ID, run timestamp, input snapshot hash, raw response, parsed result, and pass number (where applicable) to a SAS dataset. Framework is reusable across all LLM steps.",Foundations,,"1. Audit trail table schema defined and created
+2. All required fields captured for a test LLM call
+3. Re-running any logged decision is demonstrated to be possible",Sprint 2
+Story,"Implement step 2 deterministic inclusion paths (PP1, PP2, PP3, PP5)","Build the deterministic Holocentric inclusion paths in parallel. PP1 hierarchy, PP2 value stream, PP3 application linkage, PP5 keyword (SAS regex). Output the first-pass payment process register with paths fired and confidence rollup.",Build the populations,,"1. All four deterministic paths execute against the full Holocentric universe
+2. Output dataset records all paths fired per process plus primary path and confidence
+3. Audit log accounts for every Holocentric L3 activity",Sprint 2
+Story,Implement step 2 PP6 embedding-based inclusion path,Compute embeddings for every Holocentric process description. Identify the high-confidence core (PP1 to PP3). Compute cosine similarity to the core; calibrate the threshold; surface candidate processes above threshold not already included.,Build the populations,,"1. Embeddings generated for the full Holocentric universe
+2. Calibration sample reviewed and similarity threshold set
+3. Candidate processes routed to SME queue (not auto-included)",Sprint 3
+Story,"Implement step 4 deterministic inclusion paths (P1, P3, P4, P5)","Build the deterministic JUNO control inclusion paths in parallel via Teradata SQL pass-through. P1 taxonomy tag (7.4.x), P3 obligation linkage, P4 incident/issue linkage, P5 keyword. Output the first-pass JUNO payment control population.",Build the populations,,"1. All four deterministic paths execute against the full JUNO universe
+2. Output dataset records all paths fired per control plus primary path and confidence
+3. Taxonomy hygiene finding produced (proportion via paths other than P1)",Sprint 2
+Story,Implement step 4 P6 embedding-based inclusion path,"Compute embeddings for every JUNO control description. Identify high-confidence core (P1 to P3). Compute similarity; calibrate; surface candidate controls. Apply enrichment signals (owner clustering, process-adjacency) to order the SME queue.",Build the populations,,"1. Embeddings generated for the full JUNO universe
+2. Threshold calibrated via sample review
+3. SME queue ordered by enrichment-signal score",Sprint 3
+Story,Implement step 5 stream A: Holocentric process-step controls,"For every process in the payment process register, run the LLM over each step description to classify whether the step performs a control function. Fuzzy-match positive results against JUNO; surface unmatched as candidate bespoke controls.",Build the populations,,"1. LLM classification runs on all steps in the in-scope process universe
+2. Fuzzy-matching against JUNO complete
+3. Candidate bespoke controls written to the bespoke control register with source ID and confidence",Sprint 4
+Story,Implement step 5 stream B: ALEX and Alfabet system-enforced controls,"Conditional on ALEX data availability. Extract configuration metadata, role definitions, enforcement rules from payment-relevant applications. LLM classification of control behaviour. Cross-check against JUNO automated controls.",Build the populations,,"1. ALEX / Alfabet configuration data extracted (or stream B formally deferred)
+2. LLM classification complete on extracted items
+3. Cross-check against JUNO complete; unmatched items added to bespoke register",Sprint 4
+Story,Implement step 5 stream C: Implicit controls in incident and issue text,Scan remediation and action text on payments-classified incidents and issues. LLM extracts control-like statements. Fuzzy-match against JUNO; unmatched go to the bespoke register.,Build the populations,,"1. LLM extraction complete on the in-scope incident and issue text
+2. Fuzzy-matching against JUNO complete
+3. Candidate bespoke controls written to the register",Sprint 4
+Story,Deduplicate the bespoke control register across streams,"After streams A, B, C complete, fuzzy-match across the bespoke control register itself. Collapse duplicates while preserving all source references (a control surfaced from both Holocentric and an incident gets one row with two source pointers).",Build the populations,,"1. Deduplication run complete
+2. Source references preserved on collapsed rows
+3. Final bespoke control register published",Sprint 4
+Story,Implement step 6 convergence loop orchestration,"Build the SAS orchestration that runs steps 2 and 4 alternately until populations stabilise. Pass 1 excludes PP4 and P2; Pass 2 onwards adds them using prior-pass outputs (high-confidence only, per the safeguard rule). Log pass-by-pass deltas. Hard cap at 5 passes.",Build the populations,,"1. Orchestration script runs steps 2 and 4 alternately to convergence
+2. Pass-by-pass delta log captures items added per pass per step
+3. Convergence safeguard enforced (only high-confidence inclusions propagate)",Sprint 5
+Story,Implement step 3: classify Payment Nature for each payment process,"Run the LLM over each process in the payment process register. Emit applicable Payment Natures (multi-valued, with per-nature confidence and grounded rationale). Route low-confidence cases to SME queue.",Classification,,"1. Every process in the register has at least one Payment Nature assigned
+2. Per-nature confidence and rationale captured
+3. Low-confidence cases routed to SME queue with rationale",Sprint 5
+Story,Implement step 7a: inheritance-based Payment Nature for controls,"Deterministic SQL inheritance. For every control with at least one process linkage, inherit the union of Payment Natures of the linked processes. Confidence: High. Output: Control x Payment Nature mapping.",Classification,,"1. Inheritance run complete for all linked controls
+2. Multi-nature controls captured (one row per applicable nature)
+3. Confidence flagged High for inherited classifications",Sprint 5
+Story,Implement step 7b: LLM fallback Payment Nature for unlinked controls,"For controls with no process linkage (mostly stream-C bespoke from step 5), run the LLM over control description plus any conditioning context. Emit applicable natures with Medium confidence at best.",Classification,,"1. All unlinked controls have a Payment Nature assignment or SME flag
+2. Confidence capped at Medium for LLM-classified natures
+3. Rationale captured per assignment",Sprint 5
+Story,Implement step 7c: LLM sanity check on inherited Payment Nature sample,Stratified 10% sample of High-confidence inherited classifications. LLM classifies the control directly; result compared to inheritance. Disagreement rate above 15% triggers re-audit of step 3.,Classification,,"1. Sample selected and audited via LLM
+2. Disagreement rate computed and logged
+3. If above threshold, halt and trigger re-validation; if not, proceed",Sprint 5
+Story,Implement step 8: map every control to Master Controls (CT1 to CT28),"Single-control LLM calls. Primary model runs across the unified control population (registered + bespoke). Each control receives applicable CTs (one to many) with per-CT confidence, rationale, match type. Also emits control category (Process / System / Pervasive), control nature (Preventative / Detective / Corrective), and framework alignment flag.",Classification,,"1. Every control has at least one CT mapping or a Requires-SME flag
+2. Rationale cites source text for each CT assignment
+3. Control category, nature, and framework alignment captured
+4. Provenance metadata captured (model ID, prompt version, timestamp)",Sprint 6
+Story,Implement step 9: place every control in the payment lifecycle,"Combined LLM call with step 8 (token efficiency). For each control, emit lifecycle stage (A-G) plus confidence plus rationale. Separately, derive structural-expected stage from Holocentric step labels where available. Flag disagreements as misplacement candidates.",Classification,,"1. Every control has a lifecycle stage assignment
+2. Structural-expected stage derived where Holocentric labels permit
+3. Misplacement candidates surfaced (structural exists and differs from LLM)",Sprint 6
+Story,Build the master bridge table,"SAS deterministic join. One row per (process x control x CT x Payment Nature x lifecycle stage) intersection. Includes provenance, registration status, control category, control nature, framework alignment, effectiveness ratings, incident counts.",Bridge table,,"1. Bridge table compiles without error
+2. Row counts reconcile to upstream populations
+3. All schema columns populated (or null with documented reason)
+4. Table indexed on the five filter dimensions",Sprint 7
+Story,"Produce step 11a: coverage heatmaps (three cuts, three constructs)","SQL over the bridge. Three views: Payment Nature x Master Control, Value Stream x Master Control, Process x Master Control. Each cell shows Structural / Effective / Failing control counts. Export to Power BI / Excel.",Analytical outputs,,"1. All three heatmaps produced
+2. Each cell shows three coverage construct counts
+3. Export format usable by stakeholders",Sprint 7
+Story,Produce step 11b: strengthen view,"Highlight automated controls in High inherent risk Payment Natures, preventative controls at Initiation / Validation / Authorisation stages, and Effective controls with no incidents over 24 months. Surface candidate exemplars.",Analytical outputs,,"1. Strengthen view dataset produced
+2. Exemplar candidates listed with rationale
+3. Output format usable by control owners",Sprint 7
+Story,Produce step 11c: duplicate clusters and best of breed,Cluster controls by (CT x Nature x Stage x Process Scope) with mechanism similarity >= 0.75 (cosine of description + automation + control type embeddings). Score each cluster member via the five-factor formula. Nominate best of breed; flag retire / merge candidates.,Analytical outputs,,"1. Duplicate clusters identified across the bridge
+2. Best of breed nomination per cluster with score breakdown
+3. Retire / merge candidates flagged with rationale",Sprint 8
+Story,Produce step 11d: governance controls misclassified into Payments framework,Filter the bridge for controls flagged framework_alignment = Governance with inclusion path P1 fired. Each surfaced control includes rationale citing why it reads as governance. Output for risk owners to consider de-scoping.,Analytical outputs,,"1. Governance-flagged controls extracted
+2. Each entry has a rationale
+3. Output format ready for risk-owner review",Sprint 7
+Story,Produce step 11e: gap register (six gap types),"Six types: A no coverage, B rated insufficient, C unverified, D failing despite Strong rating, E misplacement, F process gap. Ranked by Payment Nature inherent risk and Master Control criticality (P0 / P1 / P2).",Analytical outputs,,"1. All six gap types produced
+2. Gaps ranked with priority labels
+3. Output format usable by risk and compliance owners",Sprint 8
+Story,Produce step 11f: JUNO registration backlog,"Bespoke controls verified as genuine by the independent LRM (step 12). Each entry includes source type, source ID, description, category, nature, linked process, linked application, Master Control mapping, Payment Nature, lifecycle stage, confidence. Ranked by inherent risk and CT criticality.",Analytical outputs,,"1. Backlog produced with all schema fields populated
+2. Ranking applied
+3. Output format ready for control-owner consumption",Sprint 8
+Story,Produce step 11g: obligations coverage view,"For each Payments obligation linked via the Control x Obligation linkage, list controls covering it, aggregate to a coverage rating (Strong / Moderate / Weak / None). Surface obligations with zero coverage or only Weak ratings as regulatory gap findings.",Analytical outputs,,"1. One row per obligation with supporting controls
+2. Aggregate coverage rating per obligation
+3. Regulatory gap findings extracted separately",Sprint 8
+Story,Produce step 11h: monitoring baseline,"For each Master Control: identify key controls (top of best of breed scores), score recommended monitoring intensity (Low / Medium / High / Critical) proportional to inherent risk and incident history. List existing monitoring evidence vs gaps.",Analytical outputs,,"1. Baseline produced for every Master Control
+2. Intensity scoring applied
+3. Existing-vs-missing evidence identified per key control",Sprint 8
+Story,Build reference set for step 2 (PP6 embedding) validation,"Independent LRM builds a stratified reference set of about 30 Holocentric processes covering clear-in, clear-out, and payment-process-in-non-payments-value-chain cases. Primary model measured against the reference.",Validation and audit,,"1. Reference set of ~30 processes constructed by independent LRM
+2. Primary model run on the same set blind
+3. False-negative rate measured; target <= 0.10",Sprint 3
+Story,Build reference set for step 3 (Payment Nature on processes) validation,"Independent LRM builds about 30 processes covering single-nature, multi-nature, and ambiguous cases. Primary measured against reference. Targets: precision >= 0.85, recall >= 0.80 per nature.",Validation and audit,,"1. Reference set constructed
+2. Per-nature precision and recall measured
+3. Pass / iterate decision recorded",Sprint 5
+Story,Build reference set for step 5 (bespoke discovery) validation,"Independent LRM labels about 20 process steps, 10 ALEX configs, 10 remediation texts with is-this-a-control labels. Primary measured. Target precision >= 0.75.",Validation and audit,,"1. Reference set constructed across all three stream types
+2. Precision measured
+3. Pass / iterate decision recorded",Sprint 4
+Story,Build reference set for step 8 (Master Control mapping) validation,"Independent LRM constructs about 50 controls stratified by Master Control, automation level, key control flag, source type. Primary measured. Targets: CT precision >= 0.85, recall >= 0.80.",Validation and audit,,"1. Reference set constructed
+2. CT-level precision and recall measured
+3. Pass / iterate decision recorded",Sprint 6
+Story,Build reference set for step 9 (lifecycle placement) validation,Same 50 controls as step 8. Independent LRM assigns lifecycle stage; primary measured. Target: exact-match accuracy >= 0.80.,Validation and audit,,"1. Stage assignments collected from independent LRM
+2. Exact-match accuracy measured
+3. Pass / iterate decision recorded",Sprint 6
+Story,Implement Requires Human Review queue,"First-class construct across the pipeline. Where primary and independent LRM disagree, or confidence is Low, the row is tagged and held. The queue is itself a deliverable, persistent across runs.",Validation and audit,,"1. Queue table schema defined
+2. All gated steps populate the queue on disagreement or low confidence
+3. Queue is queryable by source step, confidence, and disagreement type",Sprint 6
+Story,Implement inter-model agreement tracking as ongoing KPI,"Across all production runs, track the rate of primary / independent LRM agreement per step. Drift beyond threshold triggers re-validation. Output a small dashboard view of agreement rate over time.",Validation and audit,,"1. Agreement rate computed and logged for every production run
+2. Threshold-based drift alerts wired up
+3. Dashboard or report view available",Sprint 7
+Story,End-to-end thin-slice demo on five controls (Sprint 1 demo),"Take five real JUNO controls. Run them through steps 1, 4 (deterministic only), 8 (one LLM call each), and 11a (single coverage cell). Output a one-pager showing data flow on real records. Proves the pipeline works end to end before scaling.",Validation and audit,,"1. Five real controls selected covering different Payment Natures
+2. Each runs through the four steps end to end
+3. One-page output usable for sponsor demo",Sprint 2
+Story,PoC retrospective and reusability handover,"After all sprints complete, document the generic backbone (process / control / linkage / bridge / outputs) separately from the Payments-specific overlay (Master Controls, Payment Nature, lifecycle stages). Estimate effort to apply the method to a second risk class.",Validation and audit,,"1. Backbone vs overlay separation documented
+2. Effort estimate produced for a second risk class
+3. Lessons-learned register from each sprint consolidated",Sprint 9
