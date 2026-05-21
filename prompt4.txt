@@ -1,0 +1,337 @@
+Profiling Evidence Summary (Control → Holocentric Linkage)
+Scope
+
+Snapshot date: 2026‑04‑30
+Link source: BIP1ViewA.A008E1_DIM_PROCESS_PLUS
+Filter applied: CTRL_DIRECT_INDIRECT_FLAG = 'DIRECT_CONTROL'
+Controls filtered to active: CTRL_STUS in ('Assessed','Awaiting Assessment')
+Join key: BUS_UNIT_BCRM_ID matched to:
+
+Holocentric L2 (l2_process_id) when ID has 2 dots
+Holocentric L3 (l3_activity_id) when ID has 3 dots
+
+
+Output table includes both L2 and L3 links (overlap quantified separately)
+
+
+1) Holocentric universe (active feed)
+
+Rows in Holocentric feed: 10,071
+Distinct L2 processes: 195
+Distinct L3 activities: 901
+
+Interpretation: This looks like a full active process universe at the L2/L3 grain for the extract you’re using.
+
+2) Process‑Plus linkage population (controls ↔ BUS_UNIT_BCRM_ID)
+
+Total linkage rows (after filtering to DIRECT_CONTROL and active controls): 26,306
+Distinct controls represented: 4,161
+Distinct BUS_UNIT_BCRM_ID values represented: 832
+
+Interpretation: A large portion of active controls have at least one process link, and the linkage table has broad coverage across process IDs.
+
+3) Match rates to Holocentric (quality of process ID resolution)
+By link level
+
+L2 links
+
+Rows: 12,436
+Matched: 12,206
+Match rate: 98.15%
+
+
+L3 links
+
+Rows: 13,826
+Matched: 13,337
+Match rate: 96.46%
+
+
+
+Interpretation: Join quality is strong for both L2 and L3. The small unmatched portion is expected due to stale IDs, formatting noise, or legacy objects in JUNO/process-plus.
+
+4) Final linkage table (matched L2/L3 only)
+
+Link rows in final linkage output: 25,543
+Distinct controls linked: 4,150
+Distinct L2 processes linked: 190
+Distinct L3 activities linked: 568
+Average links per linked control: 6.15
+
+Interpretation:
+
+Control-to-process linkage is dense (avg ~6 links per control), which is normal in enterprise process-control mapping.
+L2 coverage is almost complete (190/195 linked at least once somewhere).
+L3 coverage is partial (568/901), which is expected because many controls are registered at L2 rather than at every L3 activity.
+
+
+5) Overlap (controls linked at both L2 and L3)
+Of the 4,150 linked controls:
+
+Controls linked to both L2 and L3: 2,064 (≈49.7%)
+Controls linked to L2 only: 1,142 (≈27.5%)
+Controls linked to L3 only: 944 (≈22.7%)
+
+Interpretation: Overlap is significant and expected. It indicates mixed-grain registration in JUNO: some controls are attached at parent process level (L2) and also at activity level (L3). You will need a clear rule later to avoid double counting (e.g., “prefer L3 where available” or “treat L2 as inherited/policy-level”).
+
+6) Unmatched linkage (exceptions)
+
+Unmatched rows: 719
+Distinct controls in unmatched rows: 241
+Distinct BUS_UNIT_BCRM_ID values unmatched: 86
+
+Interpretation:
+
+The unmatched volume is small relative to total links (~2.7% of 26,306).
+These should be retained as an exceptions list (not silently dropped) for auditability and possible mapping fixes (formatting, trailing CR/LF, legacy IDs).
+
+
+Conclusion (fit‑for‑purpose assessment)
+
+The Control → Holocentric linkage is strong and usable for the PoC.
+Match rates are high (L2 ~98%, L3 ~96%).
+Linkage density is meaningful (avg ~6 links per control).
+Overlap between L2 and L3 links is substantial and should be handled deliberately in later analytics to prevent double counting.
+A small unmatched set exists and should be tracked as an exceptions list.
+
+/****END****/
+
+Profiling Evidence Summary (Control → Issue Linkage)
+Scope
+
+Snapshot date: 2026‑04‑30
+Control scope: Active controls only where CTRL_STUS in ('Assessed','Awaiting Assessment')
+Linkage: Control ↔ Issue via cross-reference table
+Issue status classification applied:
+
+Open: Open, Planning and Scoping, Closure Review
+Closed/Invalid: Closed, Closed Without Action, Rejected, Draft
+
+
+
+
+1) Active Control Population
+
+Active controls in scope: 7,073
+
+
+2) Linkage Volume and Density (Active Controls → Issues)
+From the generated Control→Issue linkage table:
+
+Link rows (control-issue pairs): 9,551
+Distinct controls linked to at least one issue: 3,613
+Distinct issues linked: 7,584
+Average issues per linked control: 2.64
+
+Derived metric
+
+% of active controls linked to at least one issue:
+3,613 / 7,073 = 51.1%
+
+
+3) Action ID Coverage (for later use in “Issues Actions”)
+
+Linked issue rows: 9,551
+Missing ACTN_ID rows: 772
+Missing ACTN_ID rate: 8.08%
+ACTN_ID present rate: 91.92%
+
+Interpretation: most linked issues have an action identifier available for downstream extraction if/when action text is sourced.
+
+4) Issue Status Distribution (for prioritisation vs history)
+Counts across the linkage rows:
+Open (considered open)
+
+Open: 529
+Planning and Scoping: 223
+Closure Review: 46
+Total open: 798 (8.4%)
+
+Closed/Invalid
+
+Closed: 8,078
+Rejected: 506
+Closed Without Action: 137
+Draft: 32
+Total closed/invalid: 8,753 (91.6%)
+
+Interpretation: majority of linked issues are closed/invalid; open issues are a smaller subset useful for “current-state” prioritisation.
+
+5) Join Path Verification (Orphans)
+Orphan checks were run against the cross-reference (xref) table:
+
+
+Orphan issue rows in xref: 0
+(Every xref issue key resolved to an issue record.)
+
+
+Orphan control rows in xref (vs active controls only): 12,972
+Interpretation: xref includes controls outside the active-control filter (e.g., closed/draft). This is expected given the controls scope was restricted to active statuses.
+
+
+
+Conclusion (fit-for-purpose assessment)
+
+The Control→Issue linkage is usable and joinable for the PoC.
+Linkage density is meaningful (about half of active controls have linked issues).
+ACTN_ID coverage is strong (~92% present) for later “issues actions” analysis.
+Orphan controls in xref reflect scope filtering (active controls only), not missing issue records.
+
+/****END****/
+
+Profiling Evidence Summary (Control → Incident Linkage)
+Scope
+
+Snapshot date: 2026‑04‑30
+Control scope: Active controls only where CTRL_STUS in ('Assessed','Awaiting Assessment')
+Linkage: Control ↔ Incident via cross‑reference table (PARENT_OBJECT_TYPE='Control' and OBJECT_TYPE in ('Incident','Incidents'))
+Incident status bucket applied:
+
+Open: Verification, Rectification, Pending Reopen, Unassigned, Pending Ownership, Pending Closure
+Closed/Invalid: Closed, Rejected
+
+
+
+
+1) Active Control Population
+
+Active controls in scope: 7,073
+
+
+2) Linkage Volume and Density (Active Controls → Incidents)
+From the Control→Incident linkage table:
+
+Link rows (control‑incident pairs): 1,407
+Distinct controls linked to at least one incident: 378
+Distinct incidents linked: 1,239
+Average incidents per linked control: 3.72
+
+Derived metric
+
+% of active controls linked to at least one incident:
+378 / 7,073 = 5.3%
+
+Interpretation
+
+Incident linkage exists and is joinable, but it is much less dense than Issue linkage (incidents are rarer and typically represent higher‑impact events, so this is expected).
+
+
+3) Incident Status Distribution
+Counts across linkage rows:
+
+
+Closed/Invalid
+
+Closed: 1,388
+Rejected: 19
+Total closed/invalid: 1,407 (100%)
+
+
+
+Open
+
+0 rows in open statuses
+
+
+
+Interpretation
+
+For this snapshot, all linked incidents are in closed/invalid statuses. This does not prevent use for the PoC; closed incidents still provide valuable “failure history” signals. It does mean you won’t get “currently open incident” prioritisation from this cut.
+
+
+4) Join Path Verification (Orphans)
+Orphan checks were run against the cross‑reference (xref) table:
+
+
+Orphan incident rows in xref: 0
+(Every xref incident key resolved to an incident record.)
+
+
+Orphan control rows in xref (vs active controls only): 9,900
+Interpretation: expected because xref includes links for controls outside the active‑controls scope (closed/draft/etc.), while the control dimension was filtered to active statuses.
+
+
+
+Conclusion (fit‑for‑purpose assessment)
+
+The Control→Incident linkage is usable and joinable for the PoC.
+Linkage density is low compared to issues, which is expected for incident data.
+The current snapshot shows no open incidents linked to active controls (all are closed/rejected), so incident linkage will primarily support historical failure analysis rather than “current open incident” prioritisation.
+Orphan xref controls reflect scope filtering (active controls only), not missing incident records.
+
+/****END****/
+
+Profiling Evidence Summary (Control → Obligation Linkage)
+Scope
+
+Snapshot date: 2026‑04‑30
+Control scope: Active controls only where CTRL_STUS in ('Assessed','Awaiting Assessment')
+Linkage direction: Control (child) → Obligation (parent) via cross‑reference (PARENT_OBJECT_TYPE='Obligation', OBJECT_TYPE='Control')
+Obligation status bucket applied:
+
+Open: Published
+Closed: Inactive, Draft
+
+
+
+
+1) Active Control Population
+
+Active controls in scope: 7,073
+
+
+2) Linkage Volume and Density (Active Controls → Obligations)
+From the Control→Obligation linkage table:
+
+Link rows (control‑obligation pairs): 834
+Distinct controls linked to at least one obligation: 137
+Distinct obligations linked: 324
+Average obligations per linked control: 6.09
+
+Derived metric
+
+% of active controls linked to at least one obligation:
+137 / 7,073 = 1.94%
+
+Interpretation
+
+Obligation linkage exists and joins cleanly, but coverage is sparse across the active control population (only ~2% of active controls have obligation links). This is not necessarily wrong; it likely reflects that only a subset of controls are explicitly obligation-mapped in JUNO.
+
+
+3) Obligation Status Distribution (within linkage rows)
+Counts across the 834 linkage rows:
+
+Closed
+
+Inactive: 729 (87.4%)
+
+
+Open
+
+Published: 105 (12.6%)
+
+
+
+Interpretation
+
+Most linked obligations are marked Inactive for this snapshot. This may still be useful for historical traceability, but if you want an “active compliance coverage” view later, you will likely focus on Published.
+
+
+4) Join Path Verification (Orphans)
+Orphan checks on cross‑reference joins:
+
+
+Orphan xref rows vs active controls: 3,153
+Interpretation: expected because xref includes controls outside the active-control scope (closed/draft/etc.). These are “out of scope” for this run, not necessarily missing controls.
+
+
+Orphan obligation rows in xref: 244
+Interpretation: some xref parent obligation system IDs did not resolve to the obligation dimension for the same reporting date. This is worth noting as a data quality item (possible timing/snapshot mismatch, or obligations not present in the dimension at that date).
+
+
+
+Conclusion (fit-for-purpose assessment)
+
+The Control→Obligation linkage is usable but sparse for active controls.
+Obligation status indicates most linked obligations are Inactive, so an “active obligation coverage” output should likely filter to Published later.
+Orphan obligations (244) indicate a join-quality issue worth tracking; it does not block the PoC but should be recorded in data quality findings.
