@@ -1,0 +1,58 @@
+UPDATE STORY: "Set up embeddings and compute for ALL"
+ADD TO TECHNICAL NOTES:
+EMBEDDINGS USE CASES:
+1. PP6/P6 discovery paths (Sprint 3) - find processes/controls via semantic similarity
+2. Bespoke discovery matching (Sprint 4) - check if LLM-extracted controls already exist in JUNO
+3. Mechanism similarity (Sprint 7) - detect duplicate controls
+4. Ad-hoc similarity queries
+
+For bespoke discovery (use case #2):
+- LLM extracts candidate control from Task/incident text
+- Get embedding for candidate using same model (text-embedding-ada-002)
+- Compute cosine similarity to ALL 7,073 JUNO control embeddings
+- Threshold 0.75-0.80 for "already exists in JUNO"
+- If match found → do NOT add to bespoke register
+- If no match → genuinely new control → add to bespoke register
+
+This replaces fuzzy matching (which failed on semantic similarity).
+
+UPDATE STORY: "Find bespoke in Holocentric"
+BEFORE:
+If is_control=true: fuzzy-match control_description against all JUNO ctrl_description using fuzzy_matcher.py from Sprint 2.
+AFTER:
+If is_control=true: 
+1. Get embedding for extracted control_description (text-embedding-ada-002)
+2. Compute cosine similarity to ALL 7,073 JUNO control embeddings (precomputed Sprint 2)
+3. Threshold 0.75 for match
+4. If best_similarity >= 0.75 → already exists in JUNO (return ctrl_id, do NOT add to bespoke register)
+5. If best_similarity < 0.75 → genuinely new → add to bespoke register
+
+Uses embeddings computed in Sprint 2 (no recomputation).
+Embedding-based matching catches both exact paraphrases and semantic similarity.
+
+UPDATE STORY: "Find bespoke in incident/issue remediation"
+BEFORE:
+For each extracted: fuzzy-match against JUNO. Unmatched to bespoke register with source_type=remediation.
+AFTER:
+For each extracted: 
+1. Get embedding for extracted control_description
+2. Compute cosine similarity to ALL JUNO control embeddings
+3. Threshold 0.75 for match
+4. If best_similarity >= 0.75 → already exists in JUNO (do NOT add to bespoke register)
+5. If best_similarity < 0.75 → add to bespoke register with source_type=remediation
+
+After Step 5a and 5c complete: deduplicate within bespoke register itself using embedding similarity.
+
+
+UPDATED ACCEPTANCE CRITERIA
+Sprint 2: "Set up embeddings and compute for ALL"
+UPDATED Acceptance Criteria:
+
+✅ Embedding model selected (text-embedding-ada-002)
+✅ Batch processor built with rate limiting
+✅ Embeddings computed for ALL Holocentric processes (~1,200)
+✅ Embeddings computed for ALL JUNO controls (~7,073)
+✅ Saved to .npy files with CSV indexes
+✅ Quality tested on sample of 100+100
+✅ NEW: Bespoke matching function built (cosine similarity, threshold calibration)
+✅ NEW: Tested on 20 control pairs (10 paraphrases, 10 semantic similar, 10 different)
