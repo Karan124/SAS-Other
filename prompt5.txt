@@ -1,58 +1,52 @@
-UPDATE STORY: "Set up embeddings and compute for ALL"
-ADD TO TECHNICAL NOTES:
-EMBEDDINGS USE CASES:
-1. PP6/P6 discovery paths (Sprint 3) - find processes/controls via semantic similarity
-2. Bespoke discovery matching (Sprint 4) - check if LLM-extracted controls already exist in JUNO
-3. Mechanism similarity (Sprint 7) - detect duplicate controls
-4. Ad-hoc similarity queries
+Hi Karan,
 
-For bespoke discovery (use case #2):
-- LLM extracts candidate control from Task/incident text
-- Get embedding for candidate using same model (text-embedding-ada-002)
-- Compute cosine similarity to ALL 7,073 JUNO control embeddings
-- Threshold 0.75-0.80 for "already exists in JUNO"
-- If match found → do NOT add to bespoke register
-- If no match → genuinely new control → add to bespoke register
+Thanks for sharing the runbook. Apologies it’s taken me a bit to come back with feedback on your approach; I’ve had a few competing priorities. I appreciate you meeting with Michael to understand what we have been working on so far - such an interesting space and I wish I had more time to give this work proper focus. 
 
-This replaces fuzzy matching (which failed on semantic similarity).
+I’ve now worked through it in detail and wanted to share the areas I think are worth addressing before you get too deep. I’ve tried to keep this constructive: the methodology has real merit and there’s a lot here we should carry forward.
 
-UPDATE STORY: "Find bespoke in Holocentric"
-BEFORE:
-If is_control=true: fuzzy-match control_description against all JUNO ctrl_description using fuzzy_matcher.py from Sprint 2.
-AFTER:
-If is_control=true: 
-1. Get embedding for extracted control_description (text-embedding-ada-002)
-2. Compute cosine similarity to ALL 7,073 JUNO control embeddings (precomputed Sprint 2)
-3. Threshold 0.75 for match
-4. If best_similarity >= 0.75 → already exists in JUNO (return ctrl_id, do NOT add to bespoke register)
-5. If best_similarity < 0.75 → genuinely new → add to bespoke register
+The are:
+•	Brute force LLM as the default execution pattern - this is the single biggest driver of both cost and quality risk.
+•	A payments specific pipeline rather than a reusable system - and that gap widens significantly given the signal to Michael that the knowledge graph work won’t be adopted.
+•	
+1. Brute force LLM - insight quality and token inefficiency
+This is the area I’d suggest you rethink. The runbook leans on the LLM to do work that is structurally a classification problem, and we pay for that on both axes - dollars and defensibility.
 
-Uses embeddings computed in Sprint 2 (no recomputation).
-Embedding-based matching catches both exact paraphrases and semantic similarity.
+Quality / insight concerns
+•	Steps 3, 7, 8 and 9 are bounded multi class problems with closed label sets (5 Payment Natures, 28 Master Controls, 7 lifecycle stages). These are ML shaped tasks, not LLM shaped tasks. Using an LLM here means each classification is a sample from a distribution rather than a deterministic, versioned output — which is hard to defend to audit and hard to reproduce run over run.
+•	The “blind independent LRM” verification step requires a genuinely different model family to be a true independence check. In our current GPT 5.2 only environment this collapses to same model different prompt, which materially weakens the assurance claim the runbook is built around. But also to be honest this should all be done using ML.
+•	Universal independent verification and rationale grounded outputs push reasoning effort high. That’s good for auditability of a single row, but it concentrates quality risk in prompt drift rather than in a controlled model artefact.
+•	The SME review queue is acknowledged but not sized. At Mid-scale, with universal verification, the human review burden is likely to cost more than the LLM bill - and becomes the real bottleneck on insight quality.
+•	
+Token inefficiency
+•	Single row, single control calls resend the full system prompt, CT1–28 definitions and conditioning context for every row - this is a really expensive way to use LLMs.
+•	Universal independent verification roughly doubles spend on steps 8 and 9 as well.
+•	No Batch API, no prompt caching, no classifier cascade pre filter, or ML - taken together, these would cut cost by ~80–90%.
+•	
+What I’d propose instead
+•	Engage your relevant data science team as they will have simple and affordable methods to do all the classification work and you can focus on a more reusable system.
+•	Replace universal verification with a 5% stratified sample, escalating to 100% only for low confidence or high materiality rows.
+•	Talk to the PCS team about Batch API and prompt caching for anything that remains LLM resident.
+•	
 
-UPDATE STORY: "Find bespoke in incident/issue remediation"
-BEFORE:
-For each extracted: fuzzy-match against JUNO. Unmatched to bespoke register with source_type=remediation.
-AFTER:
-For each extracted: 
-1. Get embedding for extracted control_description
-2. Compute cosine similarity to ALL JUNO control embeddings
-3. Threshold 0.75 for match
-4. If best_similarity >= 0.75 → already exists in JUNO (do NOT add to bespoke register)
-5. If best_similarity < 0.75 → add to bespoke register with source_type=remediation
+2. Payments specific pipeline, not a reusable system
+The runbook is a purpose built sufficiency pipeline for payments. That’s a legitimate choice for a PoC, but it should be a conscious one - because right now it doesn’t carry forward the reusable platform/pattern work. 
 
-After Step 5a and 5c complete: deduplicate within bespoke register itself using embedding similarity.
+Given that you indicated to Michael that the existing work won’t be adopted, we’re effectively choosing a single use pipeline over a reusable enterprise asset. I am not able to see how you will deliver on the DQ rationalisation work that Andrew McMullan is expecting as part of this work if we aren’t building a pattern. Something to consider.
 
+Key issues here:
+•	Bridge schema is narrow. The existing work already carries obligations, risks, CDEs, terms, domains and capabilities as first-class nodes, so a question like "which obligations and domains sit behind xx gaps?" is a single Cypher traversal. The playbook's SAS bridge tables flatten this down to control↔control rows only — anything beyond that needs a new data build.
+•	Schema evolution is brittle. In the existing system, a new dimension is an additive node/edge — existing queries keep working. In the playbook, the same change cascades through SAS jobs, bridge tables and Excel templates, so every new question is a mini-project.
+•	Source-truth blurring. The existing system keeps CORRESPONDS_TO (source-declared) and MAPS_TO (inferred) as distinct edges, so audit can always see what came from the source vs what the model overlaid. The playbook collapses both into the same row, with no structural way to tell them apart — a real audit concern.
+•	
+What I’d propose instead
+•	Treat your methodology (CT1–28 ontology, sufficiency logic, SME workflow) as inputs into a platform, not a replacement for it.
+•	If the existing work is genuinely off the table, at minimum keep a normalised relational store that preserves the entity/edge model so the same investment can serve DCR / CORE / APRA work, rather than being re spent each time.
+•	Be explicit with sponsors that choosing the pipeline means accepting we’ll rebuild ~80% of this scaffolding the next time a similar question is asked.
+•	
+3. Supporting concerns worth covering
+•	Observability and resilience. The playbook doesn’t include whole pipeline tracing (OTel), runtime resilience  or a prompt ops registry (SemVer, pin / rollback). These aren’t optional for a regulated workload at this token volume - as if APRA ever question the rationale here you end-up light on evidence.
+•	Reproducibility for audit. An ML classifier is materially easier to defend than sampled LLM output, particularly where the outcome feeds a sufficiency view.
+•	
+I’m all cool if you guys aren’t keen on adopting the existing work, but you should really consider some of these points to set yourselves up for success. Also, even if you do consider an agent system down the track, I would still consider re-evaluating this approach to ensure you have something defensible. Happy to provide any further guidance or ideas if you need a steer at all.
 
-UPDATED ACCEPTANCE CRITERIA
-Sprint 2: "Set up embeddings and compute for ALL"
-UPDATED Acceptance Criteria:
-
-✅ Embedding model selected (text-embedding-ada-002)
-✅ Batch processor built with rate limiting
-✅ Embeddings computed for ALL Holocentric processes (~1,200)
-✅ Embeddings computed for ALL JUNO controls (~7,073)
-✅ Saved to .npy files with CSV indexes
-✅ Quality tested on sample of 100+100
-✅ NEW: Bespoke matching function built (cosine similarity, threshold calibration)
-✅ NEW: Tested on 20 control pairs (10 paraphrases, 10 semantic similar, 10 different)
+Cheers,
