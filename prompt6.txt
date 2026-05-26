@@ -1,0 +1,21 @@
+Sprint / Objective​ |Large Language Model requirements ​ |# of budgeted LLM runs​ |Rationale / Assumptions​ |$ Estimate (includes reruns)​ |Estimated BAU Cost per risk class​
+"Sprint 3​ Integration and classification of relevant data using LLM​ |Classification of holocentric value chains against the payment categories​
+Categorise controls information ​ |1 Embedding Run + 1 Run (base plus 1 re-run if needed)​ |One time embedding computation. SME validation – rerun if payment nature < 90% accuracy​ |~$200 - $400​ |Not required​"
+"Sprint 4​ Control not required to mitigate payment risks and gaps identified​ |In Juno​
+Discovery of bespoke controls against the control objectives​
+Discovery of processes, systems and third parties where there are missing controls against the control objectives​ |2 Runs (base plus 1 rerun if needed)​ |SME validation – rerun if bespoke false positive rate > 10%​ |~$1000 - ~$2000​ |$500​"
+"Sprint 5​
+Duplicate controls identified​
+Controls in the wrong location identified and Undocumented controls identified ​ |Build Bridge/Master table between Juno and Holocentric​
+Duplication detection and outputs generation (gap register, duplicates clusters)​
+Controls not located in the appropriate location across the value chain in alignment with the standard lifecycle​ |3 runs (base plus 2 reruns if needed)​ |SME validation – reruns if low confidence items > 15% or SME accuracy (against LLM) < 85%​ |~$2000 - ~$4000​ |$700​"
+"Sprint 6​
+Identification of gaps which may have addressed through incidents but not documented​
+Creation of a data‑driven control baseline to inform uplift and ongoing monitoring​ |Develop coverage heatmaps​
+Monitoring baseline and intensity​
+Identification of control gaps which are documented as issues, and incidents​ |3 runs (base run plus 2 rerun if needed)​ |SME validation – rerun if duplicate threshold calibration incorrect (false positive > 5%) or gap logic needs adjustment​ |~$2000- ~$4000​ |$500​"
+"Sprint 7 ​
+Control improvements prioritized   ​
+Identify best of breed to support consistent implementation across divisions ​
+Pre-designed control patterns defined ​ |Searching of controls which meet the same control objective for similar payments processing natures which do not meet the identified ‘best designed control;​
+Proposal of a remediation roadmap based on inherent risk and extent of control gaps identified​ |2 Runs (base plus 1 rerun if needed on smaller data population)​ |SME validation – rerun if bespoke false positive rate > 10%​ |~$500 - 1000​ |$250​"
