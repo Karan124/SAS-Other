@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Payments Controls PoC — Sprint 3</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --dark1: #181B25;
+    --light1: #FFFFFF;
+    --purple: #9819D7;
+    --light2: #E8E8ED;
+    --red: #DA1710;
+    --navy: #1F1B4F;
+    --lightpurple: #DDBAFF;
+    --pink: #FF3DDB;
+    --card: rgba(255,255,255,0.05);
+    --card-border: rgba(255,255,255,0.09);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Outfit', sans-serif;
+    background: var(--dark1);
+    color: var(--light1);
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+  }
+  .deck {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+  }
+  .slide {
+    position: absolute;
+    inset: 0;
+    padding: 52px 64px 80px;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease;
+  }
+  .slide.active {
+    opacity: 1;
+    pointer-events: all;
+  }
+  /* Nav */
+  .nav {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    z-index: 100;
+  }
+  .nav-btn {
+    background: rgba(255,255,255,0.08);
+    border: 0.5px solid rgba(255,255,255,0.15);
+    color: #fff;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+  }
+  .nav-btn:hover { background: rgba(152,25,215,0.4); }
+  .nav-dots {
+    display: flex;
+    gap: 7px;
+    align-items: center;
+  }
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.25);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .dot.active {
+    background: var(--purple);
+    width: 20px;
+    border-radius: 3px;
+  }
+  /* Typography */
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--lightpurple);
+    margin-bottom: 14px;
+  }
+  .slide-title {
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1.15;
+    margin-bottom: 36px;
+  }
+  .slide-title span { color: var(--purple); }
+  .section-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    margin-bottom: 12px;
+    margin-top: 24px;
+  }
+  /* Cards */
+  .card-grid {
+    display: grid;
+    gap: 14px;
+  }
+  .card {
+    background: var(--card);
+    border: 0.5px solid var(--card-border);
+    border-radius: 12px;
+    padding: 18px 22px;
+  }
+  .card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--lightpurple);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .card-body {
+    font-size: 14px;
+    color: rgba(255,255,255,0.75);
+    line-height: 1.6;
+  }
+  /* Tags */
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 99px;
+    margin-right: 6px;
+  }
+  .tag-purple { background: rgba(152,25,215,0.25); color: var(--lightpurple); }
+  .tag-red { background: rgba(218,23,16,0.25); color: #FF8A87; }
+  .tag-green { background: rgba(34,197,94,0.2); color: #86efac; }
+  .tag-amber { background: rgba(245,158,11,0.2); color: #fcd34d; }
+  .tag-grey { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.55); }
+  /* Divider */
+  .divider {
+    width: 40px;
+    height: 3px;
+    background: var(--purple);
+    border-radius: 2px;
+    margin-bottom: 28px;
+  }
+  /* Mono text */
+  .mono {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--lightpurple);
+  }
+  /* ========= SLIDE 1: TITLE ========= */
+  #s1 {
+    justify-content: center;
+    background:
+      radial-gradient(ellipse 60% 50% at 80% 50%, rgba(152,25,215,0.18) 0%, transparent 70%),
+      var(--dark1);
+  }
+  .title-kicker {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--lightpurple);
+    margin-bottom: 20px;
+  }
+  .main-title {
+    font-size: 52px;
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 10px;
+  }
+  .main-title .accent { color: var(--purple); }
+  .sub-title {
+    font-size: 22px;
+    font-weight: 300;
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 36px;
+  }
+  .date-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(152,25,215,0.2);
+    border: 0.5px solid rgba(152,25,215,0.4);
+    border-radius: 99px;
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--lightpurple);
+  }
+  .date-badge::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--purple);
+  }
+
+  /* ========= SLIDE 2: AT A GLANCE ========= */
+  .glance-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 14px;
+    flex: 1;
+  }
+  .glance-card {
+    background: var(--card);
+    border: 0.5px solid var(--card-border);
+    border-radius: 12px;
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+  }
+  .glance-num {
+    font-size: 38px;
+    font-weight: 700;
+    color: var(--purple);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .glance-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.45);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin-bottom: 12px;
+  }
+  .glance-desc {
+    font-size: 13px;
+    color: rgba(255,255,255,0.7);
+    line-height: 1.6;
+    margin-top: auto;
+  }
+
+  /* ========= SLIDE 3: OUTCOMES ========= */
+  .outcomes-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    flex: 1;
+  }
+  .outcome-card {
+    background: var(--card);
+    border: 0.5px solid var(--card-border);
+    border-radius: 12px;
+    padding: 22px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .outcome-card.active-oc {
+    border-color: rgba(152,25,215,0.6);
+    background: rgba(152,25,215,0.1);
+  }
+  .outcome-card.active-oc::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--purple);
+  }
+  .outcome-sprint {
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.35);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+  .outcome-card.active-oc .outcome-sprint { color: var(--lightpurple); }
+  .outcome-name {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    line-height: 1.35;
+  }
+  .outcome-desc {
+    font-size: 13px;
+    color: rgba(255,255,255,0.55);
+    line-height: 1.6;
+  }
+  .outcome-card.active-oc .outcome-desc { color: rgba(255,255,255,0.75); }
+
+  /* ========= SLIDE 4: FOCUS AREAS ========= */
+  .focus-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1;
+  }
+  .focus-item {
+    background: var(--card);
+    border: 0.5px solid var(--card-border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+  .focus-num {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--purple);
+    font-family: 'DM Mono', monospace;
+    margin-top: 2px;
+  }
+  .focus-content {}
+  .focus-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .focus-body {
+    font-size: 13px;
+    color: rgba(255,255,255,0.6);
+    line-height: 1.55;
+  }
+
+  /* ========= SLIDE 5: CARRYOVER ========= */
+  .carryover-table {
+    width: 100%;
+    border-collapse: collapse;
+    flex: 1;
+  }
+  .carryover-table th {
+    text-align: left;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    padding: 0 16px 12px;
+    border-bottom: 0.5px solid rgba(255,255,255,0.08);
+  }
+  .carryover-table td {
+    padding: 13px 16px;
+    font-size: 13.5px;
+    border-bottom: 0.5px solid rgba(255,255,255,0.06);
+    vertical-align: middle;
+    line-height: 1.5;
+  }
+  .carryover-table tr:last-child td { border-bottom: none; }
+  .carryover-table tr:hover td { background: rgba(255,255,255,0.03); }
+  .impact-text {
+    font-size: 12px;
+    color: rgba(255,255,255,0.5);
+    margin-top: 3px;
+  }
+  .blocker-row td:first-child {
+    border-left: 2px solid var(--red);
+    padding-left: 14px;
+  }
+
+  /* ========= SLIDE 6: DATA AT SCALE ========= */
+  .data-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .data-card {
+    background: var(--card);
+    border: 0.5px solid var(--card-border);
+    border-radius: 12px;
+    padding: 20px 22px;
+  }
+  .data-big {
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .data-label {
+    font-size: 12px;
+    color: rgba(255,255,255,0.45);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    font-weight: 500;
+    margin-bottom: 8px;
+  }
+  .data-sub {
+    font-size: 12px;
+    color: rgba(255,255,255,0.55);
+    line-height: 1.5;
+  }
+  .data-bar-wrap {
+    background: var(--card);
+    border: 0.5px solid var(--card-border);
+    border-radius: 12px;
+    padding: 18px 22px;
+  }
+  .bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: rgba(255,255,255,0.55);
+    margin-bottom: 6px;
+  }
+  .bar-label strong { color: rgba(255,255,255,0.85); font-weight: 500; }
+  .bar-track {
+    height: 6px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--purple);
+  }
+
+  /* ========= SLIDE 7: RISKS ========= */
+  .risk-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1;
+  }
+  .risk-item {
+    background: var(--card);
+    border: 0.5px solid var(--card-border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    display: grid;
+    grid-template-columns: 90px 1fr 120px;
+    gap: 20px;
+    align-items: center;
+  }
+  .risk-level {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 5px 10px;
+    border-radius: 6px;
+    text-align: center;
+  }
+  .risk-critical { background: rgba(218,23,16,0.25); color: #FF8A87; }
+  .risk-medium { background: rgba(245,158,11,0.2); color: #fcd34d; }
+  .risk-low { background: rgba(34,197,94,0.15); color: #86efac; }
+  .risk-title { font-size: 15px; font-weight: 600; margin-bottom: 3px; }
+  .risk-desc { font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.5; }
+  .risk-action {
+    font-size: 12px;
+    color: var(--lightpurple);
+    text-align: right;
+    line-height: 1.5;
+  }
+
+  /* ========= SLIDE 8: NEXT ========= */
+  .next-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+    flex: 1;
+  }
+  .next-card {
+    background: var(--card);
+    border: 0.5px solid var(--card-border);
+    border-radius: 12px;
+    padding: 22px;
+  }
+  .next-sprint {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.3);
+    margin-bottom: 8px;
+  }
+  .next-title {
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 14px;
+    line-height: 1.3;
+  }
+  .next-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .next-list li {
+    font-size: 13px;
+    color: rgba(255,255,255,0.6);
+    line-height: 1.5;
+    padding-left: 14px;
+    position: relative;
+  }
+  .next-list li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--purple);
+    font-size: 12px;
+  }
+  .slide-footer {
+    position: absolute;
+    bottom: 28px;
+    right: 64px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.2);
+    font-family: 'DM Mono', monospace;
+  }
+</style>
+</head>
+<body>
+
+<div class="deck">
+
+  <!-- SLIDE 1: TITLE -->
+  <div class="slide active" id="s1">
+    <div style="flex:1; display:flex; flex-direction:column; justify-content:center; max-width:680px;">
+      <div class="title-kicker">Payments Controls PoC</div>
+      <div class="main-title">Sprint 3<br><span class="accent">Update</span></div>
+      <div class="sub-title">NFR Analytics & AI</div>
+      <div class="date-badge">3 June – 17 June 2026</div>
+    </div>
+    <div style="position:absolute; right:64px; bottom:100px; text-align:right;">
+      <div style="font-size:11px; color:rgba(255,255,255,0.2); letter-spacing:0.08em; text-transform:uppercase; margin-bottom:6px;">Audience</div>
+      <div style="font-size:13px; color:rgba(255,255,255,0.45);">Sponsor & Product Owner</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 2: AT A GLANCE -->
+  <div class="slide" id="s2">
+    <div class="eyebrow">Sprint 3 — At a Glance</div>
+    <div class="slide-title">What to expect in the <span>next two weeks</span></div>
+    <div class="glance-grid">
+      <div class="glance-card">
+        <div class="glance-num">3,743</div>
+        <div class="glance-label">Controls in scope</div>
+        <div class="glance-desc">Payment risk population locked via taxonomy (P1) and regulatory obligation (P3) linkage. Down from 7,072 total.</div>
+      </div>
+      <div class="glance-card">
+        <div class="glance-num">1,200</div>
+        <div class="glance-label">Processes to classify</div>
+        <div class="glance-desc">Payment Nature classification run across all processes. First substantive LLM workload of the PoC.</div>
+      </div>
+      <div class="glance-card">
+        <div class="glance-num">~2,000</div>
+        <div class="glance-label">Tasks scanned</div>
+        <div class="glance-desc">Holocentric task descriptions scanned by LLM to surface controls operating in practice but absent from JUNO.</div>
+      </div>
+      <div class="glance-card" style="border-color:rgba(218,23,16,0.4); background:rgba(218,23,16,0.07);">
+        <div class="glance-num" style="color:#FF8A87;">1</div>
+        <div class="glance-label">Critical dependency</div>
+        <div class="glance-desc">LLM access approval pending. If delayed beyond week 1, AI classification work shifts. Population work proceeds regardless.</div>
+      </div>
+    </div>
+    <div class="slide-footer">Payments Controls PoC · Sprint 3</div>
+  </div>
+
+  <!-- SLIDE 3: OUTCOMES -->
+  <div class="slide" id="s3">
+    <div class="eyebrow">Outcome Targeting</div>
+    <div class="slide-title">Which outcomes does <span>Sprint 3</span> address?</div>
+    <div class="outcomes-grid">
+      <div class="outcome-card active-oc">
+        <div class="outcome-sprint">Sprint 3–4 · Begins now</div>
+        <div class="outcome-name">Controls not tagged to payment — but should be</div>
+        <div class="outcome-desc">LLM scans ~2,000 Holocentric tasks and discovers controls operating in practice but not registered in JUNO. These are shadow controls with no visibility in the risk register. Sprint 3 delivers the first batch of findings.</div>
+      </div>
+      <div class="outcome-card">
+        <div class="outcome-sprint">Sprint 4–6 · Coming later</div>
+        <div class="outcome-name">Controls which appear duplicate</div>
+        <div class="outcome-desc">Embedding-based mechanism similarity across the full population. Requires CT mapping and lifecycle classification from Sprint 5–6 before running.</div>
+      </div>
+      <div class="outcome-card">
+        <div class="outcome-sprint">Sprint 5–6 · Coming later</div>
+        <div class="outcome-name">Controls not mitigating payment risk</div>
+        <div class="outcome-desc">LLM maps each control to CT1–28 outcomes. Coverage heatmap (5 Payment Natures × 28 CTs) identifies gaps. Requires full population classified first.</div>
+      </div>
+      <div class="outcome-card">
+        <div class="outcome-sprint">Sprint 6 · Coming later</div>
+        <div class="outcome-name">Controls which are not required</div>
+        <div class="outcome-desc">Combines ineffectiveness data, duplicate findings, and Payment Nature misclassification. Requires all prior sprint outputs before producing this register.</div>
+      </div>
+    </div>
+    <div class="slide-footer">Payments Controls PoC · Sprint 3</div>
+  </div>
+
+  <!-- SLIDE 4: FOCUS AREAS -->
+  <div class="slide" id="s4">
+    <div class="eyebrow">Sprint 3 — Focus Areas</div>
+    <div class="slide-title">Five things we're <span>executing on</span></div>
+    <div class="focus-list">
+      <div class="focus-item">
+        <div class="focus-num">01</div>
+        <div class="focus-content">
+          <div class="focus-title">Lock the control population</div>
+          <div class="focus-body">Finalise the P1+P3 population of 3,743 controls. Validate against SME golden set before any LLM classification begins. This is the last decision point before spending API budget.</div>
+        </div>
+      </div>
+      <div class="focus-item">
+        <div class="focus-num">02</div>
+        <div class="focus-content">
+          <div class="focus-title">Payment Nature classification on processes</div>
+          <div class="focus-body">LLM classifies all ~1,200 payment processes into one of 5 Payment Natures (C to C, I to C, C to I, I to I, Supplier/Employee). Risk hierarchy: C to C and I to C are highest risk. This drives inheritance to controls in Sprint 4.</div>
+        </div>
+      </div>
+      <div class="focus-item">
+        <div class="focus-num">03</div>
+        <div class="focus-content">
+          <div class="focus-title">Bespoke control discovery in Holocentric</div>
+          <div class="focus-body">LLM reads ~2,000 task descriptions, identifies control-like activities, and checks each against JUNO via embedding similarity. Anything not matched at threshold 0.75 is added to the bespoke register as a newly discovered control.</div>
+        </div>
+      </div>
+      <div class="focus-item">
+        <div class="focus-num">04</div>
+        <div class="focus-content">
+          <div class="focus-title">SME golden set validation — processes</div>
+          <div class="focus-body">30 stratified processes reviewed by Line 1 Risk SMEs to validate PP1–PP5 coverage. Target: false negative rate below 10%. If exceeded, process population logic requires adjustment before Sprint 4.</div>
+        </div>
+      </div>
+      <div class="focus-item">
+        <div class="focus-num">05</div>
+        <div class="focus-content">
+          <div class="focus-title">Prompt framework finalised</div>
+          <div class="focus-body">5 prompts across Steps 3, 5a, 5c, 7b, 8 and 9 completed, tested on sample inputs, and stored with SHA-256 versioning. All prompts must be approved before batch LLM runs begin.</div>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">Payments Controls PoC · Sprint 3</div>
+  </div>
+
+  <!-- SLIDE 5: CARRYOVER -->
+  <div class="slide" id="s5">
+    <div class="eyebrow">Sprint 2 → Sprint 3</div>
+    <div class="slide-title">Stories <span>carrying over</span> from Sprint 2</div>
+    <div style="flex:1; display:flex; flex-direction:column;">
+      <table class="carryover-table">
+        <thead>
+          <tr>
+            <th style="width:28%">Story</th>
+            <th style="width:14%">Status</th>
+            <th>Impact on Sprint 3</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="blocker-row">
+            <td>
+              <div style="font-weight:500;">LLM access</div>
+              <div class="impact-text">Funding approval pending</div>
+            </td>
+            <td><span class="tag tag-red">Blocked</span></td>
+            <td>
+              <div>Blocks Payment Nature classification and bespoke discovery entirely.</div>
+              <div class="impact-text">If not resolved in week 1, AI outputs shift to Sprint 4. Population work proceeds regardless.</div>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <div style="font-weight:500;">Build the prompts</div>
+              <div class="impact-text">Steps 3, 5a, 5c, 7b, 8, 9</div>
+            </td>
+            <td><span class="tag tag-amber">In progress</span></td>
+            <td>
+              <div>All 5 prompts must be complete and tested before any LLM batch run.</div>
+              <div class="impact-text">Can progress in parallel while awaiting LLM access.</div>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <div style="font-weight:500;">Control population (P1+P3)</div>
+              <div class="impact-text">~3,743 controls</div>
+            </td>
+            <td><span class="tag tag-amber">In progress</span></td>
+            <td>
+              <div>Must be locked and validated before LLM classification begins in Sprint 3.</div>
+              <div class="impact-text">SAS script updated to P1+P3 logic. Sense check underway.</div>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <div style="font-weight:500;">Set up embeddings</div>
+              <div class="impact-text">Controls only (~3,743)</div>
+            </td>
+            <td><span class="tag tag-red">Blocked</span></td>
+            <td>
+              <div>Required for bespoke discovery matching in Step 5a.</div>
+              <div class="impact-text">Blocked by LLM access. One-time compute of ~$3 AUD.</div>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <div style="font-weight:500;">Process population (PP1–PP5)</div>
+              <div class="impact-text">~1,200 processes</div>
+            </td>
+            <td><span class="tag tag-amber">In progress</span></td>
+            <td>
+              <div>Input to Payment Nature classification. Must be finalised first.</div>
+              <div class="impact-text">PP6 and convergence loop removed from scope.</div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="slide-footer">Payments Controls PoC · Sprint 3</div>
+  </div>
+
+  <!-- SLIDE 6: DATA AT SCALE -->
+  <div class="slide" id="s6">
+    <div class="eyebrow">Scale of Work</div>
+    <div class="slide-title">The data we're <span>working with</span></div>
+    <div class="data-grid">
+      <div class="data-card">
+        <div class="data-big" style="color:var(--purple);">3,743</div>
+        <div class="data-label">Payment controls in scope</div>
+        <div class="data-sub">P1 + P3 population. Average 3,000 words each. Combined text equivalent to ~34 full-length novels.</div>
+      </div>
+      <div class="data-card">
+        <div class="data-big" style="color:var(--lightpurple);">14.6M</div>
+        <div class="data-label">Tokens — control text</div>
+        <div class="data-sub">Concatenated name, objective, description, and test procedure fields. Used for embeddings and LLM classification.</div>
+      </div>
+      <div class="data-card">
+        <div class="data-big" style="color:#DDBAFF;">~4,500</div>
+        <div class="data-label">AI calls in Sprint 3</div>
+        <div class="data-sub">Payment Nature (1,200) + bespoke discovery (2,000 tasks) + convergence and validation queries.</div>
+      </div>
+    </div>
+    <div class="data-grid">
+      <div class="data-card">
+        <div class="data-big" style="color:var(--lightpurple); font-size:28px;">~$200</div>
+        <div class="data-label">Sprint 3 API cost (AUD)</div>
+        <div class="data-sub">Base case. Budget approved: $10,000. Sprint 3 represents 0.3% of total budget.</div>
+      </div>
+      <div class="data-card">
+        <div class="data-big" style="color:var(--purple); font-size:28px;">1,536</div>
+        <div class="data-label">Embedding dimensions</div>
+        <div class="data-sub">Each control encoded as a 1,536-dimension vector. Cosine similarity used to detect duplicates and match bespoke controls.</div>
+      </div>
+      <div class="data-card">
+        <div class="data-big" style="color:var(--lightpurple); font-size:28px;">85+</div>
+        <div class="data-label">Expected bespoke controls</div>
+        <div class="data-sub">Controls operating in Holocentric tasks not registered in JUNO. First tangible AI finding of the PoC.</div>
+      </div>
+    </div>
+    <div class="data-bar-wrap">
+      <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:rgba(255,255,255,0.3); margin-bottom:14px;">Budget utilisation across sprints</div>
+      <div class="bar-label"><strong>Sprint 3 (current)</strong><span>$30 AUD · 0.3%</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:0.3%;"></div></div>
+      <div class="bar-label"><strong>Sprint 5 (peak)</strong><span>$2,390 AUD · 23.9%</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:23.9%;"></div></div>
+      <div class="bar-label"><strong>Total PoC projected</strong><span>$4,145 AUD · 41.5%</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:41.5%; background:var(--lightpurple);"></div></div>
+    </div>
+    <div class="slide-footer">Payments Controls PoC · Sprint 3</div>
+  </div>
+
+  <!-- SLIDE 7: RISKS -->
+  <div class="slide" id="s7">
+    <div class="eyebrow">Risks & Issues</div>
+    <div class="slide-title">What we're <span>watching closely</span></div>
+    <div class="risk-list">
+      <div class="risk-item">
+        <div class="risk-level risk-critical">Critical</div>
+        <div>
+          <div class="risk-title">LLM access not yet approved</div>
+          <div class="risk-desc">Funding approval still pending. Blocks Payment Nature classification and bespoke discovery. Every week of delay pushes AI outputs into Sprint 4.</div>
+        </div>
+        <div class="risk-action">Escalate for approval<br>by 3 June</div>
+      </div>
+      <div class="risk-item">
+        <div class="risk-level risk-medium">Medium</div>
+        <div>
+          <div class="risk-title">SME availability for golden set</div>
+          <div class="risk-desc">30 processes require Line 1 Risk review this sprint. SMEs not yet formally confirmed. Validation gates must pass before Sprint 4 LLM runs begin.</div>
+        </div>
+        <div class="risk-action">Confirm SME names<br>by sprint start</div>
+      </div>
+      <div class="risk-item">
+        <div class="risk-level risk-medium">Medium</div>
+        <div>
+          <div class="risk-title">Control population size to validate</div>
+          <div class="risk-desc">P1+P3 restriction reduced population from ~5,000 to 3,743. Sense check underway to confirm no material payment controls are excluded. If gaps found, population logic may need adjustment.</div>
+        </div>
+        <div class="risk-action">Sense check<br>complete by day 3</div>
+      </div>
+      <div class="risk-item">
+        <div class="risk-level risk-low">Resolved</div>
+        <div>
+          <div class="risk-title">Process text variability — embeddings not viable</div>
+          <div class="risk-desc">Profiling confirmed Holocentric process text is too repetitive for embedding-based discovery. PP6 and convergence loop removed. Process population relies on PP1–PP5 deterministic paths only.</div>
+        </div>
+        <div class="risk-action">Decision made<br>scope updated</div>
+      </div>
+    </div>
+    <div class="slide-footer">Payments Controls PoC · Sprint 3</div>
+  </div>
+
+  <!-- SLIDE 8: WHAT'S NEXT -->
+  <div class="slide" id="s8">
+    <div class="eyebrow">Looking Ahead</div>
+    <div class="slide-title">What Sprint 4 <span>delivers</span></div>
+    <div class="next-grid">
+      <div class="next-card">
+        <div class="next-sprint">Sprint 4 · 18 Jun – 1 Jul</div>
+        <div class="next-title">Bespoke discovery from incidents & issues</div>
+        <ul class="next-list">
+          <li>LLM reads 8,823 incident and issue remediation texts</li>
+          <li>Extracts controls created during breach responses</li>
+          <li>Embedding matching against JUNO (threshold 0.75)</li>
+          <li>Bespoke register complete — ready for JUNO registration</li>
+        </ul>
+      </div>
+      <div class="next-card">
+        <div class="next-sprint">Sprint 4 · 18 Jun – 1 Jul</div>
+        <div class="next-title">Payment Nature on controls</div>
+        <ul class="next-list">
+          <li>Inherit Payment Nature from linked processes (SQL join)</li>
+          <li>LLM fallback for ~1,500 unlinked controls</li>
+          <li>Sanity check: inheritance vs blind LLM must agree &gt;85%</li>
+          <li>Enables risk-based prioritisation in Sprint 5–6</li>
+        </ul>
+      </div>
+      <div class="next-card">
+        <div class="next-sprint">Sprint 4 · 18 Jun – 1 Jul</div>
+        <div class="next-title">Golden set validation — bespoke</div>
+        <ul class="next-list">
+          <li>40 bespoke controls reviewed by SMEs</li>
+          <li>Validates LLM extraction accuracy from narrative text</li>
+          <li>False positive target: below 10%</li>
+          <li>Feeds into Sprint 5 CT mapping confidence</li>
+        </ul>
+      </div>
+    </div>
+    <div style="margin-top:16px; background:rgba(152,25,215,0.1); border:0.5px solid rgba(152,25,215,0.3); border-radius:10px; padding:14px 20px; display:flex; align-items:center; gap:14px;">
+      <div style="font-size:12px; color:var(--lightpurple); font-weight:500; text-transform:uppercase; letter-spacing:0.07em; white-space:nowrap;">By end of Sprint 4</div>
+      <div style="font-size:13px; color:rgba(255,255,255,0.65); line-height:1.5;">UC4 fully delivered — all bespoke controls found and registered. UC3 (not mitigating risk) and UC1 (duplicates) begin in Sprint 5 with CT mapping across 3,743 controls.</div>
+    </div>
+    <div class="slide-footer">Payments Controls PoC · Sprint 3</div>
+  </div>
+
+</div>
+
+<!-- Navigation -->
+<div class="nav">
+  <button class="nav-btn" id="prev">&#8592;</button>
+  <div class="nav-dots" id="dots"></div>
+  <button class="nav-btn" id="next">&#8594;</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const dotsContainer = document.getElementById('dots');
+  let current = 0;
+
+  slides.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i === 0 ? ' active' : '');
+    d.addEventListener('click', () => goTo(i));
+    dotsContainer.appendChild(d);
+  });
+
+  function goTo(n) {
+    slides[current].classList.remove('active');
+    dotsContainer.children[current].classList.remove('active');
+    current = (n + slides.length) % slides.length;
+    slides[current].classList.add('active');
+    dotsContainer.children[current].classList.add('active');
+  }
+
+  document.getElementById('prev').addEventListener('click', () => goTo(current - 1));
+  document.getElementById('next').addEventListener('click', () => goTo(current + 1));
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') goTo(current + 1);
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') goTo(current - 1);
+  });
+</script>
+</body>
+</html>
