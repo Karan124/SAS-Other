@@ -1,0 +1,111 @@
+Three separate answers — let me be thorough since you're briefing the team tomorrow.
+
+1. Does the Neo4j Prompt Achieve Any of the 4 Outcomes?
+YES — it gets you closest to UC3 (controls not mitigating payment risk). But only halfway.
+Here's exactly what the prompt does and doesn't do:
+What it does:
+
+Takes enterprise controls already linked in the KG
+Maps each control to gold controls (their equivalent of CT1-28) at a specific lifecycle stage
+Produces ratings: implements, weakly_implements, does_not_implement
+Provides confidence scores and grounded justifications
+
+What it doesn't do:
+
+Doesn't identify GAPS — lifecycle stages or payment types with zero effective controls
+Doesn't produce a coverage heatmap showing which CT/Nature/Stage combinations are empty
+Only processes controls already in the KG — won't catch controls missing from it
+No Payment Nature classification (C to C, I to C etc.)
+
+Against all 4 outcomes:
+OutcomeNeo4j Prompt?WhyUC3: Not mitigating payment risk⚠️ HalfwayClassifies control → gold control mapping but no gap analysis layerUC1: Duplicates❌ NoNo mechanism similarity or deduplication logic anywhereUC2: Not required❌ NoNo redundancy, ineffectiveness or misclassification logicUC4: Not tagged to payment❌ NoReceives controls already in KG — discovers nothing new
+The practical opportunity: The does_not_implement ratings the prompt produces are exactly the signal you need for UC3. If you aggregate those across all controls for a given lifecycle stage and gold control combination, you can identify gaps. The classification work is done — you just need a layer on top to aggregate and identify uncovered combinations.
+
+2. ML Techniques for Text Classification — And Why LLM Wins Here
+Best traditional ML techniques for text classification:
+TF-IDF + Support Vector Machine (SVM)
+The strongest traditional baseline. Converts text to word frequency vectors, SVM finds the optimal boundary between classes. Fast, interpretable, well-understood.
+BERT fine-tuning
+Technically a neural/transformer approach but trained as a classifier rather than a generative model. Pre-trained on large text corpus, fine-tuned on your labelled examples. Best accuracy of any ML approach for text.
+Why someone picks ML over LLM:
+
+Deterministic — same input always produces same output. Critical for audit reproducibility
+Speed — milliseconds per classification vs seconds for LLM
+Cost at scale — no per-token pricing, runs on local compute
+No hallucination risk — produces a class label and probability, nothing invented
+Versioned model artefact — frozen, deployable, testable
+
+Why ML loses for your specific use case:
+RequirementML (SVM/BERT)LLMLabelled training dataNeeds 500–1,000 per classNot required28 CT classes, multi-labelWould need ~28,000 labelled examplesHandles zero-shot3,000-word control textTF-IDF degrades badly at this lengthHandles nativelyRationale for auditProbability score onlyQuoted evidence groundingMissing fieldsPerformance degrades silentlyHandles gracefully with confidence adjustmentTime to build6–8 weeks (labelling + training + validation)1–2 weeks (prompts + testing)
+The decisive point: You have 28 CT outcomes × 7 lifecycle stages × 5 Payment Natures. To train a reliable ML classifier you'd need thousands of labelled examples across hundreds of combinations you don't have. You'd spend more time labelling training data than the PoC itself takes to run. And the Neo4j team's own system uses an LLM for exactly this classification — which is the strongest argument you have.
+
+3. Changes to Approach + Full Sprint 3 Details for Tomorrow
+What the Sponsor's Resequencing Means
+OLD order: Find controls → classify them → find bespoke → find gaps/duplicates
+NEW order: Find controls → classify them → find gaps/duplicates → THEN find bespoke
+Bespoke discovery (Steps 5a and 5c) moves to Sprint 5-6. Everything that analyses the existing 3,743 controls moves earlier.
+
+Sprint 3 — Full Updated Plan (3–17 June)
+Theme: Classify the existing population. Make every control machine-readable.
+
+CARRYING OVER FROM SPRINT 2 (must complete in week 1):
+StoryAction NeededLLM access approvalChase immediately — blocks all LLM workP1+P3 control population (~3,743)Finalise SAS script, sense check by business unitProcess population (PP1–PP5, ~1,200)Lock before Payment Nature classification runsBuild the prompts (Steps 3, 7b, 8, 9)Complete and test — revised list (Step 5a/5c removed for now)Compute control embeddingsRun as soon as LLM access granted — one-time $3 AUD
+
+NEW SPRINT 3 STORIES (replacing bespoke discovery which moves later):
+Story 1: Classify Payment Nature on processes (Step 3)
+
+LLM classifies all ~1,200 processes into 5 Payment Natures
+Input: L3 description + task descriptions concatenated
+Output: payment_nature, confidence, rationale
+Needed before CT mapping (provides lifecycle context)
+SME golden set: 30 processes, FNR target below 10%
+
+Story 2: Inherit Payment Nature to controls (Step 7a)
+
+SQL join: controls linked to classified processes inherit their Nature
+No LLM needed — pure SAS/SQL
+~2,200 controls expected to inherit via direct process linkage
+Unlinked controls (~1,543) flagged for LLM fallback in Sprint 4
+
+Story 3: CT mapping — pilot run (Step 8)
+
+Map a stratified sample of 200 controls to CT1-28 outcomes
+Use this sprint as a pilot to validate prompt accuracy before full run
+Full 3,743-control run moves to Sprint 4 (peak cost sprint)
+Input: all control text fields (name, objective, description, test procedure)
+Output JSON: CT outcomes, confidence, rationale grounded in quoted text
+SME golden set: 50 controls validated against LLM output
+Why pilot not full run: validate prompt quality cheaply before spending $2,390
+
+Story 4: Lifecycle stage placement — pilot run (Step 9)
+
+Same rationale as Story 3 — pilot on 200 controls
+Can combine Steps 8 and 9 into a single API call (saves tokens)
+Lifecycle stages A–G (Initiation through Returns)
+Full run in Sprint 4 alongside CT mapping
+
+Story 5: Assess Neo4j Knowledge Graph usability
+
+New story added per sponsor request
+Answer: how many of the 3,743 P1+P3 controls are in the KG?
+Do their gold controls align to your CT1-28 taxonomy?
+If KG covers >80% of population with aligned taxonomy — use KG outputs as starting point for Steps 8-9, validate with golden sets, fill gaps with your own LLM calls
+If KG covers <80% or taxonomy misaligned — proceed independently
+Timeframe: 2–3 days, output is a recommendation memo
+
+
+REMOVED FROM SPRINT 3 (moving to Sprint 5-6):
+StoryMoves ToBespoke discovery in Holocentric Tasks (Step 5a)Sprint 5Bespoke discovery in incidents/issues (Step 5c)Sprint 5Golden set for bespoke discoverySprint 5
+
+Updated Sprint Sequence
+SprintThemeKey DeliverableSprint 3Classify existing populationPayment Nature + CT mapping pilot + KG assessmentSprint 4Full classification + duplicatesCT mapping (full 3,743) + lifecycle + mechanism similaritySprint 5Gap analysis + bespokeCoverage heatmap + gap register + bespoke discovery startsSprint 6Bespoke + outputsBespoke register complete + all analytical outputsSprint 7RemediationBest-of-breed + remediation roadmap
+
+What to Tell the Team Tomorrow
+Opening:
+"Sprint 3 focus has shifted based on sponsor feedback. We're deprioritising bespoke discovery and moving it to Sprint 5. Sprint 3 is now entirely about classifying the existing 3,743 controls so we can find duplicates and gaps in Sprint 4. Two things to flag before we start: LLM access must be approved in week 1 or our timeline slips, and we have a new story to assess the Neo4j Knowledge Graph — the sponsor wants us to build on that work."
+Key decisions for the team to make in planning:
+
+Who owns the Neo4j assessment story? Needs someone who can query the KG and map gold controls to CT1-28
+Do we combine Steps 8 and 9 into one API call to save tokens? Recommend yes
+What sample size for the CT mapping pilot — 200 controls or smaller? Recommend stratified 200 across P1 and P3, High and Medium confidence
+Which SMEs are confirmed for golden set validation this sprint?
