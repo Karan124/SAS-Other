@@ -1,0 +1,182 @@
+You are helping complete an internal access request form for Azure OpenAI / LLM usage.
+
+Important instructions:
+- Keep all responses concise, practical, and natural sounding.
+- Do not sound overly technical or AI-generated.
+- Where the form needs a recommendation, provide the most sensible and conservative option based on the scenario below.
+- If a field needs a short justification, keep it to 1–3 plain-English sentences.
+- Present the final answer in a clean format with each form question answered separately.
+- Where a selection is needed, provide the exact option to choose and a brief reason.
+
+Project context:
+- This is a Payments Risk Proof of Concept at Westpac.
+- The initiative aims to identify and assess payment-related controls across the end-to-end payments lifecycle.
+- The work uses structured and unstructured internal data from systems including JUNO, Holocentric, incidents, issues, obligations, and related linkages.
+- The main use cases are:
+  1. identify payment-related controls and processes
+  2. classify controls and processes
+  3. identify potential control gaps
+  4. detect duplicate / overlapping controls
+  5. analyse incident remediation text for potential bespoke controls
+- This is currently for a non-production environment.
+- The environment is Australia East.
+- The available completion model is GPT 5.2 only via APIM.
+- There is no Batch API.
+- There is no prompt caching.
+- There is only one model family available (no second independent model family).
+- One embedding model is also required.
+- Initial use will be iterative experimentation and proof of concept work, not production-scale real-time serving.
+- We want alerts configured if token spend crosses agreed thresholds.
+- Cost should be managed conservatively, but model quality matters.
+
+Please answer the following form fields.
+
+1) CAL Rating
+Choose one of:
+- CAL 1 – Group Critical or Highly Protected (very high impact)
+- CAL 2 – Business & Customer Critical or High
+- CAL 3 – Significant or Medium
+- CAL 4 – Low impact across all dimensions
+
+Provide:
+- Recommended CAL rating
+- 1–2 sentence justification
+
+2) Brief Context
+Question:
+Please give a brief context of the initiative
+
+Provide:
+- A short paragraph suitable for an internal form
+
+3) Objectives
+Question:
+Main objectives you aim to achieve with this project?
+
+Provide:
+- 4 to 6 short bullet points
+
+4) Content Filters
+Question:
+What should be selected for:
+- Input: Violence, hate, sexual, self-harm
+- Output: Violence, hate, sexual, self-harm
+
+Available choices:
+- Low
+- Medium
+- High
+
+Provide:
+- Recommended selection for Input
+- Recommended selection for Output
+- 1 short justification
+
+5) Prompt Shields
+Question:
+Prompt shields: Indirect and jailbreak attacks for prompts. Protected material for code and text for output.
+
+Available choices:
+- Annotate and Block
+- Annotate
+- Off
+
+Provide:
+- Recommended selection
+- 1 short justification
+
+6) Embedding Model
+Question:
+Which embedding model should be selected from:
+- text-embedding-3-small
+- text-embedding-3-large
+- text-embedding-ada-002
+
+Provide:
+- Recommended model
+- 1 short justification
+
+7) Non-Production Completion Model Deployment Type
+Question:
+Choose one:
+- Standard / Pay as you go
+- Provisioned Throughput (PTU)
+
+Provide:
+- Recommended selection
+- 1 short justification
+
+8) Non-Prod PTU Requirement
+Question:
+PTU is not recommended for Non-Production environments, please provide the justification
+
+Provide:
+- A concise statement explaining why PTU is not required for this initiative
+
+9) Non-Production Completion Usage Sizing
+Questions:
+- Number of requests per minute*
+- Input tokens*
+- Output tokens*
+
+Context for sizing:
+- This is non-production and mainly for iterative PoC analysis.
+- Usage is expected to be bursty during testing, prompt tuning, and batch-like experimentation.
+- We want conservative but realistic values for a non-prod access request.
+- The values should not look excessive, but should also not be unrealistically low.
+
+Provide:
+- Recommended requests per minute
+- Recommended average input tokens per request
+- Recommended average output tokens per request
+- 1 short justification
+
+10) Non-Production Embeddings Model Usage
+Question:
+Choose one:
+- T-Shirt size
+- Custom
+
+Provide:
+- Recommended estimate type
+- If T-Shirt size: recommended size and why
+- If Custom: recommended tokens per minute and total minutes per month
+
+11) Production Embeddings Model Usage
+Question:
+Choose one:
+- T-Shirt size
+- Custom
+
+If T-Shirt size is chosen, available embedding tokens per minute (x1000):
+- 20
+- 50
+- 200
+
+Average use options:
+- Up to 4 hours a week (20)
+- Up to 12 hours per week (50)
+- Up to 9x5 - Business hours (200)
+- Up to 13x5 - Extended business hours (30)
+
+Context:
+- This project is currently PoC / non-production.
+- Production usage is not immediate, but the form may still require a forward-looking estimate.
+- The recommendation should be conservative and realistic.
+
+Provide:
+- Recommended production embeddings estimate type
+- Recommended capacity option
+- Short justification
+
+12) Cost Alerting
+We need to state that usage alerts should be configured.
+
+Provide:
+- A concise sentence to include in the form asking the platform team to configure alerts when token spend exceeds agreed dollar thresholds
+
+Formatting requirements for your answer:
+- Use clear headings for each question.
+- Keep wording concise and professional.
+- Do not over-explain.
+- Make the final result fully copy/paste ready for the form.
