@@ -545,9 +545,9 @@
     </div>
 
     <div class="spec-card">
-      <div class="spec-title">Control Text Volume</div>
-      <div class="spec-val">~5.4M</div>
-      <div class="spec-desc">Estimated tokens across 1,374 controls at ~3,000 words each. All fields concatenated for embedding and LLM input.</div>
+      <div class="spec-title">Total Token Volume</div>
+      <div class="spec-val">~30M</div>
+      <div class="spec-desc">Estimated tokens across controls, processes, issues and incident text. All fields concatenated for embedding and LLM input.</div>
     </div>
 
     <div class="spec-card">
@@ -557,9 +557,9 @@
     </div>
 
     <div class="spec-card">
-      <div class="spec-title">Budget Utilisation</div>
-      <div class="spec-val">Low</div>
-      <div class="spec-desc">Sprint 2 cost is negligible — primarily one-time embedding compute. Significant headroom remains across the full PoC budget.</div>
+      <div class="spec-title">LLM Access</div>
+      <div class="spec-val">In Progress</div>
+      <div class="spec-desc">Azure OpenAI endpoint provisioning underway. GPT-5.2 and text-embedding-3-large to be confirmed via APIM.</div>
     </div>
 
   </div>
