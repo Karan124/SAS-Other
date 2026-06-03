@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Payments Controls PoC — Sprint 2 Showcase</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --dark1: #181B25;
+    --purple: #9819D7;
+    --lightpurple: #DDBAFF;
+    --light2: #E8E8ED;
+    --red: #DA1710;
+    --navy: #1F1B4F;
+    --card: rgba(255,255,255,0.05);
+    --border: rgba(255,255,255,0.08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Outfit', sans-serif;
+    background: var(--dark1);
+    color: #fff;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+  }
+  .slide {
+    width: 1200px;
+    max-width: 100%;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 32px;
+  }
+  .header-left {}
+  .kicker {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--lightpurple);
+    margin-bottom: 8px;
+  }
+  .title {
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1.15;
+  }
+  .title span { color: var(--purple); }
+  .header-right {
+    text-align: right;
+  }
+  .sprint-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(152,25,215,0.15);
+    border: 0.5px solid rgba(152,25,215,0.4);
+    border-radius: 99px;
+    padding: 7px 16px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--lightpurple);
+    margin-bottom: 6px;
+  }
+  .sprint-badge::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--purple);
+  }
+  .date-text {
+    font-size: 11px;
+    color: rgba(255,255,255,0.3);
+    font-family: 'DM Mono', monospace;
+  }
+
+  /* Hero row */
+  .hero-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .hero-card {
+    background: var(--card);
+    border: 0.5px solid var(--border);
+    border-radius: 14px;
+    padding: 22px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-card.highlight {
+    border-color: rgba(152,25,215,0.5);
+    background: rgba(152,25,215,0.1);
+  }
+  .hero-card.highlight::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--purple);
+  }
+  .hero-num {
+    font-size: 44px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+    letter-spacing: -0.02em;
+  }
+  .hero-num.purple { color: var(--purple); }
+  .hero-num.lightpurple { color: var(--lightpurple); }
+  .hero-num.white { color: #fff; }
+  .hero-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(255,255,255,0.4);
+    margin-bottom: 10px;
+  }
+  .hero-desc {
+    font-size: 13px;
+    color: rgba(255,255,255,0.6);
+    line-height: 1.55;
+  }
+  .hero-desc strong {
+    color: rgba(255,255,255,0.85);
+    font-weight: 500;
+  }
+
+  /* Middle row */
+  .middle-row {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  /* Linkage card */
+  .linkage-card {
+    background: var(--card);
+    border: 0.5px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 22px;
+  }
+  .card-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: rgba(255,255,255,0.35);
+    margin-bottom: 16px;
+  }
+  .linkage-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 0.5px solid rgba(255,255,255,0.06);
+  }
+  .linkage-row:last-child { border-bottom: none; }
+  .linkage-label {
+    font-size: 13px;
+    color: rgba(255,255,255,0.6);
+  }
+  .linkage-nums {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+  }
+  .linkage-num-group {
+    text-align: right;
+  }
+  .linkage-big {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--lightpurple);
+    line-height: 1;
+    font-family: 'DM Mono', monospace;
+  }
+  .linkage-sub {
+    font-size: 10px;
+    color: rgba(255,255,255,0.3);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin-top: 2px;
+  }
+  .linkage-divider {
+    width: 0.5px;
+    height: 28px;
+    background: rgba(255,255,255,0.1);
+  }
+
+  /* Bar chart card */
+  .bar-card {
+    background: var(--card);
+    border: 0.5px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 22px;
+  }
+  .bar-item {
+    margin-bottom: 14px;
+  }
+  .bar-item:last-child { margin-bottom: 0; }
+  .bar-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+  }
+  .bar-name {
+    font-size: 12px;
+    color: rgba(255,255,255,0.6);
+  }
+  .bar-pct {
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    font-family: 'DM Mono', monospace;
+  }
+  .bar-track {
+    height: 5px;
+    background: rgba(255,255,255,0.07);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--purple);
+    transition: width 1s ease;
+  }
+  .bar-fill.light { background: var(--lightpurple); }
+
+  /* Text quality card */
+  .quality-card {
+    background: var(--card);
+    border: 0.5px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 22px;
+  }
+  .quality-ring {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 0;
+  }
+  .ring-num {
+    font-size: 52px;
+    font-weight: 800;
+    color: var(--purple);
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  .ring-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: rgba(255,255,255,0.35);
+    margin-top: 4px;
+    text-align: center;
+  }
+  .ring-desc {
+    font-size: 12px;
+    color: rgba(255,255,255,0.55);
+    text-align: center;
+    line-height: 1.55;
+    margin-top: 10px;
+  }
+
+  /* Bottom row */
+  .bottom-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 12px;
+  }
+  .spec-card {
+    background: var(--card);
+    border: 0.5px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px;
+  }
+  .spec-icon {
+    font-size: 18px;
+    margin-bottom: 10px;
+  }
+  .spec-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: rgba(255,255,255,0.35);
+    margin-bottom: 6px;
+  }
+  .spec-val {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--lightpurple);
+    font-family: 'DM Mono', monospace;
+    line-height: 1.2;
+    margin-bottom: 4px;
+  }
+  .spec-desc {
+    font-size: 12px;
+    color: rgba(255,255,255,0.45);
+    line-height: 1.5;
+  }
+
+  /* Population funnel */
+  .funnel-card {
+    background: var(--card);
+    border: 0.5px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 22px;
+  }
+  .funnel-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 0.5px solid rgba(255,255,255,0.06);
+  }
+  .funnel-row:last-child { border-bottom: none; }
+  .funnel-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .funnel-text {
+    flex: 1;
+    font-size: 13px;
+    color: rgba(255,255,255,0.65);
+  }
+  .funnel-num {
+    font-size: 16px;
+    font-weight: 700;
+    font-family: 'DM Mono', monospace;
+    color: #fff;
+  }
+  .funnel-pct {
+    font-size: 11px;
+    color: rgba(255,255,255,0.3);
+    font-family: 'DM Mono', monospace;
+    width: 40px;
+    text-align: right;
+  }
+
+  /* Footer */
+  .footer {
+    margin-top: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .footer-note {
+    font-size: 11px;
+    color: rgba(255,255,255,0.2);
+    font-family: 'DM Mono', monospace;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(34,197,94,0.12);
+    border: 0.5px solid rgba(34,197,94,0.25);
+    border-radius: 99px;
+    padding: 5px 12px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #86efac;
+  }
+  .status-pill::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: #86efac;
+  }
+</style>
+</head>
+<body>
+<div class="slide">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <div class="kicker">Payments Controls PoC</div>
+      <div class="title">Sprint 2 — <span>Data at Scale</span></div>
+    </div>
+    <div class="header-right">
+      <div class="sprint-badge">Sprint 2 Showcase</div>
+      <div class="date-text">3 June 2026</div>
+    </div>
+  </div>
+
+  <!-- Hero Row -->
+  <div class="hero-row">
+
+    <div class="hero-card highlight">
+      <div class="hero-num purple">~1,374</div>
+      <div class="hero-label">Payment Controls in Scope</div>
+      <div class="hero-desc">
+        Identified from a universe of <strong>7,072</strong> controls in JUNO via taxonomy (P1) and regulatory obligation (P3) linkage. Population still being refined.
+      </div>
+    </div>
+
+    <div class="hero-card">
+      <div class="hero-num lightpurple">7,072</div>
+      <div class="hero-label">Total Controls Profiled</div>
+      <div class="hero-desc">
+        Full JUNO control universe profiled across all data fields, linkage tables, and risk classifications during Sprint 2.
+      </div>
+    </div>
+
+    <div class="hero-card">
+      <div class="hero-num white">~1,200</div>
+      <div class="hero-label">Payment Processes</div>
+      <div class="hero-desc">
+        Holocentric processes identified via deterministic paths PP1–PP5. Each process includes L3 description and associated task descriptions.
+      </div>
+    </div>
+
+    <div class="hero-card">
+      <div class="hero-num purple">&gt;99%</div>
+      <div class="hero-label">Key Fields Populated</div>
+      <div class="hero-desc">
+        Control name, objective, description, and test procedure fields all exceed <strong>99% population</strong> across the 1,374 in-scope controls.
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Middle Row -->
+  <div class="middle-row">
+
+    <!-- Linkage card -->
+    <div class="linkage-card">
+      <div class="card-title">Control Linkage Data</div>
+
+      <div class="linkage-row">
+        <div class="linkage-label">Issues (open &amp; closed)</div>
+        <div class="linkage-nums">
+          <div class="linkage-num-group">
+            <div class="linkage-big">787</div>
+            <div class="linkage-sub">Controls linked</div>
+          </div>
+          <div class="linkage-divider"></div>
+          <div class="linkage-num-group">
+            <div class="linkage-big">2,004</div>
+            <div class="linkage-sub">Distinct issues</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="linkage-row">
+        <div class="linkage-label">Incidents (open &amp; closed)</div>
+        <div class="linkage-nums">
+          <div class="linkage-num-group">
+            <div class="linkage-big">159</div>
+            <div class="linkage-sub">Controls linked</div>
+          </div>
+          <div class="linkage-divider"></div>
+          <div class="linkage-num-group">
+            <div class="linkage-big">793</div>
+            <div class="linkage-sub">Distinct incidents</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="linkage-row">
+        <div class="linkage-label">Controls with any linkage</div>
+        <div class="linkage-nums">
+          <div class="linkage-num-group">
+            <div class="linkage-big" style="color:#fff;">~57%</div>
+            <div class="linkage-sub">Of 1,374 controls</div>
+          </div>
+          <div class="linkage-divider"></div>
+          <div class="linkage-num-group">
+            <div class="linkage-big" style="color:rgba(255,255,255,0.4);">~43%</div>
+            <div class="linkage-sub">No linkage</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Population funnel -->
+    <div class="funnel-card">
+      <div class="card-title">Population Breakdown</div>
+      <div class="funnel-row">
+        <div class="funnel-dot" style="background:var(--purple);"></div>
+        <div class="funnel-text">Total JUNO universe</div>
+        <div class="funnel-num">7,072</div>
+        <div class="funnel-pct">100%</div>
+      </div>
+      <div class="funnel-row">
+        <div class="funnel-dot" style="background:var(--lightpurple);"></div>
+        <div class="funnel-text">Taxonomy tagged (P1)</div>
+        <div class="funnel-num">~3,735</div>
+        <div class="funnel-pct">53%</div>
+      </div>
+      <div class="funnel-row">
+        <div class="funnel-dot" style="background:rgba(255,255,255,0.5);"></div>
+        <div class="funnel-text">Obligation linked (P3)</div>
+        <div class="funnel-num">~8</div>
+        <div class="funnel-pct">&lt;1%</div>
+      </div>
+      <div class="funnel-row" style="background:rgba(152,25,215,0.08); border-radius:8px; padding: 8px 8px; border-bottom:none; margin-top:4px;">
+        <div class="funnel-dot" style="background:var(--purple); width:10px; height:10px;"></div>
+        <div class="funnel-text" style="color:#fff; font-weight:500;">In-scope (P1 or P3)</div>
+        <div class="funnel-num" style="color:var(--lightpurple);">~1,374</div>
+        <div class="funnel-pct" style="color:var(--lightpurple);">19%</div>
+      </div>
+    </div>
+
+    <!-- Text quality -->
+    <div class="quality-card">
+      <div class="card-title">Data Quality — Control Text</div>
+      <div class="quality-ring">
+        <div class="ring-num">&gt;99%</div>
+        <div class="ring-label">Field Population Rate</div>
+        <div class="ring-desc">
+          Name, objective, description &amp; test procedure fields are highly populated across all 1,374 in-scope controls — providing rich context for LLM classification in Sprint 3.
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom Row -->
+  <div class="bottom-row">
+
+    <div class="spec-card">
+      <div class="spec-title">Embedding Model</div>
+      <div class="spec-val">3-Large</div>
+      <div class="spec-desc">text-embedding-3-large. 3,072-dimensional vectors — highest semantic accuracy in the OpenAI embedding family.</div>
+    </div>
+
+    <div class="spec-card">
+      <div class="spec-title">Control Text Volume</div>
+      <div class="spec-val">~5.4M</div>
+      <div class="spec-desc">Estimated tokens across 1,374 controls at ~3,000 words each. All fields concatenated for embedding and LLM input.</div>
+    </div>
+
+    <div class="spec-card">
+      <div class="spec-title">LLM API Calls</div>
+      <div class="spec-val">~4,500</div>
+      <div class="spec-desc">Estimated calls in Sprint 3 across Payment Nature classification, pilot CT mapping, and lifecycle placement.</div>
+    </div>
+
+    <div class="spec-card">
+      <div class="spec-title">Budget Utilisation</div>
+      <div class="spec-val">Low</div>
+      <div class="spec-desc">Sprint 2 cost is negligible — primarily one-time embedding compute. Significant headroom remains across the full PoC budget.</div>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="footer-note">Payments Controls PoC · Sprint 2 Showcase · 3 June 2026</div>
+    <div class="status-pill">Data profiling complete — Ready for Sprint 3 classification</div>
+  </div>
+
+</div>
+</body>
+</html>
