@@ -492,32 +492,25 @@
       </div>
     </div>
 
-    <!-- Population funnel -->
+    <!-- How we found them -->
     <div class="funnel-card">
-      <div class="card-title">Population Breakdown</div>
-      <div class="funnel-row">
-        <div class="funnel-dot" style="background:var(--purple);"></div>
-        <div class="funnel-text">Total JUNO universe</div>
-        <div class="funnel-num">7,072</div>
-        <div class="funnel-pct">100%</div>
+      <div class="card-title">How We Identified Payment Controls</div>
+      <div class="funnel-row" style="align-items:flex-start; padding: 12px 0;">
+        <div class="funnel-dot" style="background:var(--purple); margin-top:5px;"></div>
+        <div style="flex:1; padding-left:4px;">
+          <div style="font-size:14px; font-weight:600; color:#fff; margin-bottom:4px;">P1 — Payments Taxonomy Tag</div>
+          <div style="font-size:12px; color:rgba(255,255,255,0.5); line-height:1.55;">Control is classified under the 7.4.x payments risk hierarchy in JUNO. Indicates the control was deliberately assigned to the payments risk class.</div>
+        </div>
       </div>
-      <div class="funnel-row">
-        <div class="funnel-dot" style="background:var(--lightpurple);"></div>
-        <div class="funnel-text">Taxonomy tagged (P1)</div>
-        <div class="funnel-num">~3,735</div>
-        <div class="funnel-pct">53%</div>
+      <div class="funnel-row" style="align-items:flex-start; padding: 12px 0; border-bottom:none;">
+        <div class="funnel-dot" style="background:var(--lightpurple); margin-top:5px;"></div>
+        <div style="flex:1; padding-left:4px;">
+          <div style="font-size:14px; font-weight:600; color:#fff; margin-bottom:4px;">P3 — Regulatory Obligation Linkage</div>
+          <div style="font-size:12px; color:rgba(255,255,255,0.5); line-height:1.55;">Control is linked to a payments-specific regulatory obligation — NPP, BECS, or RBA requirements. Confirms the control exists to satisfy a payment regulatory requirement.</div>
+        </div>
       </div>
-      <div class="funnel-row">
-        <div class="funnel-dot" style="background:rgba(255,255,255,0.5);"></div>
-        <div class="funnel-text">Obligation linked (P3)</div>
-        <div class="funnel-num">~8</div>
-        <div class="funnel-pct">&lt;1%</div>
-      </div>
-      <div class="funnel-row" style="background:rgba(152,25,215,0.08); border-radius:8px; padding: 8px 8px; border-bottom:none; margin-top:4px;">
-        <div class="funnel-dot" style="background:var(--purple); width:10px; height:10px;"></div>
-        <div class="funnel-text" style="color:#fff; font-weight:500;">In-scope (P1 or P3)</div>
-        <div class="funnel-num" style="color:var(--lightpurple);">~1,374</div>
-        <div class="funnel-pct" style="color:var(--lightpurple);">19%</div>
+      <div style="margin-top:12px; background:rgba(152,25,215,0.08); border:0.5px solid rgba(152,25,215,0.25); border-radius:8px; padding:10px 14px;">
+        <div style="font-size:12px; color:var(--lightpurple); line-height:1.55;">Only controls where P1 or P3 fired are included. Incident linkage and keyword matching were excluded — too broad and pulled in controls from other risk classes.</div>
       </div>
     </div>
 
