@@ -1,0 +1,493 @@
+"""
+token_calculator.py
+-------------------
+Payments Controls PoC — Token & Cost Calculator
+Model  : GPT-5.2 via Azure APIM
+Pricing: $1.75 / 1M input tokens  |  $14.00 / 1M output tokens
+No prompt caching | No batch API
+
+CONFIGURATION:
+  Edit the CONFIG section below before running.
+  No interactive prompts — all settings are hardcoded here.
+
+Usage:
+    python token_calculator.py
+"""
+
+import os
+import sys
+import pandas as pd
+from tabulate import tabulate
+
+try:
+    import tiktoken
+    _TIKTOKEN_AVAILABLE = True
+except ImportError:
+    _TIKTOKEN_AVAILABLE = False
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  CONFIG — edit everything in this section before running
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── File paths ──────────────────────────────────────────────────────────────
+CONTROLS_FILE  = "controls.xlsx"    # Path to controls Excel file
+PROCESSES_FILE = "processes.xlsx"   # Path to processes Excel file (set to "" to skip)
+
+# ── Column names to include per file ────────────────────────────────────────
+# List the exact column names from your Excel headers.
+# These are used for BOTH files if identical; otherwise define separately below.
+
+CONTROLS_FULL_COLUMNS = [
+    "Control Name",
+    "Control Objective",
+    "Control Description",
+    "Test Procedure",
+    "How Evidenced",
+    "Business Area",
+    "Control Type",
+    "Automation Level",
+    "Control Frequency",
+    "Unique or Common",
+    "Nature",
+    "Country",
+]
+
+CONTROLS_MINIMAL_COLUMNS = [
+    "Control Name",
+    "Control Description",
+    "Nature",
+    "Control Frequency",
+]
+
+PROCESSES_FULL_COLUMNS = [
+    "Process Name",
+    "Process Description",
+    "L3 Activity Description",
+    "Task Description",
+    "Value Stream",
+    "Application",
+]
+
+PROCESSES_MINIMAL_COLUMNS = [
+    "Process Name",
+    "L3 Activity Description",
+]
+
+# ── Prompt tokens ────────────────────────────────────────────────────────────
+# Every API call resends the full prompt (no caching).
+# Option A: Point to your actual prompt file for exact token count.
+# Option B: Set PROMPT_FILE = "" and enter a manual estimate instead.
+
+PROMPT_FILE           = ""       # e.g. "prompt_ct_mapping.txt" — leave "" to use estimate
+PROMPT_TOKENS_ESTIMATE = 2000    # Used only if PROMPT_FILE is empty
+                                 # Includes: system instructions + CT1-28 definitions
+                                 # + output schema + examples
+
+# ── Output tokens ────────────────────────────────────────────────────────────
+# Estimated tokens in the model's response per call.
+# CT mapping output (CT outcome + confidence + rationale per CT) is verbose.
+# Increase if your prompt asks for multiple CT mappings or detailed rationale.
+
+OUTPUT_TOKENS_PER_CALL = 1000    # Conservative default — increase to 1500-2000
+                                 # if rationale is expected to be detailed
+
+# -- Thinking tokens ---------------------------------------------------------
+# GPT-5.2 comes in two API variants:
+#   - GPT-5.2 Instant  : no thinking tokens (fast, cheaper)
+#   - GPT-5.2 Thinking : reasoning model, generates thinking tokens
+#
+# IMPORTANT: Check with your Azure APIM team which variant is provisioned.
+# The model string matters: "gpt-5.2" vs "gpt-5.2-thinking"
+#
+# Thinking tokens are billed as OUTPUT tokens at $14.00/M.
+# They are generated before the final response and appear on your bill
+# even though they are not visible in the response text.
+#
+# For CT classification (closed label set, structured JSON, temperature=0)
+# deep reasoning adds little value. If using Thinking mode, set
+# reasoning_effort="low" in your API call to minimise thinking tokens.
+#
+# Estimated thinking tokens by reasoning effort:
+#   low    :  ~200-500   tokens per call  (recommended for classification)
+#   medium :  ~500-2000  tokens per call
+#   high   : ~2000-8000  tokens per call  (overkill for classification)
+#
+# Set THINKING_TOKENS_PER_CALL = 0 if using GPT-5.2 Instant (no thinking).
+# Set to your expected value if using GPT-5.2 Thinking.
+
+THINKING_TOKENS_PER_CALL = 0     # 0   = Instant mode (no thinking tokens)
+                                 # 300 = Thinking mode low effort (recommended)
+                                 # 1000 = Thinking mode medium effort
+
+# ── Budget ───────────────────────────────────────────────────────────────────
+BUDGET_AUD = 1000.0              # Budget to calculate runs against
+
+# ── Pricing (GPT-5.2) ────────────────────────────────────────────────────────
+INPUT_PRICE_USD_PER_M  = 1.75    # USD per 1M input tokens
+OUTPUT_PRICE_USD_PER_M = 14.00   # USD per 1M output tokens
+AUD_USD_RATE           = 0.65    # Hard-coded: 1 AUD = 0.65 USD (~June 2026)
+
+# ── Run projections ──────────────────────────────────────────────────────────
+# How many runs to show cost breakdown for in the summary table
+RUN_PROJECTIONS = [1, 5, 10, 20, 50]
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  END CONFIG — do not edit below this line unless you know what you're doing
+# ══════════════════════════════════════════════════════════════════════════════
+
+USD_AUD_RATE = 1 / AUD_USD_RATE
+
+
+def usd_to_aud(v): return v * USD_AUD_RATE
+def aud_to_usd(v): return v * AUD_USD_RATE
+def fmt_n(n):      return f"{int(n):,}"
+def fmt_usd(v):    return f"${v:,.4f}"
+def fmt_aud(v):    return f"A${v:,.2f}"
+def divider(c="─", w=74): print(c * w)
+
+
+# ── Token counting ────────────────────────────────────────────────────────────
+
+def get_encoder():
+    if not _TIKTOKEN_AVAILABLE:
+        return None
+    try:
+        enc = tiktoken.get_encoding("cl100k_base")
+        # Verify it actually works
+        enc.encode("test")
+        return enc
+    except Exception:
+        return None
+
+
+def count_tokens(text: str, enc) -> int:
+    """
+    Count tokens in a string.
+    Uses tiktoken (cl100k_base) if available and working.
+    Falls back to word-count approximation (words × 1.3) otherwise.
+    Note: cl100k_base is the GPT-4 encoding — very close to GPT-5.2.
+    """
+    if enc is not None:
+        try:
+            return len(enc.encode(str(text)))
+        except Exception:
+            pass
+    # Fallback: 1 word ≈ 1.3 tokens
+    return max(1, int(len(str(text).split()) * 1.3))
+
+
+def count_prompt_tokens(enc) -> int:
+    """
+    Return prompt token count.
+    Reads PROMPT_FILE if set, otherwise uses PROMPT_TOKENS_ESTIMATE.
+    These tokens are added to EVERY API call since there is no prompt caching.
+    """
+    if PROMPT_FILE and os.path.exists(PROMPT_FILE):
+        with open(PROMPT_FILE, "r", encoding="utf-8") as f:
+            content = f.read()
+        n = count_tokens(content, enc)
+        print(f"  ✓  Prompt tokens read from file '{PROMPT_FILE}': {fmt_n(n)}")
+        return n
+    elif PROMPT_FILE:
+        print(f"  ⚠  Prompt file '{PROMPT_FILE}' not found — using estimate of {fmt_n(PROMPT_TOKENS_ESTIMATE)}")
+    else:
+        print(f"  ℹ  No prompt file set — using estimate of {fmt_n(PROMPT_TOKENS_ESTIMATE)} prompt tokens per call")
+    return PROMPT_TOKENS_ESTIMATE
+
+
+def count_row_tokens(row: pd.Series, columns: list, enc) -> int:
+    """
+    Count tokens for a single row using the specified columns.
+    Each field is labelled: 'Column Name: value' — matching what you'd send to the LLM.
+    """
+    parts = []
+    for col in columns:
+        val = row.get(col, None)
+        if val is not None and pd.notna(val) and str(val).strip():
+            parts.append(f"{col}: {val}")
+    return count_tokens("\n".join(parts), enc)
+
+
+# ── Cost calculation ──────────────────────────────────────────────────────────
+
+def cost_usd(input_tokens: int, output_tokens: int, thinking_tokens: int = 0) -> float:
+    # Thinking tokens are billed as output tokens (same rate)
+    total_output = output_tokens + thinking_tokens
+    return (
+        (input_tokens  / 1_000_000) * INPUT_PRICE_USD_PER_M +
+        (total_output  / 1_000_000) * OUTPUT_PRICE_USD_PER_M
+    )
+
+
+# ── Per-file analysis ─────────────────────────────────────────────────────────
+
+def analyse(df: pd.DataFrame, label: str, full_cols: list, minimal_cols: list,
+            prompt_tokens: int, enc) -> dict:
+
+    divider("═")
+    print(f"  {label.upper()}  —  {len(df):,} records")
+    divider("═")
+
+    results = {}
+
+    for profile, cols in [("FULL", full_cols), ("MINIMAL", minimal_cols)]:
+
+        # Validate columns exist in the dataframe
+        missing = [c for c in cols if c not in df.columns]
+        present = [c for c in cols if c in df.columns]
+        if missing:
+            print(f"\n  ⚠  [{profile}] Columns not found in file (skipped): {missing}")
+        if not present:
+            print(f"  ✗  [{profile}] No valid columns — skipping profile.")
+            continue
+
+        print(f"\n  Counting tokens — {profile} ({len(present)} columns)…", end="", flush=True)
+
+        data_tokens = [count_row_tokens(row, present, enc) for _, row in df.iterrows()]
+
+        total_data   = sum(data_tokens)
+        avg_data     = int(total_data / len(df))
+        p50_data     = int(pd.Series(data_tokens).quantile(0.50))
+        p95_data     = int(pd.Series(data_tokens).quantile(0.95))
+        max_data     = max(data_tokens)
+
+        # Input per call = data tokens + prompt tokens (resent every call — no caching)
+        avg_input_per_call = avg_data + prompt_tokens
+        p95_input_per_call = p95_data + prompt_tokens
+
+        # Full run totals
+        total_input_run  = total_data + (prompt_tokens * len(df))
+        total_output_run = OUTPUT_TOKENS_PER_CALL * len(df)
+
+        # Costs
+        cost_per_call_usd = cost_usd(avg_input_per_call, OUTPUT_TOKENS_PER_CALL, THINKING_TOKENS_PER_CALL)
+        total_thinking_run = THINKING_TOKENS_PER_CALL * len(df)
+        cost_per_run_usd  = cost_usd(total_input_run, total_output_run, total_thinking_run)
+        cost_per_run_aud  = usd_to_aud(cost_per_run_usd)
+
+        results[profile] = {
+            "cols":               len(present),
+            "col_names":          present,
+            "total_data":         total_data,
+            "avg_data":           avg_data,
+            "p50_data":           p50_data,
+            "p95_data":           p95_data,
+            "max_data":           max_data,
+            "prompt_tokens":      prompt_tokens,
+            "avg_input_per_call": avg_input_per_call,
+            "p95_input_per_call": p95_input_per_call,
+            "output_per_call":    OUTPUT_TOKENS_PER_CALL,
+            "total_input_run":    total_input_run,
+            "total_output_run":   total_output_run,
+            "total_thinking_run": total_thinking_run,
+            "thinking_per_call":  THINKING_TOKENS_PER_CALL,
+            "cost_per_call_usd":  cost_per_call_usd,
+            "cost_per_run_usd":   cost_per_run_usd,
+            "cost_per_run_aud":   cost_per_run_aud,
+        }
+        print(" done.")
+
+    if not results:
+        return {}
+
+    # ── Print tables ──
+    profiles = [p for p in ["FULL", "MINIMAL"] if p in results]
+    headers  = ["Metric"] + [f"{p} ({results[p]['cols']} cols)" for p in profiles]
+
+    print()
+    divider()
+    print("  TOKEN BREAKDOWN  (prompt resent every call — no caching)")
+    divider()
+
+    def row_vals(key): return [fmt_n(results[p][key]) for p in profiles]
+
+    token_rows = [
+        ["Records in file"]              + [fmt_n(len(df))] * len(profiles),
+        ["── Data tokens ──────────────"] + [""] * len(profiles),
+        ["  Total (all records)"]         + row_vals("total_data"),
+        ["  Avg per record"]              + row_vals("avg_data"),
+        ["  P50 per record"]              + row_vals("p50_data"),
+        ["  P95 per record"]              + row_vals("p95_data"),
+        ["  Max (single record)"]         + row_vals("max_data"),
+        ["── Per API call ─────────────"] + [""] * len(profiles),
+        ["  Prompt tokens (resent each)"] + [fmt_n(results[p]["prompt_tokens"]) for p in profiles],
+        ["  Thinking tokens (billed as output)"] + [fmt_n(results[p]["thinking_per_call"]) for p in profiles],
+        ["  Avg input (data + prompt)"]   + row_vals("avg_input_per_call"),
+        ["  P95 input (data + prompt)"]   + row_vals("p95_input_per_call"),
+        ["  Output tokens (estimated)"]   + row_vals("output_per_call"),
+        ["── Full run totals ──────────"] + [""] * len(profiles),
+        ["  Total input tokens"]          + row_vals("total_input_run"),
+        ["  Total output tokens"]         + row_vals("total_output_run"),
+        ["  Total thinking tokens"]       + row_vals("total_thinking_run"),
+    ]
+    print(tabulate(token_rows, headers=headers, tablefmt="simple",
+                   colalign=("left",) + ("right",) * len(profiles)))
+
+    print()
+    divider()
+    print("  COST PER RUN")
+    divider()
+
+    cost_rows = [
+        ["Cost per call — avg (USD)"]  + [fmt_usd(results[p]["cost_per_call_usd"]) for p in profiles],
+        ["Cost per run — full file (USD)"] + [fmt_usd(results[p]["cost_per_run_usd"]) for p in profiles],
+        ["Cost per run — full file (AUD)"] + [fmt_aud(results[p]["cost_per_run_aud"]) for p in profiles],
+    ]
+    print(tabulate(cost_rows, headers=headers, tablefmt="simple",
+                   colalign=("left",) + ("right",) * len(profiles)))
+
+    print()
+    divider()
+    print(f"  RUN PROJECTIONS  (Budget: {fmt_aud(BUDGET_AUD)}  |  1 AUD = {AUD_USD_RATE} USD)")
+    divider()
+
+    budget_usd = aud_to_usd(BUDGET_AUD)
+    proj_rows = []
+    for n in RUN_PROJECTIONS:
+        row = [f"{n} run{'s' if n > 1 else ''}"]
+        for p in profiles:
+            cost_n_aud = results[p]["cost_per_run_aud"] * n
+            remaining  = BUDGET_AUD - cost_n_aud
+            if remaining >= 0:
+                row.append(f"{fmt_aud(cost_n_aud)}  (leaves {fmt_aud(remaining)})")
+            else:
+                row.append(f"{fmt_aud(cost_n_aud)}  ✗ exceeds budget")
+        proj_rows.append(row)
+
+    # Max runs row
+    max_runs_row = ["Max runs in budget"]
+    for p in profiles:
+        max_r = int(budget_usd // results[p]["cost_per_run_usd"])
+        max_runs_row.append(fmt_n(max_r))
+    proj_rows.append(max_runs_row)
+
+    print(tabulate(proj_rows, headers=headers, tablefmt="simple",
+                   colalign=("left",) + ("right",) * len(profiles)))
+
+    return results
+
+
+# ── Combined ──────────────────────────────────────────────────────────────────
+
+def combined(ctrl_res: dict, proc_res: dict):
+    if not ctrl_res or not proc_res:
+        return
+
+    divider("═")
+    print("  COMBINED — Controls + Processes (one full sprint run)")
+    divider("═")
+
+    budget_usd = aud_to_usd(BUDGET_AUD)
+    profiles   = [p for p in ["FULL", "MINIMAL"] if p in ctrl_res and p in proc_res]
+    headers    = ["Metric"] + profiles
+
+    rows = []
+    for p in profiles:
+        c_aud = ctrl_res[p]["cost_per_run_aud"]
+        pr_aud = proc_res[p]["cost_per_run_aud"]
+        comb_aud = c_aud + pr_aud
+        comb_usd = aud_to_usd(comb_aud)
+        max_r    = int(budget_usd // comb_usd)
+        rows.append((p, c_aud, pr_aud, comb_aud, max_r))
+
+    print()
+    combo_rows = [
+        ["Controls run cost (AUD)"]        + [fmt_aud(r[1]) for r in rows],
+        ["Processes run cost (AUD)"]        + [fmt_aud(r[2]) for r in rows],
+        ["Combined cost per run (AUD)"]     + [fmt_aud(r[3]) for r in rows],
+        ["Max combined runs in budget"]     + [fmt_n(r[4])   for r in rows],
+    ]
+    print(tabulate(combo_rows, headers=headers, tablefmt="simple",
+                   colalign=("left",) + ("right",) * len(profiles)))
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    print()
+    divider("═")
+    print("  PAYMENTS CONTROLS PoC — TOKEN & COST CALCULATOR")
+    print(f"  Model   : GPT-5.2")
+    print(f"  Pricing : ${INPUT_PRICE_USD_PER_M}/M input  |  ${OUTPUT_PRICE_USD_PER_M}/M output  (USD)")
+    print(f"  Rate    : 1 AUD = {AUD_USD_RATE} USD  (~1 USD = {USD_AUD_RATE:.3f} AUD)")
+    print(f"  Caching : None  |  Batch API : None")
+    print(f"  Budget  : {fmt_aud(BUDGET_AUD)}")
+    divider("═")
+
+    # Token counter
+    enc = get_encoder()
+    method = "tiktoken (cl100k_base)" if enc else "word-count approximation (×1.3, ±10-15%)"
+    print(f"\n  Token counting method: {method}")
+
+    # Prompt tokens — added to every single API call
+    print()
+    prompt_tokens = count_prompt_tokens(enc)
+    print(f"  Output tokens per call: {fmt_n(OUTPUT_TOKENS_PER_CALL)}")
+    print(f"\n  NOTE: Prompt ({fmt_n(prompt_tokens)} tokens) is resent with EVERY API call.")
+    print(f"        No prompt caching. This is the dominant input cost driver.")
+
+    ctrl_res = {}
+    proc_res = {}
+
+    # Controls
+    print()
+    divider()
+    print("  CONTROLS FILE")
+    divider()
+    if not CONTROLS_FILE:
+        print("  Skipped — CONTROLS_FILE not set.")
+    elif not os.path.exists(CONTROLS_FILE):
+        print(f"  ✗  File not found: {CONTROLS_FILE}")
+    else:
+        try:
+            df_ctrl = pd.read_excel(CONTROLS_FILE)
+            print(f"  ✓  Loaded {len(df_ctrl):,} rows  |  Columns: {list(df_ctrl.columns)}")
+            ctrl_res = analyse(df_ctrl, "Controls",
+                               CONTROLS_FULL_COLUMNS, CONTROLS_MINIMAL_COLUMNS,
+                               prompt_tokens, enc)
+        except Exception as e:
+            print(f"  ✗  Could not read file: {e}")
+
+    # Processes
+    print()
+    divider()
+    print("  PROCESSES FILE")
+    divider()
+    if not PROCESSES_FILE:
+        print("  Skipped — PROCESSES_FILE not set.")
+    elif not os.path.exists(PROCESSES_FILE):
+        print(f"  ✗  File not found: {PROCESSES_FILE}")
+    else:
+        try:
+            df_proc = pd.read_excel(PROCESSES_FILE)
+            print(f"  ✓  Loaded {len(df_proc):,} rows  |  Columns: {list(df_proc.columns)}")
+            proc_res = analyse(df_proc, "Processes",
+                               PROCESSES_FULL_COLUMNS, PROCESSES_MINIMAL_COLUMNS,
+                               prompt_tokens, enc)
+        except Exception as e:
+            print(f"  ✗  Could not read file: {e}")
+
+    # Combined
+    if ctrl_res and proc_res:
+        print()
+        combined(ctrl_res, proc_res)
+
+    # Footer
+    print()
+    divider("═")
+    print("  CONFIG USED")
+    divider("═")
+    print(f"  Controls file  : {CONTROLS_FILE}")
+    print(f"  Processes file : {PROCESSES_FILE or '(skipped)'}")
+    print(f"  Prompt tokens  : {fmt_n(prompt_tokens)}  (resent every call — no caching)")
+    print(f"  Output tokens  : {fmt_n(OUTPUT_TOKENS_PER_CALL)}")
+    thinking_mode = "Instant (none)" if THINKING_TOKENS_PER_CALL == 0 else f"Thinking — {fmt_n(THINKING_TOKENS_PER_CALL)} tokens/call (billed as output)"
+    print(f"  Thinking tokens: {thinking_mode}")
+    print(f"  Budget         : {fmt_aud(BUDGET_AUD)}")
+    print(f"  Exchange rate  : 1 AUD = {AUD_USD_RATE} USD")
+    divider("═")
+    print()
+
+
+if __name__ == "__main__":
+    main()
