@@ -1,0 +1,645 @@
+# LRM Learning File — Azure OpenAI / Westpac Internal Gateway Connectivity
+
+## Purpose
+This file captures the end-to-end learnings from the setup and troubleshooting journey for connecting a local Windows workstation to Westpac’s OpenAI/Azure OpenAI environment from Python and VS Code.
+
+It is written for a large reasoning model (LRM) so that it can:
+- understand the environment and constraints
+- avoid previously failed paths
+- reproduce the final working setup
+- know which settings are critical vs optional
+- understand the rationale behind each decision
+
+---
+
+## 1. High-level outcome
+
+### Final successful connection path
+The final **working** path for Python access to the LLM was:
+- authenticate with `az login`
+- select the correct subscription
+- use the **Westpac internal gateway endpoint**:
+  - `https://ai.eng.azure.srv.westpac.com.au`
+- keep **proxy enabled**:
+  - `HTTP_PROXY=http://127.0.0.1:9000`
+  - `HTTPS_PROXY=http://127.0.0.1:9000`
+- **clear `NO_PROXY`** / `no_proxy`
+- use the Python SDK with **normal environment proxy behaviour**
+- **do not** force `httpx.Client(trust_env=False)`
+
+### Final successful observable result
+Running the test script returned:
+- `Hello!`
+
+This proves:
+- Python environment works
+- Azure authentication works
+- proxy/certificate routing works
+- the internal endpoint works
+- the model deployment is reachable and responsive
+
+---
+
+## 2. Environment context
+
+### User / machine context
+- Windows workstation
+- corporate-managed environment
+- no elevated/admin access available
+- VS Code used as IDE
+- PowerShell used as the correct terminal
+- Git Bash / MINGW caused multiple environment inconsistencies and should be avoided for this workflow
+
+### Python context
+- Python installed via Forge / Windows user install
+- actual Python executable used:
+  - `C:\Users\m061400\AppData\Local\Programs\Python\Python312\python.exe`
+- `where python` returned both:
+  - `C:\Users\m061400\AppData\Local\Programs\Python\Python312\python.exe` ✅ actual interpreter
+  - `C:\Users\m061400\AppData\Local\Microsoft\WindowsApps\python.exe` ⚠ launcher / shim only
+
+### VS Code context
+- Python extension installed successfully only after resolving marketplace / proxy issues
+- selected interpreter should be the real Python 3.12 executable above, not the WindowsApps shim
+- PowerShell should be the default terminal in VS Code
+
+### Network / security context
+- Westpac corporate proxy / Zscaler in place
+- proxy endpoint used during successful testing:
+  - `http://127.0.0.1:9000`
+- corporate CA certificate required for Azure CLI authentication and Python HTTPS trust
+
+---
+
+## 3. Target Azure/OpenAI environment
+
+### Innovation environment
+- subscription name: `cst-a00c3d-cin03`
+- Azure OpenAI account name: `t3-a00c3d-cin03-arg01-openai01`
+- original Azure OpenAI resource endpoint (direct resource endpoint):
+  - `https://t3-a00c3d-cin03-arg01-openai01.openai.azure.com`
+- API version used:
+  - `2024-10-21`
+
+### Internal gateway endpoint (final working endpoint)
+Use this endpoint in the script:
+- `https://ai.eng.azure.srv.westpac.com.au`
+
+### Working deployed chat models available
+- `gpt-4o`
+- `gpt-5.1`
+- `gpt-5.1-chat`
+- `gpt-5.2`
+- `gpt-5.4`
+- `gpt-5.4-mini`
+- `gpt-5.4-nano`
+
+### Working deployed embedding models available
+- `text-embedding-3-small`
+- `text-embedding-3-large`
+
+---
+
+## 4. Critical lessons learned
+
+### 4.1 Use PowerShell, not Git Bash
+PowerShell is the only shell that reliably picked up:
+- Forge / Artifactory settings
+- proxy settings
+- certificate settings
+- Azure CLI behaviour
+
+Git Bash / MINGW caused issues including:
+- broken virtual environment activation syntax
+- missing Forge environment variables
+- `uv` and `pip` trying to use public PyPI instead of Artifactory
+- certificate failures that did not occur in PowerShell
+
+### 4.2 Forge helped for Python package installation, but not enough for Azure auth by itself
+Forge already handled much of the local developer environment, including:
+- Python installation
+- pip / uv default index configuration
+- some cert / Artifactory plumbing
+
+However, additional manual work was still needed for:
+- VS Code extension marketplace connectivity
+- Azure CLI authentication
+- corporate certificate trust for `az login`
+- proxy routing to the correct OpenAI endpoint
+
+### 4.3 The system / user-level Python install ended up being better than the venv for the CLI path
+The workflow started with a `.venv`, but the engineer later requested a system-style install rather than a virtual environment.
+
+The final successful run showed package stack traces from:
+- `C:\Users\m061400\AppData\Local\Programs\Python\Python312\Lib\site-packages\...`
+
+This implies the effective working path used:
+- user-level / system-style Python packages
+- not the venv-local package tree for the final successful OpenAI call
+
+### 4.4 `az login` originally failed because of corporate certificate trust
+Initial `az login` attempts failed with:
+- `CERTIFICATE_VERIFY_FAILED`
+- `unable to get local issuer certificate`
+
+This was due to Azure CLI / Python / MSAL not trusting the corporate proxy certificate chain.
+
+### 4.5 Corporate CA was required
+The Westpac CA file had to be retrieved from internal Bitbucket and saved locally as `cacert.pem`.
+
+Worked-from knowledge:
+- missing `cacert.pem` was a hard blocker
+- without it, Azure CLI authentication could not progress
+
+### 4.6 Successful auth path required system-style install + cert bundle + proxy routing
+Eventually `az login` worked after:
+- building the correct cert trust setup
+- using the right Python/package location
+- using the correct proxy settings
+- moving away from failed venv-only / MSAL edge-case combinations
+
+### 4.7 The original Azure resource endpoint was not the final working endpoint for Python
+Several attempts used:
+- `https://t3-a00c3d-cin03-arg01-openai01.openai.azure.com`
+
+This led to:
+- timeouts
+- proxy / routing confusion
+- private IP resolution without successful end-to-end response
+
+The **final successful endpoint** was:
+- `https://ai.eng.azure.srv.westpac.com.au`
+
+### 4.8 Do NOT disable proxy usage in the Python HTTP client
+A failed script used:
+- `httpx.Client(trust_env=False, timeout=60.0)`
+
+This explicitly disabled environment proxy usage.
+
+That caused timeouts because the request path needed to use the normal environment proxy setup.
+
+The engineer explicitly said to remove this and not include `.openai.azure.com` in `NO_PROXY`.
+
+### 4.9 Clear `NO_PROXY` / `no_proxy`
+A key learning from the engineer:
+- do **not** exempt `.openai.azure.com` from proxy routing
+- clear `NO_PROXY` and `no_proxy` before testing
+
+Final successful session included:
+- `Remove-Item Env:NO_PROXY -ErrorAction SilentlyContinue`
+- `Remove-Item Env:no_proxy -ErrorAction SilentlyContinue`
+
+### 4.10 Keep `HTTP_PROXY` and `HTTPS_PROXY` set for the successful call
+The final successful run used:
+- `HTTP_PROXY=http://127.0.0.1:9000`
+- `HTTPS_PROXY=http://127.0.0.1:9000`
+
+This means the successful OpenAI call travelled through the expected corporate proxy path.
+
+### 4.11 Pinging the original endpoint to a private IP was informative but not sufficient
+A ping to the original Azure resource endpoint resolved to:
+- private IP `10.54.130.20`
+- ICMP timed out
+
+Interpretation:
+- DNS / private endpoint routing was present
+- but ping timeout alone was not meaningful
+- actual HTTPS connectivity still depended on the correct routed endpoint and proxy path
+
+### 4.12 The correct subscription matters
+Login initially defaulted to the wrong subscription.
+
+The correct subscription for the innovation environment was:
+- `cst-a00c3d-cin03`
+
+A successful testing flow required explicitly setting the correct subscription before running tests.
+
+---
+
+## 5. Failed or misleading paths to avoid
+
+### 5.1 Avoid Git Bash / MINGW for this workflow
+Problems observed:
+- venv activation issues
+- missing Forge env vars
+- `uv` trying public PyPI
+- cert problems
+
+### 5.2 Avoid the WindowsApps Python shim in VS Code
+Do not select:
+- `C:\Users\m061400\AppData\Local\Microsoft\WindowsApps\python.exe`
+
+Use the real interpreter instead.
+
+### 5.3 Avoid using the raw Azure OpenAI endpoint in the script once the gateway endpoint is available
+When the engineer provided:
+- `https://ai.eng.azure.srv.westpac.com.au`
+
+that became the correct endpoint to use for successful corporate routing.
+
+### 5.4 Avoid `trust_env=False`
+This disables proxy usage and caused timeouts in this environment.
+
+### 5.5 Avoid keeping `.openai.azure.com` in `NO_PROXY`
+The engineer specifically called this out.
+
+### 5.6 Avoid assuming the standard Azure CLI Program Files path exists
+The engineer referred to a path similar to:
+- `C:\Program Files (x86)\Microsoft SDKs\Azure\CLI2\...`
+
+That path was not present because the user’s Azure CLI install path differed.
+
+### 5.7 Avoid assuming `az login` cert fixes work the same in all install modes
+There were multiple complications involving:
+- pip-installed Azure CLI in a venv
+- system/user-level install behaviour
+- MSAL certificate handling
+
+The final auth path required iterative fixes and cannot be assumed trivial.
+
+---
+
+## 6. Final known-good runbook
+
+### 6.1 Open fresh PowerShell
+Use PowerShell only.
+
+### 6.2 Move to working folder
+```powershell
+cd C:\Users\m061400\ai-test
+```
+
+### 6.3 Ensure correct Azure subscription
+```powershell
+az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
+az account show
+```
+
+Expectation:
+- subscription name should be `cst-a00c3d-cin03`
+
+### 6.4 Set proxy variables
+```powershell
+$env:HTTP_PROXY="http://127.0.0.1:9000"
+$env:HTTPS_PROXY="http://127.0.0.1:9000"
+```
+
+### 6.5 Clear `NO_PROXY`
+```powershell
+Remove-Item Env:NO_PROXY -ErrorAction SilentlyContinue
+Remove-Item Env:no_proxy -ErrorAction SilentlyContinue
+```
+
+### 6.6 Run the working script
+```powershell
+python test_openai.py
+```
+
+---
+
+## 7. Final known-good Python script
+
+Use a script equivalent to the following:
+
+```python
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from openai import AzureOpenAI
+
+endpoint = "https://ai.eng.azure.srv.westpac.com.au"
+
+token_provider = get_bearer_token_provider(
+    DefaultAzureCredential(),
+    "https://cognitiveservices.azure.com/.default"
+)
+
+client = AzureOpenAI(
+    azure_endpoint=endpoint,
+    api_version="2024-10-21",
+    azure_ad_token_provider=token_provider,
+)
+
+response = client.chat.completions.create(
+    model="gpt-5.4-mini",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Say hello in one sentence"}
+    ]
+)
+
+print(response.choices[0].message.content)
+```
+
+### Important notes on the script
+- Use **base endpoint only**:
+  - `https://ai.eng.azure.srv.westpac.com.au`
+- Do **not** append `/openai` or `/openai.com`
+- Do **not** supply a custom `httpx.Client(trust_env=False, ...)`
+- Let the SDK use normal environment proxy behaviour
+
+---
+
+## 8. Authentication learnings
+
+### What worked
+- `az login`
+- selecting / setting the correct subscription
+- letting `DefaultAzureCredential()` pick up the authenticated Azure CLI context
+
+### What did NOT work well during troubleshooting
+- API key approach (not allowed by the engineer / environment)
+- VS Code-only auth as the main mechanism
+- direct reliance on a pip-installed Azure CLI inside a tightly isolated venv path
+- fighting `az login` while the CA / cert path was incomplete
+
+### Organisational rule inferred from the engineer
+- API keys are not the intended auth method here
+- Microsoft Entra / Azure CLI-based auth is the supported path
+
+---
+
+## 9. Certificate / CA learnings
+
+### Missing cert file was a hard blocker
+The file `cacert.pem` was required.
+
+### Source of corporate cert
+The engineer provided an internal Bitbucket location for the Westpac root CA.
+
+### Behaviour observed
+- without the CA bundle, `az login` failed with SSL trust errors
+- multiple certificate bundle paths were investigated
+- the exact working path evolved over time
+- the final auth success confirms the cert / trust issue was ultimately resolved
+
+### Practical LRM takeaway
+If Azure CLI authentication fails in a similar environment with `CERTIFICATE_VERIFY_FAILED`:
+1. assume corporate CA trust is missing
+2. obtain the organisation root CA / intermediate PEMs
+3. ensure the actual runtime Python / requests / certifi path being used by the active install trusts those PEMs
+4. ensure proxy env vars are set coherently in the active shell
+
+---
+
+## 10. Proxy learnings
+
+### Final working rule
+For the successful Python OpenAI call:
+- **proxy must be enabled**
+- `NO_PROXY` must **not** exempt the OpenAI domain or gateway endpoint
+
+### Failed rule
+Bypassing proxy for this workload caused timeouts.
+
+### Reasoning
+The final working endpoint appears to rely on Westpac’s internal network / proxy / gateway routing rather than direct raw access.
+
+---
+
+## 11. Endpoint learnings
+
+### Original resource endpoint
+- `https://t3-a00c3d-cin03-arg01-openai01.openai.azure.com`
+
+### Final working endpoint
+- `https://ai.eng.azure.srv.westpac.com.au`
+
+### Key rule
+If an internal gateway endpoint is provided by engineering/support, prefer it over the raw Azure resource hostname for local corporate workstation access.
+
+---
+
+## 12. Model-access learnings
+
+### Accessible embedding models
+- `text-embedding-3-small`
+- `text-embedding-3-large`
+
+### Accessible chat models
+- `gpt-4o`
+- `gpt-5.1`
+- `gpt-5.1-chat`
+- `gpt-5.2`
+- `gpt-5.4`
+- `gpt-5.4-mini`
+- `gpt-5.4-nano`
+
+### Initial successful smoke test model
+- `gpt-5.4-mini`
+
+This is a sensible default model for future robust testing because it returned a valid response quickly and is likely a good trade-off between speed, cost, and reasoning quality.
+
+---
+
+## 13. Suggested future test program (already discussed)
+
+For robust validation of the LLM connection and fit-for-purpose model selection, the following tests were proposed:
+
+### 13.1 Connectivity / smoke testing
+Run short prompts against all accessible chat models and confirm:
+- success/failure
+- latency
+- preview text
+- token usage where available
+
+### 13.2 Temperature testing
+Test each model at:
+- `0.0`
+- `0.2`
+- `0.7`
+
+Why:
+- `0.0` for repeatable extraction / classification
+- `0.2` for controlled variability
+- `0.7` for more generative behaviour
+
+### 13.3 Reasoning effort testing for GPT-5 family
+For GPT-5 family models, test:
+- `low`
+- `medium`
+- `high`
+
+Goal:
+- assess trade-off between latency, token usage, and analysis quality for control sufficiency / gap analysis tasks
+
+### 13.4 Structured extraction testing
+Use payment-control-style prompts and evaluate whether models can reliably output structured JSON for fields such as:
+- control objective
+- risk addressed
+- preventive/detective
+- manual/automated
+- frequency
+- evidence
+- systems/applications
+
+### 13.5 Embedding similarity testing
+Compare `text-embedding-3-small` vs `text-embedding-3-large` for:
+- finding similar controls
+- matching obligations to controls
+- issue / incident to control retrieval
+- clustering similar control descriptions
+
+---
+
+## 14. PoC-specific recommendations inferred from testing goals
+
+### Best use of chat models for Payments Controls PoC
+- `gpt-4o`:
+  - good baseline for extraction / structured outputs
+- `gpt-5.4-mini`:
+  - likely best balance for reasoning-heavy but cost-sensitive workload
+- `gpt-5.4`:
+  - benchmark option for harder sufficiency / gap-analysis prompts
+
+### Best use of embedding models
+- default candidate:
+  - `text-embedding-3-small`
+- benchmark / higher-quality candidate:
+  - `text-embedding-3-large`
+
+### Settings bias for enterprise controls use cases
+For deterministic / auditable outputs:
+- prefer low temperature (`0.0` or `0.2`)
+- prefer explicit schemas / structured extraction
+- prefer repeatable prompts
+
+For deeper reasoning tasks:
+- use GPT‑5 family
+- test moderate reasoning effort first
+
+---
+
+## 15. Practical troubleshooting heuristics for future LRMs
+
+If authentication fails:
+- check `az login`
+- check correct subscription
+- check cert / CA trust
+- check shell (PowerShell only)
+- check proxy vars
+
+If Python package install fails:
+- prefer PowerShell over Git Bash
+- assume Artifactory / Forge env vars may not propagate into Git Bash
+
+If the model call times out:
+- check whether proxy was accidentally disabled
+- check whether `NO_PROXY` is incorrectly bypassing the endpoint
+- check whether an internal gateway endpoint exists and should be used instead of the raw Azure resource endpoint
+
+If an internal gateway endpoint is available:
+- use that endpoint first
+- let the SDK use environment proxy settings
+
+If the endpoint works only through proxy:
+- keep `HTTP_PROXY` and `HTTPS_PROXY` set
+- do not use `trust_env=False`
+- clear `NO_PROXY`
+
+---
+
+## 16. Canonical final state for this environment
+
+### The LRM should assume the following as the known-good baseline
+
+#### Shell
+- PowerShell
+
+#### Endpoint
+- `https://ai.eng.azure.srv.westpac.com.au`
+
+#### Authentication
+- Azure CLI (`az login`) + `DefaultAzureCredential()`
+
+#### Subscription
+- `cst-a00c3d-cin03`
+
+#### Proxy
+- `HTTP_PROXY=http://127.0.0.1:9000`
+- `HTTPS_PROXY=http://127.0.0.1:9000`
+- `NO_PROXY` cleared
+
+#### Python client behaviour
+- do not override with `trust_env=False`
+- allow environment proxy settings to be used naturally
+
+#### Initial validated model
+- `gpt-5.4-mini`
+
+#### Initial validated result
+- script returned `Hello!`
+
+---
+
+## 17. Short executive summary
+
+The connection initially failed due to a combination of corporate proxy/certificate issues, shell inconsistencies, and using the wrong route to the endpoint. The key breakthroughs were:
+1. use PowerShell only
+2. authenticate via Azure CLI and select the correct subscription
+3. resolve corporate CA / trust issues
+4. stop bypassing proxy
+5. use the internal Westpac endpoint `https://ai.eng.azure.srv.westpac.com.au`
+6. clear `NO_PROXY`
+7. remove `trust_env=False`
+
+After those changes, the Python SDK successfully reached the model and returned `Hello!`.
+
+---
+
+## 18. Minimal copy-paste runbook
+
+```powershell
+cd C:\Users\m061400\ai-test
+
+az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
+
+$env:HTTP_PROXY="http://127.0.0.1:9000"
+$env:HTTPS_PROXY="http://127.0.0.1:9000"
+Remove-Item Env:NO_PROXY -ErrorAction SilentlyContinue
+Remove-Item Env:no_proxy -ErrorAction SilentlyContinue
+
+python test_openai.py
+```
+
+---
+
+## 19. Minimal copy-paste working script
+
+```python
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from openai import AzureOpenAI
+
+endpoint = "https://ai.eng.azure.srv.westpac.com.au"
+
+token_provider = get_bearer_token_provider(
+    DefaultAzureCredential(),
+    "https://cognitiveservices.azure.com/.default"
+)
+
+client = AzureOpenAI(
+    azure_endpoint=endpoint,
+    api_version="2024-10-21",
+    azure_ad_token_provider=token_provider,
+)
+
+response = client.chat.completions.create(
+    model="gpt-5.4-mini",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Say hello in one sentence"}
+    ]
+)
+
+print(response.choices[0].message.content)
+```
+
+---
+
+## 20. Final note for future LRMs
+
+The most important context is this:
+- the obvious/direct Azure endpoint path was **not** the final working path
+- the internal gateway endpoint was the correct one
+- the environment only worked when proxy settings were honoured
+- proxy bypass (`NO_PROXY` or `trust_env=False`) caused failure
+- PowerShell is the canonical shell for this environment
+- the final working setup has already been proven with a successful model response
