@@ -1,0 +1,739 @@
+"""
+smoke_test.py
+─────────────────────────────────────────────────────────────────────────────
+Payments Controls PoC — Azure OpenAI Smoke Tests
+Model   : gpt-5.4  |  Embedding: text-embedding-3-large
+Endpoint: https://ai.eng.azure.srv.westpac.com.au
+
+PRE-REQUISITES (run once in PowerShell before executing this script):
+─────────────────────────────────────────────────────────────────────────────
+  az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
+  $env:HTTP_PROXY  = "http://127.0.0.1:9000"
+  $env:HTTPS_PROXY = "http://127.0.0.1:9000"
+  Remove-Item Env:NO_PROXY  -ErrorAction SilentlyContinue
+  Remove-Item Env:no_proxy  -ErrorAction SilentlyContinue
+
+RUN:
+  python smoke_test.py
+
+RESULTS:
+  Results are saved to C:\\Users\\m061400\\ai-test\\smoke_results\\
+  Two files per run:
+    smoke_test_YYYYMMDD_HHMMSS.json   — full structured results
+    smoke_test_YYYYMMDD_HHMMSS.txt    — readable summary for sharing
+"""
+
+import json
+import os
+import sys
+import time
+import datetime
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  CONFIG — do not change unless the environment changes
+# ──────────────────────────────────────────────────────────────────────────────
+
+ENDPOINT    = "https://ai.eng.azure.srv.westpac.com.au"
+API_VERSION = "2024-10-21"
+CHAT_MODEL  = "gpt-5.4"
+EMBED_MODEL = "text-embedding-3-large"
+RESULTS_DIR = r"C:\Users\m061400\ai-test\smoke_results"
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TEST CONTROLS — paste your real control data here
+#  Add as many controls as you like. Tests 3, 4, 5 use the FIRST control only.
+#  All fields that are blank or unknown can be set to "" — do not delete keys.
+# ──────────────────────────────────────────────────────────────────────────────
+
+TEST_CONTROLS = [
+    {
+        # ── Paste your first control here ─────────────────────────────────────
+        "ctrl_id":          "CTL_XXXXX",
+        "ctrl_name":        "PASTE CONTROL NAME HERE",
+        "ctrl_objective":   "PASTE CONTROL OBJECTIVE HERE",
+        "ctrl_description": "PASTE CONTROL DESCRIPTION HERE",
+        "test_procedure":   "PASTE TEST PROCEDURE / HOW EVIDENCED HERE",
+        "control_type":     "Preventative / Detective / Corrective",
+        "automation_level": "Manual / Automated / Hybrid",
+        "nature":           "C to C / I to C / C to I / I to I / Supplier",
+        "control_frequency":"Daily / Weekly / Monthly / Real-time",
+        "business_area":    "PASTE BUSINESS AREA HERE",
+    },
+    {
+        # ── Paste your second control here (optional — delete block if not needed)
+        "ctrl_id":          "CTL_YYYYY",
+        "ctrl_name":        "PASTE CONTROL NAME HERE",
+        "ctrl_objective":   "PASTE CONTROL OBJECTIVE HERE",
+        "ctrl_description": "PASTE CONTROL DESCRIPTION HERE",
+        "test_procedure":   "PASTE TEST PROCEDURE / HOW EVIDENCED HERE",
+        "control_type":     "Preventative / Detective / Corrective",
+        "automation_level": "Manual / Automated / Hybrid",
+        "nature":           "C to C / I to C / C to I / I to I / Supplier",
+        "control_frequency":"Daily / Weekly / Monthly / Real-time",
+        "business_area":    "PASTE BUSINESS AREA HERE",
+    },
+]
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  MINI CT TAXONOMY — used in Tests 3, 4, 5 (classification tests)
+#  Replace or extend with your real CT1-28 definitions when available.
+#  This subset is enough to test whether the model reasons correctly.
+# ──────────────────────────────────────────────────────────────────────────────
+
+MINI_CT_DEFINITIONS = """
+CT01 — Payment Authorisation
+Controls that ensure payments are authorised by an appropriate person or system
+before being released. Covers dual approval, segregation of duties, delegation
+of authority limits.
+
+CT02 — Transaction Limit Controls
+Controls that validate payment amounts against pre-set limits for individuals,
+accounts, or payment types. Includes hard blocks and soft alerts for breaches.
+
+CT03 — Reconciliation
+Controls that reconcile payment records against source systems, correspondent
+accounts, or external confirmations to detect errors, omissions, or fraud.
+
+CT04 — Sanctions and AML Screening
+Controls that screen payment parties (senders, receivers, intermediaries) against
+sanctions lists, PEP lists, and AML watchlists before or during payment processing.
+
+CT05 — Fraud Detection and Monitoring
+Controls that detect unusual or suspicious payment patterns in real-time or
+near-real-time. Includes rule-based and anomaly-detection approaches.
+
+CT06 — Data Integrity and Validation
+Controls that validate payment data fields (account numbers, BSB, sort codes,
+SWIFT codes, amounts) for correctness and completeness before processing.
+"""
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
+
+def banner(title: str):
+    print()
+    print("─" * 70)
+    print(f"  {title}")
+    print("─" * 70)
+
+def pass_fail(condition: bool) -> str:
+    return "✓  PASS" if condition else "✗  FAIL"
+
+def build_control_context(ctrl: dict) -> str:
+    """Build the structured control text sent to the LLM."""
+    parts = []
+    field_map = [
+        ("ctrl_id",          "CONTROL ID"),
+        ("ctrl_name",        "CONTROL NAME"),
+        ("ctrl_objective",   "CONTROL OBJECTIVE"),
+        ("ctrl_description", "CONTROL DESCRIPTION"),
+        ("test_procedure",   "TEST PROCEDURE / EVIDENCED BY"),
+        ("control_type",     "CONTROL TYPE"),
+        ("automation_level", "AUTOMATION LEVEL"),
+        ("nature",           "PAYMENT NATURE"),
+        ("control_frequency","FREQUENCY"),
+        ("business_area",    "BUSINESS AREA"),
+    ]
+    for key, label in field_map:
+        val = ctrl.get(key, "")
+        if val and val.strip():
+            parts.append(f"{label}: {val}")
+    return "\n".join(parts)
+
+def get_usage(response) -> dict:
+    """Extract token usage from response, including thinking tokens if present."""
+    usage = {}
+    if hasattr(response, "usage") and response.usage:
+        u = response.usage
+        usage["input_tokens"]  = getattr(u, "prompt_tokens", None)
+        usage["output_tokens"] = getattr(u, "completion_tokens", None)
+        usage["total_tokens"]  = getattr(u, "total_tokens", None)
+        # Thinking / reasoning tokens (GPT-5 reasoning models)
+        details = getattr(u, "completion_tokens_details", None)
+        if details:
+            usage["reasoning_tokens"] = getattr(details, "reasoning_tokens", None)
+    return usage
+
+def init_client():
+    """Initialise the AzureOpenAI client with DefaultAzureCredential."""
+    from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+    from openai import AzureOpenAI
+
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default"
+    )
+    client = AzureOpenAI(
+        azure_endpoint=ENDPOINT,
+        api_version=API_VERSION,
+        azure_ad_token_provider=token_provider,
+    )
+    return client
+
+def save_results(results: dict, run_ts: str):
+    """Save results to JSON and readable text summary."""
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+
+    json_path = os.path.join(RESULTS_DIR, f"smoke_test_{run_ts}.json")
+    txt_path  = os.path.join(RESULTS_DIR, f"smoke_test_{run_ts}.txt")
+
+    # JSON
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2, default=str)
+
+    # Readable text summary
+    lines = []
+    lines.append("=" * 70)
+    lines.append("  PAYMENTS CONTROLS POC — SMOKE TEST RESULTS")
+    lines.append(f"  Run: {run_ts}")
+    lines.append(f"  Model: {CHAT_MODEL}  |  Embedding: {EMBED_MODEL}")
+    lines.append(f"  Endpoint: {ENDPOINT}")
+    lines.append("=" * 70)
+
+    for test_name, result in results.get("tests", {}).items():
+        lines.append("")
+        lines.append(f"  {test_name}")
+        lines.append("  " + "─" * 60)
+        status = result.get("status", "UNKNOWN")
+        lines.append(f"  Status   : {status}")
+        if result.get("latency_ms"):
+            lines.append(f"  Latency  : {result['latency_ms']}ms")
+        if result.get("usage"):
+            u = result["usage"]
+            lines.append(f"  Tokens   : {u.get('input_tokens')} in | "
+                         f"{u.get('output_tokens')} out | "
+                         f"{u.get('total_tokens')} total"
+                         + (f" | {u.get('reasoning_tokens')} thinking"
+                            if u.get("reasoning_tokens") else ""))
+        if result.get("response_preview"):
+            lines.append(f"  Response : {result['response_preview']}")
+        if result.get("error"):
+            lines.append(f"  Error    : {result['error']}")
+        if result.get("notes"):
+            for note in result["notes"]:
+                lines.append(f"  Note     : {note}")
+
+    lines.append("")
+    lines.append("=" * 70)
+    passed = sum(1 for r in results.get("tests", {}).values() if r.get("status") == "PASS")
+    total  = len(results.get("tests", {}))
+    lines.append(f"  RESULT: {passed}/{total} tests passed")
+    lines.append("=" * 70)
+
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+    print(f"\n  Results saved:")
+    print(f"  JSON   → {json_path}")
+    print(f"  Text   → {txt_path}")
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TEST 1 — Basic connectivity
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_1_basic_connectivity(client) -> dict:
+    banner("TEST 1 — Basic Connectivity")
+    print("  Sending a simple one-sentence prompt to gpt-5.4...")
+    result = {"test": "Basic Connectivity"}
+    try:
+        t0 = time.time()
+        response = client.chat.completions.create(
+            model=CHAT_MODEL,
+            temperature=0,
+            max_tokens=50,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user",   "content": "Say hello in exactly one sentence."},
+            ],
+        )
+        latency = int((time.time() - t0) * 1000)
+        text = response.choices[0].message.content.strip()
+
+        result["status"]           = "PASS"
+        result["latency_ms"]       = latency
+        result["response_preview"] = text
+        result["usage"]            = get_usage(response)
+
+        print(f"  {pass_fail(True)}  ({latency}ms)")
+        print(f"  Response : {text}")
+        print(f"  Tokens   : {result['usage']}")
+
+    except Exception as e:
+        result["status"] = "FAIL"
+        result["error"]  = str(e)
+        print(f"  {pass_fail(False)}")
+        print(f"  Error : {e}")
+
+    return result
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TEST 2 — Structured JSON output
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_2_json_output(client) -> dict:
+    banner("TEST 2 — Structured JSON Output")
+    print("  Asking model to return a structured JSON classification...")
+    result = {"test": "Structured JSON Output"}
+    try:
+        t0 = time.time()
+        response = client.chat.completions.create(
+            model=CHAT_MODEL,
+            temperature=0,
+            max_tokens=200,
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a payments risk analyst. "
+                        "Always respond with valid JSON only. No prose."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "Classify the following control type. "
+                        "Return JSON with keys: control_type, confidence (0-1), rationale.\n\n"
+                        "Control: A manager reviews and approves all payment batches "
+                        "above $50,000 before release to the payment network."
+                    ),
+                },
+            ],
+        )
+        latency = int((time.time() - t0) * 1000)
+        raw     = response.choices[0].message.content.strip()
+
+        # Validate it parses as JSON
+        parsed  = json.loads(raw)
+        is_json = isinstance(parsed, dict) and len(parsed) > 0
+
+        result["status"]           = "PASS" if is_json else "FAIL"
+        result["latency_ms"]       = latency
+        result["response_preview"] = raw[:300]
+        result["parsed_keys"]      = list(parsed.keys()) if is_json else []
+        result["usage"]            = get_usage(response)
+
+        print(f"  {pass_fail(is_json)}  ({latency}ms)")
+        print(f"  Parsed keys: {list(parsed.keys())}")
+        print(f"  Response   : {raw[:200]}")
+
+    except json.JSONDecodeError as e:
+        result["status"] = "FAIL"
+        result["error"]  = f"JSON parse error: {e}"
+        print(f"  {pass_fail(False)} — response was not valid JSON")
+    except Exception as e:
+        result["status"] = "FAIL"
+        result["error"]  = str(e)
+        print(f"  {pass_fail(False)}")
+        print(f"  Error : {e}")
+
+    return result
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TEST 3 — Reasoning effort comparison (low / medium / high)
+#  Uses the first control in TEST_CONTROLS
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_3_reasoning_effort(client) -> dict:
+    banner("TEST 3 — Reasoning Effort Comparison (low / medium / high)")
+    print("  Classifying your control at three reasoning effort levels...")
+    print("  This shows the token and latency trade-off for your environment.")
+    result = {"test": "Reasoning Effort Comparison", "efforts": {}}
+
+    ctrl    = TEST_CONTROLS[0]
+    context = build_control_context(ctrl)
+
+    system_prompt = (
+        "You are a payments risk control analyst for an Australian bank. "
+        "You classify controls against a payment risk taxonomy. "
+        "Always respond with valid JSON only."
+    )
+
+    user_prompt = f"""Classify the following payment control against the CT taxonomy below.
+
+CONTROL:
+{context}
+
+CT TAXONOMY:
+{MINI_CT_DEFINITIONS}
+
+Return JSON with this exact structure:
+{{
+  "ctrl_id": "<control id>",
+  "ct_classifications": [
+    {{
+      "ct_id": "<e.g. CT03>",
+      "ct_name": "<CT name>",
+      "rating": "implements | weakly_implements | does_not_implement",
+      "confidence": <0.0 to 1.0>,
+      "rationale": "<one sentence citing specific text from the control>"
+    }}
+  ],
+  "notes": "<any relevant observations>"
+}}
+
+Only include CT outcomes where there is a defensible relationship."""
+
+    for effort in ["low", "medium", "high"]:
+        print(f"\n  Testing reasoning_effort='{effort}'...")
+        try:
+            kwargs = {
+                "model":       CHAT_MODEL,
+                "temperature": 0,
+                "max_tokens":  1000,
+                "response_format": {"type": "json_object"},
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user",   "content": user_prompt},
+                ],
+            }
+            # Add reasoning_effort — supported in GPT-5 family
+            # Falls back gracefully if not supported by API version
+            try:
+                kwargs["reasoning_effort"] = effort
+            except Exception:
+                pass
+
+            t0 = time.time()
+            response = client.chat.completions.create(**kwargs)
+            latency  = int((time.time() - t0) * 1000)
+
+            raw    = response.choices[0].message.content.strip()
+            parsed = json.loads(raw)
+            usage  = get_usage(response)
+
+            result["efforts"][effort] = {
+                "status":           "PASS",
+                "latency_ms":       latency,
+                "usage":            usage,
+                "response_preview": raw[:400],
+                "ct_count":         len(parsed.get("ct_classifications", [])),
+            }
+
+            print(f"    {pass_fail(True)}  ({latency}ms)")
+            print(f"    Tokens  : {usage.get('input_tokens')} in | "
+                  f"{usage.get('output_tokens')} out"
+                  + (f" | {usage.get('reasoning_tokens')} thinking"
+                     if usage.get("reasoning_tokens") else ""))
+            print(f"    CTs found: {len(parsed.get('ct_classifications', []))}")
+
+        except Exception as e:
+            result["efforts"][effort] = {"status": "FAIL", "error": str(e)}
+            print(f"    {pass_fail(False)}")
+            print(f"    Error : {e}")
+
+    result["status"] = (
+        "PASS" if all(r.get("status") == "PASS"
+                      for r in result["efforts"].values())
+        else "PARTIAL"
+    )
+    return result
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TEST 4 — Temperature=0 reproducibility (3 identical calls)
+#  Uses the first control in TEST_CONTROLS
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_4_reproducibility(client) -> dict:
+    banner("TEST 4 — Temperature=0 Reproducibility (3 identical calls)")
+    print("  Sending the same classification prompt 3 times at temperature=0.")
+    print("  All three responses should be identical.")
+    result = {"test": "Reproducibility", "runs": []}
+
+    ctrl    = TEST_CONTROLS[0]
+    context = build_control_context(ctrl)
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a payments risk control analyst. "
+                "Always respond with valid JSON only."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Classify this payment control as one of: "
+                f"Preventative, Detective, or Corrective. "
+                f"Return JSON with keys: classification, confidence, rationale.\n\n"
+                f"CONTROL:\n{context}"
+            ),
+        },
+    ]
+
+    responses = []
+    for i in range(1, 4):
+        try:
+            t0 = time.time()
+            response = client.chat.completions.create(
+                model=CHAT_MODEL,
+                temperature=0,
+                max_tokens=200,
+                response_format={"type": "json_object"},
+                messages=messages,
+            )
+            latency = int((time.time() - t0) * 1000)
+            raw = response.choices[0].message.content.strip()
+            responses.append(raw)
+            result["runs"].append({
+                "run":     i,
+                "status":  "PASS",
+                "latency_ms": latency,
+                "response": raw,
+                "usage":   get_usage(response),
+            })
+            print(f"  Run {i}: {pass_fail(True)}  ({latency}ms)  {raw[:80]}…")
+        except Exception as e:
+            result["runs"].append({"run": i, "status": "FAIL", "error": str(e)})
+            print(f"  Run {i}: {pass_fail(False)} — {e}")
+
+    # Check all three are identical
+    if len(responses) == 3:
+        all_same = responses[0] == responses[1] == responses[2]
+        result["all_responses_identical"] = all_same
+        result["status"] = "PASS" if all_same else "WARN"
+        print(f"\n  All 3 responses identical: {pass_fail(all_same)}")
+        if not all_same:
+            print("  ⚠  Responses differed — review output in results file.")
+            result["notes"] = [
+                "Responses were not identical across 3 runs at temperature=0.",
+                "This may indicate thinking token variability.",
+                "Review the three responses in the JSON results file.",
+            ]
+    else:
+        result["status"] = "FAIL"
+
+    return result
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TEST 5 — Embedding connectivity
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_5_embedding(client) -> dict:
+    banner("TEST 5 — Embedding Connectivity (text-embedding-3-large)")
+    print("  Sending a control description to the embedding endpoint...")
+    result = {"test": "Embedding Connectivity"}
+
+    ctrl    = TEST_CONTROLS[0]
+    text    = (
+        f"{ctrl.get('ctrl_name', '')} "
+        f"{ctrl.get('ctrl_objective', '')} "
+        f"{ctrl.get('ctrl_description', '')}"
+    ).strip()
+
+    try:
+        t0 = time.time()
+        response = client.embeddings.create(
+            model=EMBED_MODEL,
+            input=text,
+        )
+        latency = int((time.time() - t0) * 1000)
+
+        embedding   = response.data[0].embedding
+        vector_len  = len(embedding)
+        first_vals  = embedding[:5]
+        usage       = {
+            "input_tokens": getattr(response.usage, "prompt_tokens", None),
+            "total_tokens": getattr(response.usage, "total_tokens", None),
+        }
+
+        is_correct_dims = vector_len == 3072   # text-embedding-3-large
+
+        result["status"]              = "PASS" if vector_len > 0 else "FAIL"
+        result["latency_ms"]          = latency
+        result["vector_dimensions"]   = vector_len
+        result["expected_dimensions"] = 3072
+        result["dimensions_correct"]  = is_correct_dims
+        result["first_5_values"]      = first_vals
+        result["usage"]               = usage
+        result["input_text_preview"]  = text[:100]
+
+        print(f"  {pass_fail(vector_len > 0)}  ({latency}ms)")
+        print(f"  Vector dimensions : {vector_len}  (expected 3,072 for text-embedding-3-large)")
+        print(f"  Dimensions correct: {pass_fail(is_correct_dims)}")
+        print(f"  First 5 values    : {[round(v, 6) for v in first_vals]}")
+        print(f"  Tokens used       : {usage}")
+
+    except Exception as e:
+        result["status"] = "FAIL"
+        result["error"]  = str(e)
+        print(f"  {pass_fail(False)}")
+        print(f"  Error : {e}")
+
+    return result
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TEST 6 — Token usage logging
+#  Confirms input, output, and thinking tokens are all captured in the response
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_6_token_usage_logging(client) -> dict:
+    banner("TEST 6 — Token Usage Logging")
+    print("  Sending a classification prompt and inspecting the full usage object.")
+    print("  Confirms thinking tokens are visible (critical for cost tracking).")
+    result = {"test": "Token Usage Logging"}
+
+    ctrl    = TEST_CONTROLS[0]
+    context = build_control_context(ctrl)
+
+    try:
+        t0 = time.time()
+        response = client.chat.completions.create(
+            model=CHAT_MODEL,
+            temperature=0,
+            max_tokens=300,
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a payments risk analyst. Respond with JSON only.",
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "Classify whether the following control is Preventative, "
+                        "Detective, or Corrective, and state which payment lifecycle "
+                        "stage it most likely belongs to "
+                        "(Initiation/Validation/Authorisation/Transmission/"
+                        "Posting/Reporting/Returns). "
+                        "Return JSON: classification, lifecycle_stage, confidence, rationale.\n\n"
+                        f"CONTROL:\n{context}"
+                    ),
+                },
+            ],
+        )
+        latency = int((time.time() - t0) * 1000)
+
+        # Inspect raw usage object
+        usage_obj = response.usage
+        usage = get_usage(response)
+
+        # Log all available usage attributes
+        all_attrs = {}
+        if usage_obj:
+            for attr in dir(usage_obj):
+                if not attr.startswith("_"):
+                    try:
+                        val = getattr(usage_obj, attr)
+                        if not callable(val):
+                            all_attrs[attr] = val
+                    except Exception:
+                        pass
+
+        has_input   = usage.get("input_tokens") is not None
+        has_output  = usage.get("output_tokens") is not None
+        has_thinking= usage.get("reasoning_tokens") is not None
+
+        result["status"]            = "PASS" if (has_input and has_output) else "FAIL"
+        result["latency_ms"]        = latency
+        result["usage"]             = usage
+        result["all_usage_attrs"]   = all_attrs
+        result["response_preview"]  = response.choices[0].message.content.strip()[:300]
+        result["notes"]             = []
+
+        print(f"  {pass_fail(has_input and has_output)}  ({latency}ms)")
+        print(f"  Input tokens   : {usage.get('input_tokens')}  {'✓' if has_input else '✗'}")
+        print(f"  Output tokens  : {usage.get('output_tokens')}  {'✓' if has_output else '✗'}")
+        print(f"  Thinking tokens: {usage.get('reasoning_tokens') or 'Not returned'}  "
+              f"{'✓' if has_thinking else '⚠'}")
+
+        if not has_thinking:
+            result["notes"].append(
+                "Thinking tokens not returned in usage object. "
+                "This may mean gpt-5.4 is in Instant mode (no thinking) "
+                "or the API version does not expose reasoning_tokens. "
+                "If thinking is expected, confirm with the Azure APIM team "
+                "which GPT-5.4 variant is deployed."
+            )
+            print("  ⚠  Thinking tokens not in response — check notes in results file.")
+
+        print(f"\n  Full usage attributes available: {list(all_attrs.keys())}")
+
+    except Exception as e:
+        result["status"] = "FAIL"
+        result["error"]  = str(e)
+        print(f"  {pass_fail(False)}")
+        print(f"  Error : {e}")
+
+    return result
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  MAIN
+# ──────────────────────────────────────────────────────────────────────────────
+
+def main():
+    run_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    print()
+    print("═" * 70)
+    print("  PAYMENTS CONTROLS POC — AZURE OPENAI SMOKE TESTS")
+    print(f"  Model     : {CHAT_MODEL}")
+    print(f"  Embedding : {EMBED_MODEL}")
+    print(f"  Endpoint  : {ENDPOINT}")
+    print(f"  Run       : {run_ts}")
+    print("═" * 70)
+
+    # Validate TEST_CONTROLS has been filled in
+    if TEST_CONTROLS[0]["ctrl_name"].startswith("PASTE"):
+        print()
+        print("  ⚠  WARNING: TEST_CONTROLS still contains placeholder values.")
+        print("     Open smoke_test.py and paste your real control data.")
+        print("     Tests 3, 4, 5, 6 will run but with dummy data.")
+        print()
+
+    # Initialise client
+    print("\n  Initialising Azure OpenAI client...")
+    try:
+        client = init_client()
+        print("  ✓  Client initialised.")
+    except Exception as e:
+        print(f"  ✗  Client initialisation failed: {e}")
+        print("     Check az login, proxy settings, and subscription.")
+        sys.exit(1)
+
+    # Run all tests
+    all_results = {"run_ts": run_ts, "config": {
+        "endpoint": ENDPOINT,
+        "chat_model": CHAT_MODEL,
+        "embed_model": EMBED_MODEL,
+        "api_version": API_VERSION,
+    }, "tests": {}}
+
+    tests = [
+        ("Test 1 — Basic Connectivity",        lambda: test_1_basic_connectivity(client)),
+        ("Test 2 — Structured JSON Output",     lambda: test_2_json_output(client)),
+        ("Test 3 — Reasoning Effort",           lambda: test_3_reasoning_effort(client)),
+        ("Test 4 — Reproducibility",            lambda: test_4_reproducibility(client)),
+        ("Test 5 — Embedding Connectivity",     lambda: test_5_embedding(client)),
+        ("Test 6 — Token Usage Logging",        lambda: test_6_token_usage_logging(client)),
+    ]
+
+    for name, fn in tests:
+        try:
+            all_results["tests"][name] = fn()
+        except Exception as e:
+            all_results["tests"][name] = {"status": "ERROR", "error": str(e)}
+
+    # Summary
+    banner("SUMMARY")
+    passed = 0
+    for name, r in all_results["tests"].items():
+        status = r.get("status", "UNKNOWN")
+        icon   = "✓" if status == "PASS" else ("⚠" if status in ("WARN","PARTIAL") else "✗")
+        print(f"  {icon}  {name} — {status}")
+        if status == "PASS":
+            passed += 1
+
+    total = len(all_results["tests"])
+    print()
+    print(f"  {passed}/{total} tests passed")
+
+    # Save
+    save_results(all_results, run_ts)
+    print()
+
+if __name__ == "__main__":
+    main()
+PYEOF
