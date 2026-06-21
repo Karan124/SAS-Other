@@ -1,0 +1,1372 @@
+r"""
+assurance_test.py
+─────────────────────────────────────────────────────────────────────────────
+Payments Controls PoC — Assurance Tests
+Focus: Hallucination control, reproducibility, model suitability
+
+Key learnings applied from smoke test run 20260620_210320:
+  - GPT-5.4 does NOT support temperature parameter (reasoning model)
+  - Use max_completion_tokens not max_tokens
+  - reasoning_effort defaults to none — must be set explicitly to invoke thinking
+  - Reproducibility = semantic consistency, not textual identity
+
+Tests:
+  A — Grounded classification (INSUFFICIENT_INFORMATION when evidence is missing)
+  B — Evidence citation (model must quote exact phrases from source text)
+  C — Adversarial contradiction (metadata says one thing, description implies another)
+  D — Sparse / ambiguous input (model should flag uncertainty, not guess)
+  E — 10-run semantic consistency (measure label and confidence stability)
+  F — Cross-model comparison (gpt-4o vs gpt-5.4 vs gpt-5.4-mini)
+  G — Reasoning effort comparison (none / low / medium / high)
+  H — Embedding pairwise similarity (known similar vs dissimilar control pairs)
+
+PRE-REQUISITES (run in PowerShell before executing):
+─────────────────────────────────────────────────────────────────────────────
+  az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
+  $env:HTTP_PROXY  = "http://127.0.0.1:9000"
+  $env:HTTPS_PROXY = "http://127.0.0.1:9000"
+  Remove-Item Env:NO_PROXY  -ErrorAction SilentlyContinue
+  Remove-Item Env:no_proxy  -ErrorAction SilentlyContinue
+  python assurance_test.py
+
+RESULTS saved to:
+  C:\Users\m061400\ai-test\assurance_results\
+"""
+
+import json
+import os
+import sys
+import time
+import datetime
+import re
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  CONFIG
+# ──────────────────────────────────────────────────────────────────────────────
+
+ENDPOINT    = "https://ai.eng.azure.srv.westpac.com.au"
+API_VERSION = "2024-10-21"
+PRIMARY_MODEL  = "gpt-5.4"
+EMBED_MODEL    = "text-embedding-3-large"
+RESULTS_DIR = r"C:\Users\m061400\ai-test\assurance_results"
+
+# ── Excel file ───────────────────────────────────────────────────────────────
+CONTROLS_FILE = r"C:\Users\m061400\ai-test\controls.xlsx"
+
+# Columns to use for EMBEDDING TEXT (free text fields only — no list/code fields)
+EMBEDDING_COLUMNS = [
+    "Control Name",
+    "Control Objective",
+    "Control Description",
+    "CTRL_EVDNCD",
+    "CTRL_MNTRD",
+]
+
+# Columns to use for LLM CONTEXT (all fields, labelled)
+LLM_COLUMNS = [
+    "Control ID",
+    "Control Name",
+    "Control Objective",
+    "Control Description",
+    "Control Key Control",
+    "Control Nature",
+    "Control Automation Method",
+    "CTRL_FREQ",
+    "CTRL_CTGRY_1",
+    "CTRL_CTGRY_2",
+    "CTRL_EVDNCD",
+    "CTRL_MNTRD",
+    "CTRL_FLDR",
+]
+
+# Column that holds the Control ID value
+CONTROL_ID_COLUMN = "Control ID"
+
+# Models compared in Test F
+CROSS_MODELS = [
+    {"name": "gpt-4o",       "supports_temperature": True},
+    {"name": "gpt-5.4",      "supports_temperature": False},
+    {"name": "gpt-5.4-mini", "supports_temperature": False},
+]
+
+# Reasoning efforts compared in Test G
+REASONING_EFFORTS = ["none", "low", "medium", "high"]
+
+# Reproducibility runs (Test E)
+REPRODUCIBILITY_RUNS = 10
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  ADVERSARIAL CONTROL — paste here manually
+#  This is the ONE control you paste manually. Choose a control where the
+#  metadata label (e.g. Control Nature or Automation) appears inconsistent
+#  with what the description actually describes.
+#  Do NOT modify your Excel file — paste a copy here with the label left as-is.
+# ──────────────────────────────────────────────────────────────────────────────
+
+CONTROL_ADVERSARIAL = {
+    "Control ID":               "CTL_ADVERSARIAL",
+    "Control Name":             "PASTE CONTROL NAME HERE",
+    "Control Objective":        "PASTE CONTROL OBJECTIVE HERE",
+    "Control Description":      "PASTE CONTROL DESCRIPTION HERE",
+    "Control Key Control":      "PASTE VALUE HERE",
+    "Control Nature":           "PASTE THE LABEL THAT APPEARS WRONG HERE",
+    "Control Automation Method":"PASTE VALUE HERE",
+    "CTRL_FREQ":                "PASTE VALUE HERE",
+    "CTRL_CTGRY_1":             "PASTE VALUE HERE",
+    "CTRL_CTGRY_2":             "PASTE VALUE HERE",
+    "CTRL_EVDNCD":              "PASTE VALUE HERE",
+    "CTRL_MNTRD":               "PASTE VALUE HERE",
+    "CTRL_FLDR":                "PASTE VALUE HERE",
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  CT DEFINITIONS (all 28)
+# ──────────────────────────────────────────────────────────────────────────────
+
+CT_DEFINITIONS = """
+CT1  — Data Input Validation
+Controls that validate payment data at the point of entry to ensure accuracy,
+completeness, and correct formatting before processing begins. Includes field-level
+validation, format checks, mandatory field enforcement, and rejection of malformed
+or missing data.
+
+CT2  — Payment Processing Error Detection
+Controls that detect errors during payment processing, including failed transactions,
+processing exceptions, and system-generated error conditions. Covers automated
+alerts, exception queues, and error reporting mechanisms.
+
+CT3  — Duplicate Interface and Processing Validation
+Controls that prevent duplicate payments from being processed. Includes duplicate
+detection logic, deduplication checks at ingestion, and validation across interfaces
+to avoid the same payment being processed more than once.
+
+CT4  — Payment Interface and Batch Error Resolution
+Controls that identify, manage, and resolve errors arising from payment interfaces
+and batch processing runs. Covers batch reconciliation, interface monitoring, error
+investigation workflows, and timely resolution of outstanding items.
+
+CT5  — Incident Response
+Controls that ensure payment-related incidents are identified, logged, escalated,
+investigated, and resolved in a timely manner. Includes incident classification,
+response procedures, root cause analysis, and post-incident review.
+
+CT6  — Master / Reference Data Validation
+Controls that ensure payment-related master and reference data (e.g. account
+details, BSB codes, SWIFT BICs, beneficiary data, payment limits) is accurate,
+current, and properly governed. Includes approval workflows for data changes
+and periodic reviews.
+
+CT7  — Service Provider Ongoing Review
+Controls that monitor the ongoing performance, risk profile, and compliance of
+third-party service providers involved in payment processing. Includes periodic
+reviews, KPI monitoring, and escalation processes for underperformance.
+
+CT8  — Service Provider Onboarding
+Controls that ensure third-party service providers are appropriately assessed,
+approved, and contracted before being engaged in payment processing activities.
+Includes due diligence, risk assessment, and contractual requirements.
+
+CT9  — Change Management Testing
+Controls that ensure changes to payment systems, interfaces, and processes are
+adequately tested before implementation. Includes unit testing, integration
+testing, user acceptance testing, and regression testing for payment flows.
+
+CT10 — Critical Service Chain Mapping and Risk Identification
+Controls that identify and document critical dependencies in the payment service
+chain, including internal systems, third parties, and infrastructure. Supports
+risk identification and concentration risk management.
+
+CT11 — Rollback Plans
+Controls that ensure rollback or back-out plans exist for changes to payment
+systems and can be executed if a change causes issues. Includes tested rollback
+procedures and clear decision criteria for invoking them.
+
+CT12 — System Recovery Capability
+Controls that ensure payment systems can be recovered within acceptable timeframes
+following an outage or failure. Includes recovery time objectives, recovery point
+objectives, backup procedures, and recovery testing.
+
+CT13 — Business Continuity Plan
+Controls that ensure business continuity arrangements exist for payment operations,
+including alternative processing methods, manual workarounds, and communication
+plans for scenarios where normal processing is unavailable.
+
+CT14 — Logging and Monitoring
+Controls that ensure payment system activity is logged comprehensively and monitored
+to detect anomalies, errors, or suspicious behaviour. Includes audit trails, log
+retention, alerting thresholds, and monitoring coverage.
+
+CT15 — Secure IT Design
+Controls that ensure payment systems are designed and built with security principles
+applied, including secure coding practices, security architecture reviews,
+encryption of data in transit and at rest, and security testing.
+
+CT16 — Vulnerability Management
+Controls that identify, assess, and remediate vulnerabilities in payment system
+infrastructure and applications. Includes vulnerability scanning, penetration
+testing, patch prioritisation, and remediation tracking.
+
+CT17 — Access Provision and Deprovision
+Controls that ensure access to payment systems is granted appropriately on
+onboarding and revoked promptly on departure or role change. Includes access
+request and approval workflows, and periodic access reviews.
+
+CT18 — Access Monitoring
+Controls that monitor access to payment systems and detect inappropriate or
+anomalous access activity. Includes user activity monitoring, session logging,
+and alerting on access policy violations.
+
+CT19 — Patch Management
+Controls that ensure security patches for payment system software and
+infrastructure are applied in a timely manner. Includes patch assessment,
+testing, scheduling, and compliance tracking.
+
+CT20 — Physical Security Controls
+Controls that protect physical access to payment system infrastructure, data
+centres, and sensitive areas. Includes access card controls, CCTV, visitor
+management, and physical asset protection.
+
+CT21 — Privileged Access
+Controls that manage and monitor privileged access to payment systems, including
+administrator accounts, service accounts, and emergency access. Includes
+privileged access management tools, approval workflows, and session recording.
+
+CT22 — Mistaken Internet Payment Reports
+Controls that support the handling of mistaken internet payment reports, including
+processes for receiving and acting on customer notifications, investigating
+mistaken payments, and recovering funds where possible per regulatory requirements.
+
+CT23 — Customer Confirmations and Notifications
+Controls that ensure customers receive appropriate confirmations and notifications
+for payment transactions. Includes transaction receipts, payment status updates,
+and notification of exceptions or failures to customers.
+
+CT24 — Unauthorised and Disputed Transaction Handling
+Controls that manage the end-to-end process for handling unauthorised or disputed
+payment transactions. Includes customer dispute receipt, investigation, resolution,
+and chargeback or refund processing within required timeframes.
+
+CT25 — GRP Payments Systems
+Controls specific to the governance, risk, and performance of group payments
+systems. Includes oversight of group-wide payment platforms, intercompany
+payment controls, and group-level payment risk management.
+
+CT26 — Regulatory Horizon Scanning
+Controls that identify and assess upcoming regulatory changes relevant to payment
+operations. Includes monitoring of regulatory developments, impact assessment,
+and timely implementation of required changes.
+
+CT27 — Records Retention
+Controls that ensure payment records are retained for required periods in
+accordance with regulatory and internal policy requirements. Includes retention
+schedules, secure storage, and retrieval capability for audit and investigation.
+
+CT28 — Crisis Management Planning and Testing
+Controls that ensure crisis management plans exist for severe payment disruption
+scenarios and are tested periodically. Includes crisis response playbooks,
+escalation procedures, and exercises to validate effectiveness.
+"""
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
+
+def load_controls() -> list:
+    """
+    Load all controls from Excel.
+    Returns a list of dicts keyed by column name.
+    Missing values are returned as empty strings.
+    """
+    import pandas as pd
+    df = pd.read_excel(CONTROLS_FILE, dtype=str)
+    df = df.fillna("")
+    records = df.to_dict(orient="records")
+    print(f"  ✓  Loaded {len(records)} controls from {CONTROLS_FILE}")
+    return records
+
+def build_embedding_text(ctrl: dict) -> str:
+    """
+    Build text for embedding — free text fields only.
+    List/code fields excluded as they add noise, not semantic signal.
+    """
+    parts = []
+    for col in EMBEDDING_COLUMNS:
+        val = ctrl.get(col, "").strip()
+        if val:
+            parts.append(val)
+    return " ".join(parts)
+
+def build_llm_context(ctrl: dict) -> str:
+    """
+    Build labelled context for LLM — all fields included.
+    List fields included with their label so the model can interpret them.
+    """
+    parts = []
+    for col in LLM_COLUMNS:
+        val = ctrl.get(col, "").strip()
+        if val:
+            parts.append(f"{col}: {val}")
+    return "\n".join(parts)
+
+
+def get_ctrl_id(ctrl: dict) -> str:
+    return ctrl.get(CONTROL_ID_COLUMN, "UNKNOWN")
+
+def select_full_control(controls: list) -> dict:
+    """Return the control with the longest description — richest text for testing."""
+    return max(
+        controls,
+        key=lambda c: len(c.get("Control Description", "") +
+                          c.get("Control Objective", "")),
+    )
+
+def select_sparse_control(controls: list) -> dict:
+    """Return the control with the shortest description — for sparse input tests."""
+    return min(
+        controls,
+        key=lambda c: len(c.get("Control Description", "") +
+                          c.get("Control Objective", "")),
+    )
+
+def banner(title: str):
+    print()
+    print("─" * 70)
+    print(f"  {title}")
+    print("─" * 70)
+
+def pf(ok: bool) -> str:
+    return "✓  PASS" if ok else "✗  FAIL"
+
+def build_context(ctrl: dict) -> str:
+    """Alias for build_llm_context — used throughout test functions."""
+    return build_llm_context(ctrl)
+
+def get_usage(response) -> dict:
+    usage = {}
+    if hasattr(response, "usage") and response.usage:
+        u = response.usage
+        usage["input_tokens"]  = getattr(u, "prompt_tokens", None)
+        usage["output_tokens"] = getattr(u, "completion_tokens", None)
+        usage["total_tokens"]  = getattr(u, "total_tokens", None)
+        details = getattr(u, "completion_tokens_details", None)
+        if details:
+            usage["reasoning_tokens"] = getattr(details, "reasoning_tokens", None)
+    return usage
+
+def load_controls() -> list:
+    """Load all controls from Excel. Returns list of dicts."""
+    import pandas as pd
+    df = pd.read_excel(CONTROLS_FILE)
+    controls = []
+    for _, row in df.iterrows():
+        ctrl = {}
+        for col in df.columns:
+            val = row.get(col, "")
+            ctrl[col] = "" if (val is None or (hasattr(val, "__class__") and
+                               val.__class__.__name__ == "float" and
+                               val != val)) else str(val).strip()
+        controls.append(ctrl)
+    return controls
+
+def build_embedding_text(ctrl: dict) -> str:
+    """Build text string for embedding — text fields only."""
+    parts = []
+    for col in EMBEDDING_COLUMNS:
+        val = ctrl.get(col, "")
+        if val and val.strip() and val.lower() not in ("nan", "none", ""):
+            parts.append(val)
+    return " ".join(parts).strip()
+
+def build_llm_context(ctrl: dict) -> str:
+    """Build labelled context string for LLM — all fields."""
+    parts = []
+    for col in LLM_COLUMNS:
+        val = ctrl.get(col, "")
+        if val and val.strip() and val.lower() not in ("nan", "none", ""):
+            parts.append(f"{col}: {val}")
+    return "\n".join(parts)
+
+def get_sparse_control(controls: list) -> dict:
+    """Return the control with the shortest combined text — used for Test D."""
+    def text_len(c):
+        return len(build_embedding_text(c))
+    return min(controls, key=text_len)
+
+def cosine_similarity(vec_a: list, vec_b: list) -> float:
+    dot   = sum(a * b for a, b in zip(vec_a, vec_b))
+    mag_a = sum(a ** 2 for a in vec_a) ** 0.5
+    mag_b = sum(b ** 2 for b in vec_b) ** 0.5
+    if mag_a == 0 or mag_b == 0:
+        return 0.0
+    return dot / (mag_a * mag_b)
+
+def call_chat(client, model: str, messages: list, supports_temperature: bool = False,
+              reasoning_effort: str = "low", max_completion_tokens: int = 1000,
+              response_format: dict = None) -> tuple:
+    """
+    Unified chat call.
+    Returns (response_text, usage_dict, latency_ms, error_str)
+    """
+    kwargs = {
+        "model":                 model,
+        "messages":              messages,
+        "max_completion_tokens": max_completion_tokens,
+    }
+    if response_format:
+        kwargs["response_format"] = response_format
+    # Temperature only for non-reasoning models
+    if supports_temperature:
+        kwargs["temperature"] = 0
+    else:
+        kwargs["reasoning_effort"] = reasoning_effort
+
+    try:
+        t0 = time.time()
+        response = client.chat.completions.create(**kwargs)
+        latency  = int((time.time() - t0) * 1000)
+        text     = response.choices[0].message.content.strip()
+        usage    = get_usage(response)
+        return text, usage, latency, None
+    except Exception as e:
+        return None, {}, 0, str(e)
+
+def init_client():
+    from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+    from openai import AzureOpenAI
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default"
+    )
+    return AzureOpenAI(
+        azure_endpoint=ENDPOINT,
+        api_version=API_VERSION,
+        azure_ad_token_provider=token_provider,
+    )
+
+def save_results(results: dict, run_ts: str):
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    json_path = os.path.join(RESULTS_DIR, f"assurance_test_{run_ts}.json")
+    txt_path  = os.path.join(RESULTS_DIR, f"assurance_test_{run_ts}.txt")
+
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2, default=str)
+
+    lines = []
+    lines.append("=" * 70)
+    lines.append("  PAYMENTS CONTROLS POC — ASSURANCE TEST RESULTS")
+    lines.append(f"  Run: {run_ts}")
+    lines.append(f"  Model: {PRIMARY_MODEL}  |  Embedding: {EMBED_MODEL}")
+    lines.append("=" * 70)
+
+    for test_name, result in results.get("tests", {}).items():
+        lines.append("")
+        lines.append(f"  {test_name}")
+        lines.append("  " + "─" * 60)
+        lines.append(f"  Status   : {result.get('status','UNKNOWN')}")
+        if result.get("latency_ms"):
+            lines.append(f"  Latency  : {result['latency_ms']}ms")
+        if result.get("usage"):
+            u = result["usage"]
+            rt = f" | {u.get('reasoning_tokens')} thinking" if u.get("reasoning_tokens") else ""
+            lines.append(f"  Tokens   : {u.get('input_tokens')} in | {u.get('output_tokens')} out{rt}")
+        if result.get("verdict"):
+            lines.append(f"  Verdict  : {result['verdict']}")
+        if result.get("notes"):
+            for n in (result["notes"] if isinstance(result["notes"], list) else [result["notes"]]):
+                lines.append(f"  Note     : {n}")
+        if result.get("error"):
+            lines.append(f"  Error    : {result['error']}")
+
+    lines.append("")
+    lines.append("=" * 70)
+    passed = sum(1 for r in results.get("tests", {}).values()
+                 if r.get("status") in ("PASS", "INFO"))
+    total  = len(results.get("tests", {}))
+    lines.append(f"  {passed}/{total} tests passed or completed")
+    lines.append("=" * 70)
+
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+    print(f"\n  Results saved:")
+    print(f"  JSON   → {json_path}")
+    print(f"  Text   → {txt_path}")
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TEST A — Grounded classification
+#  Model must classify only from provided text.
+#  When evidence is missing, it must return INSUFFICIENT_INFORMATION.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_a_grounding(client, controls: list, controls_sparse: dict) -> dict:
+    banner("TEST A — Grounded Classification (hallucination control)")
+    result = {"test": "Grounded Classification", "sub_tests": {}}
+
+    system_prompt = """You are a payments risk control analyst for an Australian bank.
+You classify payment controls against the CT taxonomy below.
+STRICT RULES:
+1. Classify ONLY based on the text provided. Do not use external knowledge.
+2. If the control text does not contain enough evidence to classify confidently, return INSUFFICIENT_INFORMATION.
+3. Every rationale MUST include a direct quoted phrase from the control text.
+4. Do not infer, assume, or expand beyond what is written.
+Always respond with valid JSON only."""
+
+    user_template = """Classify this control against the CT taxonomy.
+
+CONTROL:
+{context}
+
+CT TAXONOMY:
+{ct_defs}
+
+Return JSON:
+{{
+  "ctrl_id": "<id>",
+  "ct_classifications": [
+    {{
+      "ct_id": "<e.g. CT3>",
+      "ct_name": "<name>",
+      "confidence": <0.0-1.0>,
+      "rationale": "<must include a quoted phrase from the control text>"
+    }}
+  ],
+  "insufficient_information": <true if not enough evidence>,
+  "notes": "<any observations>"
+}}"""
+
+    # Sub-test A1: Full control — should classify successfully
+    print("\n  A1: Full control — model should classify with quoted evidence...")
+    ctx = build_llm_context(controls[0])
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user",   "content": user_template.format(
+            context=ctx, ct_defs=CT_DEFINITIONS)},
+    ]
+    text, usage, latency, error = call_chat(
+        client, PRIMARY_MODEL, messages,
+        reasoning_effort="low", max_completion_tokens=1000,
+        response_format={"type": "json_object"},
+    )
+    if error:
+        result["sub_tests"]["A1_full_control"] = {"status": "FAIL", "error": error}
+        print(f"  A1: {pf(False)} — {error}")
+    else:
+        try:
+            parsed = json.loads(text)
+            cts    = parsed.get("ct_classifications", [])
+            # Check rationale contains quoted text
+            has_quotes = any('"' in c.get("rationale","") for c in cts)
+            insufficient = parsed.get("insufficient_information", False)
+            passed = len(cts) > 0 and not insufficient
+            result["sub_tests"]["A1_full_control"] = {
+                "status":      "PASS" if passed else "FAIL",
+                "latency_ms":  latency,
+                "usage":       usage,
+                "ct_count":    len(cts),
+                "has_quotes":  has_quotes,
+                "insufficient":insufficient,
+                "response":    text[:500],
+            }
+            print(f"  A1: {pf(passed)}  ({latency}ms)")
+            print(f"      CTs found: {len(cts)}  |  Quoted evidence: {has_quotes}")
+            if not has_quotes:
+                print("      ⚠  No quoted phrases in rationale — hallucination risk")
+        except json.JSONDecodeError:
+            result["sub_tests"]["A1_full_control"] = {"status": "FAIL", "error": "Invalid JSON"}
+
+    # Sub-test A2: Sparse control — model should return INSUFFICIENT_INFORMATION
+    print("\n  A2: Sparse control — model should flag INSUFFICIENT_INFORMATION...")
+    ctx_sparse = build_llm_context(controls_sparse)
+    messages_sparse = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user",   "content": user_template.format(
+            context=ctx_sparse, ct_defs=CT_DEFINITIONS)},
+    ]
+    text_s, usage_s, latency_s, error_s = call_chat(
+        client, PRIMARY_MODEL, messages_sparse,
+        reasoning_effort="low", max_completion_tokens=500,
+        response_format={"type": "json_object"},
+    )
+    if error_s:
+        result["sub_tests"]["A2_sparse_control"] = {"status": "FAIL", "error": error_s}
+        print(f"  A2: {pf(False)} — {error_s}")
+    else:
+        try:
+            parsed_s   = json.loads(text_s)
+            insuff     = parsed_s.get("insufficient_information", False)
+            cts_s      = parsed_s.get("ct_classifications", [])
+            high_conf  = [c for c in cts_s if c.get("confidence", 0) > 0.7]
+            passed_s   = insuff or (len(high_conf) == 0)  # either flags or gives low confidence
+            result["sub_tests"]["A2_sparse_control"] = {
+                "status":       "PASS" if passed_s else "WARN",
+                "latency_ms":   latency_s,
+                "usage":        usage_s,
+                "insufficient_flagged": insuff,
+                "high_conf_cts": len(high_conf),
+                "response":     text_s[:300],
+            }
+            verdict = "Correctly flagged uncertainty" if passed_s else "Gave high-confidence answer on sparse data"
+            print(f"  A2: {pf(passed_s)}  ({latency_s}ms)")
+            print(f"      INSUFFICIENT_INFORMATION flagged: {insuff}")
+            print(f"      High-confidence CTs returned: {len(high_conf)}")
+            result["sub_tests"]["A2_sparse_control"]["verdict"] = verdict
+        except json.JSONDecodeError:
+            result["sub_tests"]["A2_sparse_control"] = {"status": "FAIL", "error": "Invalid JSON"}
+
+    a1_ok = result["sub_tests"].get("A1_full_control", {}).get("status") == "PASS"
+    a2_ok = result["sub_tests"].get("A2_sparse_control", {}).get("status") in ("PASS", "WARN")
+    result["status"] = "PASS" if (a1_ok and a2_ok) else ("WARN" if (a1_ok or a2_ok) else "FAIL")
+    return result
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TEST B — Evidence citation
+#  Rationale must contain phrases that actually appear in the source text.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_b_evidence_citation(client, controls: list) -> dict:
+    banner("TEST B — Evidence Citation (rationale grounded in source text)")
+    result = {"test": "Evidence Citation"}
+
+    system_prompt = """You are a payments risk control analyst.
+Classify the control and PROVE your classification by quoting the source text.
+Every rationale must contain the exact phrase from the control that supports your decision.
+Respond with JSON only."""
+
+    ctx = build_llm_context(controls[0])
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"""Classify this payment control. 
+For each CT classification, your rationale must include at least one exact quoted phrase 
+from the control text below (wrapped in double quotes in your JSON rationale).
+
+CONTROL:
+{ctx}
+
+CT TAXONOMY:
+{CT_DEFINITIONS}
+
+Return JSON:
+{{
+  "ctrl_id": "<id>",
+  "ct_classifications": [
+    {{
+      "ct_id": "<e.g. CT3>",
+      "ct_name": "<name>",
+      "confidence": <0.0-1.0>,
+      "rationale": "Must include exact quoted phrase from control, e.g.: The control states \\"phrase from text\\" which..."
+    }}
+  ]
+}}"""},
+    ]
+
+    text, usage, latency, error = call_chat(
+        client, PRIMARY_MODEL, messages,
+        reasoning_effort="low", max_completion_tokens=1000,
+        response_format={"type": "json_object"},
+    )
+
+    if error:
+        result["status"] = "FAIL"
+        result["error"]  = error
+        print(f"  {pf(False)} — {error}")
+        return result
+
+    try:
+        parsed = json.loads(text)
+        cts    = parsed.get("ct_classifications", [])
+
+        # Build full source text for phrase checking — use actual control from Excel
+        ctrl = controls[0]
+        source_text = " ".join([
+            ctrl.get("Control Name", ""),
+            ctrl.get("Control Objective", ""),
+            ctrl.get("Control Description", ""),
+            ctrl.get("CTRL_EVDNCD", ""),
+        ]).lower()
+
+        citation_results = []
+        for ct in cts:
+            rationale = ct.get("rationale", "")
+            # Extract quoted phrases
+            quoted = re.findall(r'"([^"]+)"', rationale)
+            # Check each quoted phrase appears in source
+            found_in_source = []
+            for phrase in quoted:
+                if phrase.lower() in source_text:
+                    found_in_source.append(phrase)
+            citation_results.append({
+                "ct_id":         ct.get("ct_id"),
+                "quoted_phrases":quoted,
+                "found_in_source": found_in_source,
+                "grounded":      len(found_in_source) > 0,
+            })
+
+        all_grounded = all(r["grounded"] for r in citation_results) if citation_results else False
+        any_grounded = any(r["grounded"] for r in citation_results) if citation_results else False
+
+        result["status"]           = "PASS" if all_grounded else ("WARN" if any_grounded else "FAIL")
+        result["latency_ms"]       = latency
+        result["usage"]            = usage
+        result["ct_count"]         = len(cts)
+        result["citation_results"] = citation_results
+        result["all_grounded"]     = all_grounded
+        result["response_preview"] = text[:400]
+        result["verdict"] = (
+            "All rationales grounded in source text" if all_grounded else
+            "Some rationales not grounded — possible hallucination" if any_grounded else
+            "No rationales grounded in source text — hallucination detected"
+        )
+
+        print(f"  {pf(all_grounded)}  ({latency}ms)")
+        for r in citation_results:
+            icon = "✓" if r["grounded"] else "✗"
+            print(f"    {icon} {r['ct_id']}: quoted={r['quoted_phrases']} | "
+                  f"found in source={r['found_in_source']}")
+        print(f"  Verdict: {result['verdict']}")
+
+    except json.JSONDecodeError:
+        result["status"] = "FAIL"
+        result["error"]  = "Invalid JSON returned"
+
+    return result
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TEST C — Adversarial contradiction
+#  Metadata label is intentionally wrong.
+#  Model should follow the description, not the metadata label.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_c_adversarial(client) -> dict:
+    banner("TEST C — Adversarial Contradiction (metadata vs actual description)")
+    print("  Control metadata label is deliberately wrong.")
+    print("  Model should classify based on what the control DOES, not the label.")
+    result = {"test": "Adversarial Contradiction"}
+
+    system_prompt = """You are a payments risk control analyst.
+Classify controls based on what they actually DO, not on how they are labelled.
+If the metadata label appears inconsistent with the description, flag this explicitly.
+Respond with JSON only."""
+
+    ctx = build_llm_context(CONTROL_ADVERSARIAL)
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"""Classify this payment control.
+Pay attention to the actual DESCRIPTION and TEST PROCEDURE.
+If the control_type metadata label appears inconsistent with the actual description,
+flag it in your response.
+
+CONTROL:
+{ctx}
+
+Return JSON:
+{{
+  "ctrl_id": "<id>",
+  "actual_control_type": "Preventative | Detective | Corrective",
+  "metadata_label_correct": <true|false>,
+  "metadata_concern": "<describe if label appears wrong>",
+  "ct_classifications": [
+    {{
+      "ct_id": "<e.g. CT3>",
+      "ct_name": "<name>",
+      "confidence": <0.0-1.0>,
+      "rationale": "<cite text from description>"
+    }}
+  ]
+}}"""},
+    ]
+
+    text, usage, latency, error = call_chat(
+        client, PRIMARY_MODEL, messages,
+        reasoning_effort="low", max_completion_tokens=800,
+        response_format={"type": "json_object"},
+    )
+
+    if error:
+        result["status"] = "FAIL"
+        result["error"]  = error
+        print(f"  {pf(False)} — {error}")
+        return result
+
+    try:
+        parsed = json.loads(text)
+        label_flagged   = not parsed.get("metadata_label_correct", True)
+        actual_type     = parsed.get("actual_control_type", "")
+        metadata_concern= parsed.get("metadata_concern", "")
+
+        # If metadata is wrong (you set it up that way), model should flag it
+        passed = label_flagged
+
+        result["status"]          = "PASS" if passed else "WARN"
+        result["latency_ms"]      = latency
+        result["usage"]           = usage
+        result["label_flagged"]   = label_flagged
+        result["actual_type_returned"] = actual_type
+        result["metadata_concern"]= metadata_concern
+        result["response_preview"]= text[:500]
+        result["verdict"] = (
+            "Model correctly identified metadata inconsistency" if passed else
+            "Model followed metadata label without questioning it — review manually"
+        )
+
+        print(f"  {pf(passed)}  ({latency}ms)")
+        print(f"  Model's actual classification : {actual_type}")
+        print(f"  Metadata label flagged as wrong: {label_flagged}")
+        print(f"  Concern raised: {metadata_concern[:100]}")
+        print(f"  Verdict: {result['verdict']}")
+
+    except json.JSONDecodeError:
+        result["status"] = "FAIL"
+        result["error"]  = "Invalid JSON"
+
+    return result
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TEST D — Sparse / ambiguous input
+#  Already covered in Test A sub-test A2.
+#  This test extends to show confidence degradation with minimal input.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_d_sparse_input(client, controls: list, controls_sparse: dict) -> dict:
+    banner("TEST D — Sparse / Ambiguous Input (confidence degradation)")
+    print("  Testing model behaviour with progressively less information.")
+    result = {"test": "Sparse Input Confidence Degradation", "levels": {}}
+
+    system_prompt = (
+        "You are a payments risk control analyst. "
+        "Classify the control. If insufficient evidence, set insufficient_information=true. "
+        "Be honest about confidence. Respond with JSON only."
+    )
+
+    def classify_at_level(level_name, ctx):
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"""Classify this payment control against CT taxonomy.
+
+CONTROL:
+{ctx}
+
+CT TAXONOMY (abbreviated for this test):
+CT1 = Data Input Validation | CT3 = Duplicate Detection | CT5 = Incident Response
+CT14 = Logging and Monitoring | CT17 = Access Provision | CT24 = Dispute Handling
+
+Return JSON:
+{{
+  "ctrl_id": "<id>",
+  "ct_id": "<most likely CT or UNKNOWN>",
+  "confidence": <0.0-1.0>,
+  "insufficient_information": <true|false>,
+  "rationale": "<explanation>"
+}}"""},
+        ]
+        text, usage, latency, error = call_chat(
+            client, PRIMARY_MODEL, messages,
+            reasoning_effort="low", max_completion_tokens=400,
+            response_format={"type": "json_object"},
+        )
+        return text, usage, latency, error
+
+    # Level 1: Full control
+    print("\n  Level 1: Full context...")
+    ctx_full = build_llm_context(controls[0])
+    t, u, lat, err = classify_at_level("full", ctx_full)
+    if err:
+        result["levels"]["L1_full"] = {"error": err}
+    else:
+        try:
+            p = json.loads(t)
+            result["levels"]["L1_full"] = {
+                "ct_id": p.get("ct_id"), "confidence": p.get("confidence"),
+                "insufficient": p.get("insufficient_information", False),
+                "latency_ms": lat, "usage": u,
+            }
+            print(f"    CT: {p.get('ct_id')} | Confidence: {p.get('confidence')} | "
+                  f"Insufficient: {p.get('insufficient_information', False)}")
+        except Exception:
+            result["levels"]["L1_full"] = {"error": "JSON parse error"}
+
+    # Level 2: Sparse control
+    print("  Level 2: Sparse context (name + short description only)...")
+    ctx_sparse = build_llm_context(controls_sparse)
+    t2, u2, lat2, err2 = classify_at_level("sparse", ctx_sparse)
+    if err2:
+        result["levels"]["L2_sparse"] = {"error": err2}
+    else:
+        try:
+            p2 = json.loads(t2)
+            result["levels"]["L2_sparse"] = {
+                "ct_id": p2.get("ct_id"), "confidence": p2.get("confidence"),
+                "insufficient": p2.get("insufficient_information", False),
+                "latency_ms": lat2, "usage": u2,
+            }
+            print(f"    CT: {p2.get('ct_id')} | Confidence: {p2.get('confidence')} | "
+                  f"Insufficient: {p2.get('insufficient_information', False)}")
+        except Exception:
+            result["levels"]["L2_sparse"] = {"error": "JSON parse error"}
+
+    # Level 3: Name only
+    print("  Level 3: Name only (no description)...")
+    ctx_name_only = f"Control Name: {controls[0].get('Control Name', 'Unknown')}"
+    t3, u3, lat3, err3 = classify_at_level("name_only", ctx_name_only)
+    if err3:
+        result["levels"]["L3_name_only"] = {"error": err3}
+    else:
+        try:
+            p3 = json.loads(t3)
+            result["levels"]["L3_name_only"] = {
+                "ct_id": p3.get("ct_id"), "confidence": p3.get("confidence"),
+                "insufficient": p3.get("insufficient_information", False),
+                "latency_ms": lat3, "usage": u3,
+            }
+            print(f"    CT: {p3.get('ct_id')} | Confidence: {p3.get('confidence')} | "
+                  f"Insufficient: {p3.get('insufficient_information', False)}")
+        except Exception:
+            result["levels"]["L3_name_only"] = {"error": "JSON parse error"}
+
+    # Check confidence decreases appropriately
+    l1_conf = result["levels"].get("L1_full", {}).get("confidence", 0) or 0
+    l3_conf = result["levels"].get("L3_name_only", {}).get("confidence", 1) or 1
+    conf_degrades = l1_conf > l3_conf
+    result["status"]  = "PASS" if conf_degrades else "WARN"
+    result["verdict"] = (
+        "Confidence correctly degrades with less information" if conf_degrades else
+        "Confidence did not degrade — model may be overconfident on sparse inputs"
+    )
+    print(f"\n  Confidence degrades with less input: {pf(conf_degrades)}")
+    print(f"  Verdict: {result['verdict']}")
+    return result
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TEST E — 10-run semantic consistency
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_e_reproducibility(client, controls: list) -> dict:
+    banner(f"TEST E — Semantic Consistency ({REPRODUCIBILITY_RUNS} runs)")
+    print(f"  Running same CT mapping prompt {REPRODUCIBILITY_RUNS} times.")
+    print("  Measuring label stability and confidence range.")
+    print("  Note: Reasoning models do not support temperature. Variability is expected.")
+    result = {"test": "Semantic Consistency", "runs": []}
+
+    ctx = build_llm_context(controls[0])
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a payments risk control analyst. "
+                "Return only JSON. No prose."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Classify this payment control. Return the single MOST LIKELY CT outcome.\n\n"
+                f"CONTROL:\n{ctx}\n\nCT TAXONOMY:\n{CT_DEFINITIONS}\n\n"
+                "Return JSON: {\"ct_id\": \"<CT number>\", \"ct_name\": \"<name>\", "
+                "\"confidence\": <0.0-1.0>, \"rationale\": \"<one sentence>\"}"
+            ),
+        },
+    ]
+
+    ct_labels    = []
+    confidences  = []
+
+    for i in range(1, REPRODUCIBILITY_RUNS + 1):
+        text, usage, latency, error = call_chat(
+            client, PRIMARY_MODEL, messages,
+            reasoning_effort="low", max_completion_tokens=300,
+            response_format={"type": "json_object"},
+        )
+        if error:
+            result["runs"].append({"run": i, "status": "FAIL", "error": error})
+            print(f"  Run {i:2d}: FAIL — {error}")
+            continue
+
+        try:
+            parsed = json.loads(text)
+            ct_id  = parsed.get("ct_id", "UNKNOWN")
+            conf   = parsed.get("confidence", 0)
+            ct_labels.append(ct_id)
+            confidences.append(conf)
+            result["runs"].append({
+                "run": i, "status": "PASS", "ct_id": ct_id,
+                "confidence": conf, "latency_ms": latency, "usage": usage,
+            })
+            print(f"  Run {i:2d}: CT={ct_id}  confidence={conf:.2f}  ({latency}ms)")
+        except json.JSONDecodeError:
+            result["runs"].append({"run": i, "status": "FAIL", "error": "JSON parse error"})
+
+    # Analyse consistency
+    if ct_labels:
+        from collections import Counter
+        label_counts = Counter(ct_labels)
+        majority_label, majority_count = label_counts.most_common(1)[0]
+        consistency_pct = majority_count / len(ct_labels) * 100
+        conf_range = max(confidences) - min(confidences) if confidences else 1
+        avg_conf   = sum(confidences) / len(confidences) if confidences else 0
+
+        passed = consistency_pct >= 80 and conf_range <= 0.15
+
+        result["analysis"] = {
+            "total_runs":       len(ct_labels),
+            "majority_label":   majority_label,
+            "majority_count":   majority_count,
+            "consistency_pct":  round(consistency_pct, 1),
+            "confidence_min":   min(confidences),
+            "confidence_max":   max(confidences),
+            "confidence_range": round(conf_range, 3),
+            "confidence_avg":   round(avg_conf, 3),
+            "label_distribution": dict(label_counts),
+        }
+        result["status"] = "PASS" if passed else ("WARN" if consistency_pct >= 60 else "FAIL")
+        result["verdict"] = (
+            f"{majority_label} in {majority_count}/{len(ct_labels)} runs "
+            f"({consistency_pct:.0f}%) | conf range {conf_range:.2f}"
+        )
+
+        print(f"\n  Majority label  : {majority_label} ({majority_count}/{len(ct_labels)} = {consistency_pct:.0f}%)")
+        print(f"  Confidence range: {min(confidences):.2f} — {max(confidences):.2f} (spread: {conf_range:.2f})")
+        print(f"  Distribution    : {dict(label_counts)}")
+        print(f"  {pf(passed)}")
+        print("  Pass criteria: ≥80% same label AND confidence range ≤0.15")
+
+    return result
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TEST F — Cross-model comparison
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_f_cross_model(client, controls: list) -> dict:
+    banner("TEST F — Cross-Model Comparison (gpt-4o / gpt-5.4 / gpt-5.4-mini)")
+    print("  Same classification prompt across all three models.")
+    print("  Comparing: accuracy, latency, token cost, rationale quality.")
+    result = {"test": "Cross-Model Comparison", "models": {}, "status": "INFO"}
+
+    ctx = build_llm_context(controls[0])
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a payments risk control analyst. Return JSON only.",
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Classify this payment control against the CT taxonomy. "
+                f"Return the top 2 most likely CTs.\n\n"
+                f"CONTROL:\n{ctx}\n\nCT TAXONOMY:\n{CT_DEFINITIONS}\n\n"
+                'Return JSON: {"ct_classifications": [{"ct_id": "<CT>", "ct_name": "<name>", '
+                '"confidence": <0.0-1.0>, "rationale": "<one sentence citing control text>"}]}'
+            ),
+        },
+    ]
+
+    for model_cfg in CROSS_MODELS:
+        model_name = model_cfg["name"]
+        print(f"\n  Testing {model_name}...")
+        text, usage, latency, error = call_chat(
+            client, model_name, messages,
+            supports_temperature=model_cfg["supports_temperature"],
+            reasoning_effort="low",
+            max_completion_tokens=800,
+            response_format={"type": "json_object"},
+        )
+        if error:
+            result["models"][model_name] = {"status": "FAIL", "error": error}
+            print(f"    FAIL — {error}")
+            continue
+        try:
+            parsed = json.loads(text)
+            cts    = parsed.get("ct_classifications", [])
+            result["models"][model_name] = {
+                "status":    "PASS",
+                "latency_ms": latency,
+                "usage":     usage,
+                "ct_count":  len(cts),
+                "top_cts":   [{"ct_id": c.get("ct_id"), "confidence": c.get("confidence")}
+                              for c in cts[:3]],
+                "response_preview": text[:400],
+            }
+            print(f"    {pf(True)}  ({latency}ms)")
+            print(f"    CTs: {[(c.get('ct_id'), c.get('confidence')) for c in cts[:3]]}")
+            u = usage
+            rt = f" | {u.get('reasoning_tokens')} thinking" if u.get("reasoning_tokens") else ""
+            print(f"    Tokens: {u.get('input_tokens')} in | {u.get('output_tokens')} out{rt}")
+        except json.JSONDecodeError:
+            result["models"][model_name] = {"status": "FAIL", "error": "JSON parse error"}
+
+    print(f"\n  Note: Review the JSON results file to compare CT consistency across models.")
+    return result
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TEST G — Reasoning effort comparison
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_g_reasoning_effort(client, controls: list) -> dict:
+    banner("TEST G — Reasoning Effort (none / low / medium / high)")
+    print("  Note: temperature NOT set — not supported for GPT-5.4.")
+    print("  Comparing: latency, thinking tokens, rationale depth.")
+    result = {"test": "Reasoning Effort", "efforts": {}, "status": "INFO"}
+
+    ctx = build_llm_context(controls[0])
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a payments risk control analyst. Return JSON only.",
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Classify this payment control against the CT taxonomy.\n\n"
+                f"CONTROL:\n{ctx}\n\nCT TAXONOMY:\n{CT_DEFINITIONS}\n\n"
+                'Return JSON: {"ct_id": "<CT>", "ct_name": "<name>", '
+                '"confidence": <0.0-1.0>, "rationale": "<detailed explanation>"}'
+            ),
+        },
+    ]
+
+    for effort in REASONING_EFFORTS:
+        print(f"\n  Testing reasoning_effort='{effort}'...")
+        try:
+            import openai
+            kwargs = {
+                "model":                 PRIMARY_MODEL,
+                "messages":              messages,
+                "max_completion_tokens": 1000,
+                "response_format":       {"type": "json_object"},
+            }
+            if effort != "none":
+                kwargs["reasoning_effort"] = effort
+            # If "none", omit reasoning_effort entirely (use model default)
+
+            t0 = time.time()
+            response = client.chat.completions.create(**kwargs)
+            latency  = int((time.time() - t0) * 1000)
+            text     = response.choices[0].message.content.strip()
+            usage    = get_usage(response)
+
+            parsed          = json.loads(text)
+            rationale_len   = len(parsed.get("rationale", ""))
+            thinking_tokens = usage.get("reasoning_tokens") or 0
+
+            result["efforts"][effort] = {
+                "status":         "PASS",
+                "latency_ms":     latency,
+                "usage":          usage,
+                "thinking_tokens":thinking_tokens,
+                "ct_id":          parsed.get("ct_id"),
+                "confidence":     parsed.get("confidence"),
+                "rationale_len":  rationale_len,
+            }
+            print(f"    {pf(True)}  ({latency}ms)")
+            print(f"    CT: {parsed.get('ct_id')} | Confidence: {parsed.get('confidence')}")
+            print(f"    Thinking tokens: {thinking_tokens} | Rationale chars: {rationale_len}")
+            print(f"    Tokens: {usage.get('input_tokens')} in | {usage.get('output_tokens')} out")
+
+        except Exception as e:
+            result["efforts"][effort] = {"status": "FAIL", "error": str(e)}
+            print(f"    {pf(False)} — {e}")
+
+    # Summary
+    print("\n  Summary:")
+    print(f"  {'Effort':<10} {'Latency':>10} {'Thinking':>10} {'CT':>8} {'Conf':>8}")
+    print(f"  {'──────':<10} {'───────':>10} {'────────':>10} {'──':>8} {'────':>8}")
+    for effort in REASONING_EFFORTS:
+        r = result["efforts"].get(effort, {})
+        if r.get("status") == "PASS":
+            print(f"  {effort:<10} {str(r.get('latency_ms',''))+'ms':>10} "
+                  f"{str(r.get('thinking_tokens',0)):>10} "
+                  f"{str(r.get('ct_id','')):>8} {str(r.get('confidence','')):>8}")
+    return result
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  TEST H — Embedding pairwise similarity
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_h_embedding_similarity(client, controls: list) -> dict:
+    banner(f"TEST H — Embedding Pairwise Similarity ({len(controls)} controls)")
+    print("  Embedding all controls and computing pairwise cosine similarity.")
+    print("  Ranked pairs help validate that semantically similar controls score higher.")
+    print(f"  Embedding model: {EMBED_MODEL}")
+    result = {"test": "Embedding Pairwise Similarity", "embeddings": [], "pairs": []}
+
+    # Step 1: Embed all controls
+    print(f"\n  Step 1: Computing embeddings for {len(controls)} controls...")
+    embeddings = []
+    for i, ctrl in enumerate(controls):
+        ctrl_id   = ctrl.get("Control ID", f"row_{i}")
+        ctrl_name = ctrl.get("Control Name", "")
+        emb_text  = build_embedding_text(ctrl)
+        if not emb_text.strip():
+            print(f"    ⚠  {ctrl_id}: no text to embed — skipping")
+            continue
+        try:
+            response  = client.embeddings.create(model=EMBED_MODEL, input=emb_text)
+            vec       = response.data[0].embedding
+            token_ct  = getattr(response.usage, "prompt_tokens", 0)
+            embeddings.append({
+                "ctrl_id":   ctrl_id,
+                "ctrl_name": ctrl_name[:60],
+                "vector":    vec,
+                "tokens":    token_ct,
+            })
+            print(f"    ✓  [{i+1:2d}/{len(controls)}] {ctrl_id} — {ctrl_name[:50]}")
+        except Exception as e:
+            print(f"    ✗  {ctrl_id}: {e}")
+
+    result["controls_embedded"] = len(embeddings)
+    total_tokens = sum(e["tokens"] for e in embeddings)
+    print(f"\n  Embedded: {len(embeddings)}/{len(controls)} controls | Tokens: {total_tokens}")
+
+    if len(embeddings) < 2:
+        result["status"] = "FAIL"
+        result["error"]  = "Not enough controls embedded to compute similarity"
+        return result
+
+    # Step 2: Compute all pairwise cosine similarities
+    print("\n  Step 2: Computing pairwise similarity matrix...")
+    pairs = []
+    n = len(embeddings)
+    for i in range(n):
+        for j in range(i + 1, n):
+            sim = cosine_similarity(embeddings[i]["vector"], embeddings[j]["vector"])
+            pairs.append({
+                "ctrl_a":    embeddings[i]["ctrl_id"],
+                "name_a":    embeddings[i]["ctrl_name"],
+                "ctrl_b":    embeddings[j]["ctrl_id"],
+                "name_b":    embeddings[j]["ctrl_name"],
+                "similarity": round(sim, 4),
+            })
+
+    # Step 3: Rank and display
+    pairs.sort(key=lambda x: x["similarity"], reverse=True)
+    result["pairs"] = pairs
+
+    print(f"\n  TOP 10 MOST SIMILAR pairs (review — do these make sense?):")
+    print(f"  {'Sim':<6}  {'Control A':<30}  {'Control B':<30}")
+    print(f"  {'─'*6}  {'─'*30}  {'─'*30}")
+    for p in pairs[:10]:
+        print(f"  {p['similarity']:.4f}  {p['name_a'][:30]:<30}  {p['name_b'][:30]:<30}")
+
+    print(f"\n  BOTTOM 5 LEAST SIMILAR pairs:")
+    print(f"  {'Sim':<6}  {'Control A':<30}  {'Control B':<30}")
+    print(f"  {'─'*6}  {'─'*30}  {'─'*30}")
+    for p in pairs[-5:]:
+        print(f"  {p['similarity']:.4f}  {p['name_a'][:30]:<30}  {p['name_b'][:30]:<30}")
+
+    # Stats
+    sims = [p["similarity"] for p in pairs]
+    avg_sim = sum(sims) / len(sims)
+    result["stats"] = {
+        "total_pairs":   len(pairs),
+        "avg_similarity": round(avg_sim, 4),
+        "max_similarity": round(max(sims), 4),
+        "min_similarity": round(min(sims), 4),
+        "total_tokens":  total_tokens,
+    }
+    print(f"\n  Stats: {len(pairs)} pairs | avg={avg_sim:.4f} | "
+          f"max={max(sims):.4f} | min={min(sims):.4f}")
+    print(f"  Total embedding tokens: {total_tokens}")
+
+    result["status"]  = "PASS"
+    result["verdict"] = (
+        f"All {len(embeddings)} controls embedded. "
+        f"Review ranked pairs in results file to validate semantic ordering."
+    )
+    # Remove vectors from result (too large to save)
+    result["embeddings"] = [
+        {k: v for k, v in e.items() if k != "vector"} for e in embeddings
+    ]
+    print(f"\n  {pf(True)} — Review top/bottom pairs above for semantic sanity check.")
+    return result
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  MAIN
+# ──────────────────────────────────────────────────────────────────────────────
+
+def main():
+    run_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    print()
+    print("═" * 70)
+    print("  PAYMENTS CONTROLS POC — ASSURANCE TESTS")
+    print(f"  Model     : {PRIMARY_MODEL}  (reasoning_effort=low default)")
+    print(f"  Embedding : {EMBED_MODEL}")
+    print(f"  Note      : temperature NOT used — not supported for GPT-5.4")
+    print(f"  Run       : {run_ts}")
+    print("═" * 70)
+
+    # Load controls from Excel
+    print(f"\n  Loading controls from: {CONTROLS_FILE}")
+    try:
+        controls = load_controls()
+        print(f"  ✓  Loaded {len(controls)} controls.")
+        # Auto-select sparse control (shortest text)
+        controls_sparse = get_sparse_control(controls)
+        ctrl_id_sparse = controls_sparse.get("Control ID", "unknown")
+        print(f"  ✓  Sparse control auto-selected: {ctrl_id_sparse}")
+        print(f"     (Control with shortest description — used for Test D)")
+    except Exception as e:
+        print(f"  ✗  Could not load Excel file: {e}")
+        sys.exit(1)
+
+    # Warn if adversarial control not filled in
+    if "PASTE" in CONTROL_ADVERSARIAL.get("Control Name", ""):
+        print("\n  ⚠  NOTE: CONTROL_ADVERSARIAL still has placeholder values.")
+        print("     Test C will run but with placeholder data — results won't be meaningful.")
+        print("     Open assurance_test.py and paste a real control into CONTROL_ADVERSARIAL.")
+
+    print("\n  Initialising Azure OpenAI client...")
+    try:
+        client = init_client()
+        print("  ✓  Client ready.")
+    except Exception as e:
+        print(f"  ✗  Client failed: {e}")
+        sys.exit(1)
+
+    all_results = {
+        "run_ts": run_ts,
+        "config": {
+            "endpoint": ENDPOINT, "primary_model": PRIMARY_MODEL,
+            "embed_model": EMBED_MODEL, "api_version": API_VERSION,
+        },
+        "tests": {},
+    }
+
+    tests = [
+        ("Test A — Grounded Classification",
+            lambda: test_a_grounding(client, controls, controls_sparse)),
+        ("Test B — Evidence Citation",
+            lambda: test_b_evidence_citation(client, controls)),
+        ("Test C — Adversarial Contradiction",
+            lambda: test_c_adversarial(client)),
+        ("Test D — Sparse Input Degradation",
+            lambda: test_d_sparse_input(client, controls, controls_sparse)),
+        ("Test E — Semantic Consistency (10 runs)",
+            lambda: test_e_reproducibility(client, controls)),
+        ("Test F — Cross-Model Comparison",
+            lambda: test_f_cross_model(client, controls)),
+        ("Test G — Reasoning Effort Comparison",
+            lambda: test_g_reasoning_effort(client, controls)),
+        ("Test H — Embedding Similarity (all 20 controls)",
+            lambda: test_h_embedding_similarity(client, controls)),
+    ]
+
+    for name, fn in tests:
+        try:
+            all_results["tests"][name] = fn()
+        except Exception as e:
+            all_results["tests"][name] = {"status": "ERROR", "error": str(e)}
+            print(f"\n  ✗  {name} — ERROR: {e}")
+
+    banner("FINAL SUMMARY")
+    for name, r in all_results["tests"].items():
+        status = r.get("status", "UNKNOWN")
+        icon   = "✓" if status in ("PASS","INFO") else ("⚠" if status == "WARN" else "✗")
+        verdict = r.get("verdict", "")
+        print(f"  {icon}  {name} — {status}")
+        if verdict:
+            print(f"      {verdict}")
+
+    save_results(all_results, run_ts)
+    print()
+
+if __name__ == "__main__":
+    main()
