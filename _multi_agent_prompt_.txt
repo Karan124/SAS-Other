@@ -1,0 +1,249 @@
+You are acting as a senior Microsoft Copilot Studio solution architect, Power Platform engineer, and AI governance designer.
+
+I want you to help me design and build a multi-agent solution in Microsoft Copilot Studio for compliance impact assessment of incidents.
+
+## Background
+Recently, you built me a Committee Paper Schedule Agent. I want you to carry forward the learnings from that build into this new solution.
+
+Please assume the key lessons from the Committee Paper Schedule Agent build were:
+- keep the architecture modular and easy to maintain
+- keep the orchestration layer thin and focused
+- separate AI reasoning from deterministic workflow logic
+- use Dataverse as a system of record where appropriate
+- design for auditability, explainability, and structured outputs
+- include human review / fallback paths for ambiguous cases
+- provide build steps that are practical and implementation-ready rather than theoretical
+- prefer a pilot / MVP design first, then show how to scale later
+
+Use those learnings explicitly in your design decisions for this new solution.
+
+## Objective
+Build a multi-agent agent in Microsoft Copilot Studio that:
+1. accepts an incident description as input
+2. assesses whether there is a potential compliance impact
+3. does this by checking the incident against a small number of Westpac policies
+4. returns a structured result that explains which policy may be impacted, why, and whether human review is needed
+
+## Scope for MVP
+For now, keep the first version intentionally small:
+- 3 agents in total
+  - 1 orchestrator agent
+  - 1 policy agent for Policy A
+  - 1 policy agent for Policy B
+- the first two policies should be:
+  - Westpac Code of Conduct
+  - Westpac AML / CTF policy
+- the policy content should be stored in Dataverse
+- we also have access to Power Automate Premium
+- the build platform is Microsoft Copilot Studio
+
+## What I want from you
+I do not want generic advice.
+I want a practical build blueprint that I could hand to an engineer or solution designer.
+
+Please produce the output in the following structure.
+
+---
+
+# 1. Executive summary
+Give me a concise summary of the proposed solution:
+- what the solution does
+- why the 3-agent model is appropriate
+- why these two policies are a good MVP choice
+- how Dataverse and Power Automate fit into the design
+
+# 2. Target architecture
+Describe the full target architecture in plain English first, then in a more detailed technical structure.
+
+Include:
+- orchestrator agent role
+- policy agent role
+- connected agent / multi-agent interaction model
+- where Dataverse sits
+- where Power Automate sits
+- how outputs are persisted
+- how a human review step is triggered
+- how the design could later scale to more policies
+
+I want both:
+- a conceptual architecture
+- a logical component architecture
+- a step-by-step processing flow from incident input to final outcome
+
+# 3. Agent design
+Design all 3 agents in detail:
+- agent name
+- purpose
+- scope
+- what each agent should and should not do
+- required inputs
+- required outputs
+- suggested system instructions / prompt design for each agent
+- how the orchestrator should call the policy agents
+- how to handle conflicting assessments or low-confidence results
+
+For each policy agent, I want the output structure to include:
+- ImpactDetected = Yes / No / Unclear
+- TriggeredClauses
+- Rationale
+- Confidence
+- ReviewRequired
+- RecommendedNextStep
+
+# 4. Dataverse design
+Design the Dataverse schema for this solution.
+
+I want:
+- recommended tables
+- recommended columns
+- data types where useful
+- key relationships
+- which tables store policy metadata
+- which tables store clause-level data
+- which tables store incident assessments
+- which tables store policy-level assessment results
+- whether a reference / glossary / keyword table is useful
+- how to structure clauses to improve retrieval and explainability
+
+Also advise:
+- whether each policy should be stored as a whole document or broken into clause-level rows
+- how to capture plain-English summaries, keywords, examples, and escalation flags
+- how to make the policy data more usable for grounded AI reasoning
+
+# 5. Copilot Studio build plan
+Give me a practical implementation plan in Copilot Studio.
+
+Include:
+- how to configure the orchestrator agent
+- how to configure the two policy agents
+- how to connect the agents together
+- how to attach Dataverse knowledge
+- how to decide what is handled by knowledge vs tools vs workflows
+- how to structure prompts/instructions so the agents stay within their scope
+- how to ensure the orchestrator does not behave like a giant policy agent itself
+
+I want this written as a step-by-step build guide.
+
+# 6. Power Automate design
+Design the Power Automate flows needed for MVP.
+
+At minimum, cover:
+- saving assessment results into Dataverse
+- triggering a human review when needed
+- optional notification to reviewers / analysts
+- how to handle “Unclear” or low-confidence outputs
+- how to keep the flow deterministic and auditable
+
+If useful, separate the flows into:
+- ingestion flow
+- persistence flow
+- review / approval flow
+- notification flow
+
+# 7. Prompting and reasoning design
+I want you to think carefully about how the AI reasoning should work.
+
+Explain:
+- how each policy agent should reason over an incident description
+- how to reduce hallucination
+- how to reduce false positives
+- how to force the model to cite or reference relevant clauses
+- how to constrain the agent to only its assigned policy
+- when the correct answer should be “Unclear”
+- how to handle incomplete incident descriptions
+
+Also tell me:
+- what structured prompts you would use
+- what grounding strategy you would use
+- what output format you would enforce
+
+# 8. Explainability and governance
+This is a compliance use case, so explainability matters.
+
+Design the solution so that:
+- every assessment is traceable
+- impacted clauses can be shown
+- rationale is understandable to compliance analysts
+- outputs can be challenged and reviewed
+- human override is possible
+- the model does not appear to make a final legal/regulatory determination without review
+
+I also want governance considerations:
+- access model
+- auditability
+- model risk considerations
+- fallback approach
+- what decisions should remain human decisions
+
+# 9. Testing and assurance
+I want a strong testing plan.
+
+Design:
+- a test strategy for hallucination
+- a test strategy for reproducibility
+- a test strategy for false positives / false negatives
+- sample test scenarios
+- how to use a mix of positive, negative, and ambiguous incidents
+- what acceptance criteria should be used for MVP
+- what metrics should be monitored after go-live or pilot
+
+Also suggest how to evaluate:
+- policy agent quality
+- orchestrator quality
+- consistency over repeated runs
+
+# 10. MVP delivery plan
+Give me a phased delivery plan:
+- Phase 1 = MVP
+- Phase 2 = hardening
+- Phase 3 = scale out to more policies
+
+For each phase, include:
+- scope
+- deliverables
+- dependencies
+- risks
+- recommended design decisions
+
+# 11. Risks and design trade-offs
+Be explicit about:
+- where this design may fail
+- likely sources of false positives
+- likely sources of false negatives
+- where policy language ambiguity could cause issues
+- when a rules-based layer may be better than free-form reasoning
+- trade-offs between clause-level storage and document-level storage
+- trade-offs between a single agent and multi-agent design
+
+# 12. Final recommended design
+End with:
+- your final recommended MVP architecture
+- your final recommended Dataverse schema
+- your final recommended agent instruction strategy
+- your final recommended review/escalation pattern
+- your final recommendation on what to build first next week
+
+## Additional guidance
+Please think like an implementation architect, not a generic assistant.
+Challenge weak assumptions where needed.
+Prefer practical recommendations over abstract theory.
+Use plain English.
+Be specific.
+Where there are multiple options, recommend one and explain why.
+
+## Important build principles
+Please apply these design principles throughout:
+- thin orchestrator
+- specialist policy agents only
+- grounded responses
+- clause-level explainability
+- structured outputs
+- deterministic workflow for persistence and approvals
+- human review for ambiguous or high-risk situations
+- scalable design so more policy agents can be added later
+
+## Output style
+Use structured headings.
+Use bullet points where helpful.
+Include sample schemas, sample prompts, and sample workflows.
+Make the response detailed enough that it could directly inform solution build and backlog creation.
