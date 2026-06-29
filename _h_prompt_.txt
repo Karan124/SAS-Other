@@ -1,0 +1,105 @@
+Role
+
+For each process in the batch, perform two steps.
+
+Step 1 — Payment relevance assessment:
+Determine whether the process is actually a payments process or payments-enabling process based only on the supplied evidence.
+
+A process is payment-related if it directly executes, supports, controls, monitors, reconciles, settles, clears, posts, amends, cancels, routes, releases, validates, or governs payment movement, payment instructions, payment systems, payment exceptions, payment settlement, or payment operations.
+
+Step 2 — Payment category mapping:
+If the process is payment-related, determine which payment category or categories it maps to using only the five valid payment categories and the mapping rules.
+
+If the process is not payment-related, do not map it to a payment category.
+
+Identifier Rule
+
+Each process includes l3_process_UUID. This is the unique process identifier and must be copied exactly into the output.
+
+Do not use l3_activity_id or process_id as the unique join key because the same activity ID may appear in multiple process contexts.
+
+Valid Payment Categories
+
+Use only:
+- Customer to Customer
+- Customer to Institution
+- Institution to Customer
+- Institution to Institution
+- Supplier / Contractor / Employee Payments
+
+Category Definitions
+
+- Customer to Customer — individual / merchant / business pays individual / merchant / business.
+- Customer to Institution — customer pays the bank or deposits/repays funds into the institution.
+- Institution to Customer — the bank or institution disburses or pays funds to the customer.
+- Institution to Institution — one bank / financial institution pays, settles with, clears with, or exchanges obligations with another institution.
+- Supplier / Contractor / Employee Payments — the bank pays suppliers, contractors, or employees, including internal payroll and vendor payments.
+
+Minimum Mapping Requirement
+
+Category mapping requires at least one of:
+(a) explicit payer-payee relationship
+(b) explicit payment action, such as settle, disburse, process payment
+(c) explicit payment system/process reference, such as RTGS, BPAY, clearing, RITS, NPP, Direct Entry, PEXA, SWIFT
+(d) explicit system, third-party, or governance reference in the context of payment processing.
+
+If the process is payment-related but no payer-payee category is defensible, set is_payment_process=true, mapped_categories=[], primary_category=null, and explain why the category is not defensible.
+
+Mapping Rules
+
+R1 — Map only where a payer-payee relationship is clear or strongly implied by a named payment system/process.
+
+R2 — Process must operate in a category-specific payment scenario, not generic enterprise activity.
+
+R3 — Process must create, control, execute, clear, settle, post, amend, cancel, route, release, correct, reconcile or materially affect payment movement.
+
+R4 — Multiple categories are allowed only where explicitly supported across different payer-payee relationships. Always choose a primary_category if any category is mapped.
+
+R5 — For systems, schemes and third parties, determine category by ultimate payer-payee relationship, not intermediary processors.
+
+R6 — L3 activity name is a primary signal, but naming alone must not drive mapping.
+
+Priority Guidance
+
+- Interbank settlement, clearing networks, counterparties, schemes, external banks, RBA, RITS, OFIs, settlement instructions or obligations between payment providers -> Institution to Institution.
+- Customer repayments, customer deposits, ATM deposits, BPAY, card repayments, customers sending funds into the bank -> Customer to Institution.
+- Disbursements, refunds, interest payments, loan settlements, welfare, benefit or tax payments, or payroll processed by the bank on behalf of a client institution -> Institution to Customer.
+- Transfers between customers, merchants or businesses, including card payments, P2P, internal transfers, direct debit or customer-originated movement between non-bank parties -> Customer to Customer.
+- Vendor payments, internal staff payroll, supplier/contractor/employee payments internal to the bank -> Supplier / Contractor / Employee Payments.
+
+Confidence Guidance
+
+Use only High, Medium or Low.
+
+- payment_process_confidence measures confidence that the process is payment-related.
+- category_confidence_score measures confidence in the payer-payee category mapping.
+- A process can be clearly payment-related but still have Low category confidence if payer/payee evidence is missing.
+
+Output exactly:
+
+{
+  "mappings": [
+    {
+      "l3_process_UUID": "string copied exactly from input processes[].l3_process_UUID",
+      "process_id": "string copied from input processes[].process_id",
+      "l2_process_name": "string or null",
+      "l3_activity_name": "string or null",
+      "is_payment_process": true,
+      "payment_process_confidence": "High | Medium | Low",
+      "payment_process_rationale": "concise explanation grounded in quoted process text",
+      "mapped_categories": ["valid categories only, or empty array"],
+      "primary_category": "valid category or null",
+      "category_confidence_score": "High | Medium | Low",
+      "rule_hits": ["R1", "R2", "R3", "R4", "R5", "R6"],
+      "category_mapping_rationale": "concise explanation grounded in quoted process text; explain why chosen categories apply and close alternatives are less appropriate"
+    }
+  ],
+  "notes": ["optional batch-level caveats"]
+}
+
+Rules
+
+- Emit exactly one mapping entry for every input process.
+- Use only l3_process_UUID values present in the input batch.
+- Every payment_process_rationale and category_mapping_rationale must include quoted source text.
+- If is_payment_process=false, mapped_categories must be [], primary_category must be null, and category_confidence_score should be Low.
