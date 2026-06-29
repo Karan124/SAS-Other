@@ -1,0 +1,75 @@
+Context:
+We are building a Payments Controls PoC using Holocentric process data. The objective is to determine whether each process/activity is payment-related and, where it is payment-related, classify it into a valid payment category.
+
+Problem observed:
+Earlier outputs used l3_activity_id / process_id as the output join key. This caused ambiguity because the same l3_activity_id can appear multiple times with different L2 process names, L2 descriptions, L3 descriptions, value chains, BCMs and task names. The result was hard to join back to original detailed data and hard to differentiate unique process instances.
+
+Resolution implemented:
+We updated the aggregation and LLM runner scripts to use l3_process_UUID as the stable primary join key. The new aggregation script requires l3_process_UUID, groups source rows by l3_process_UUID, and carries l3_process_UUID into every LLM payload. The LLM prompt requires the model to copy l3_process_UUID exactly into every output mapping.
+
+Aggregation logic:
+- Primary grouping key is l3_process_UUID.
+- The payload retains L2/L3 identifiers, names and descriptions.
+- Supporting context fields are aggregated into lists:
+  - value_stream_names
+  - vcm_library_names
+  - vcm_library_types
+  - value_chains
+  - business_capabilities_bcm
+  - tasks
+- If UUID-level L2/L3 identity or description fields contain multiple distinct values, plural fields are retained in the payload and audit details are retained in the review Excel.
+- Audit-only fields such as source row count and source row numbers are not sent to the LLM but are retained in the review Excel.
+
+LLM task redesign:
+The model now performs two steps:
+1. Payment relevance assessment:
+   Determine whether the process is a payments process or payments-enabling process.
+2. Payment category mapping:
+   If payment-related, map the process to valid payment categories.
+
+Output schema changes:
+The LLM output now includes:
+- l3_process_UUID
+- process_id
+- is_payment_process
+- payment_process_confidence
+- payment_process_rationale
+- mapped_categories
+- primary_category
+- category_confidence_score
+- rule_hits
+- category_mapping_rationale
+
+Reason for schema change:
+A process can be clearly payment-related but not have enough payer-payee evidence to assign a payment category. The previous design conflated payment relevance with category mapping. The new design separates these decisions, improving auditability and reducing forced mappings.
+
+Validation added:
+The LLM runner validates that:
+- each input l3_process_UUID appears exactly in the output;
+- no unknown UUIDs are returned;
+- the number of output mappings matches the number of input payloads;
+- mapped categories and primary category are from the approved category list;
+- is_payment_process=false does not return mapped categories.
+
+Current model configuration:
+- Endpoint: https://ai.eng.azure.srv.westpac.com.au
+- Model: gpt-5.4
+- API version: 2024-10-21
+- reasoning_effort: high
+- max_completion_tokens: 12000
+- default batch_size: 5
+- authentication: AzureCliCredential using az login
+
+Expected improvement:
+The output should now be fully joinable back to detailed Holocentric process rows using l3_process_UUID. The model should also distinguish between:
+- not payment-related;
+- payment-related but category cannot be defensibly determined;
+- payment-related with one or more defensible payment categories.
+
+Recommended next assessment:
+Run the updated scripts on the same sample set and assess:
+1. Whether all UUIDs round-trip correctly;
+2. Whether payment relevance classification is sensible;
+3. Whether category mapping is only performed when payment relevance is true;
+4. Whether cases previously unmapped due to weak payer-payee evidence are now correctly marked as payment-related but category-uncertain;
+5. Whether multi-category mappings are supported by explicit evidence.
