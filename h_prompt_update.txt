@@ -1,0 +1,29 @@
+Output from the recent run
+
+Metric	Count
+Total processes	83
+Excluded (gate applied)	14
+Payment-related	68
+Not payment-related	15
+SME review flagged	43
+Citation unverified	0
+Confidence conflict (Hi↔Lo)	0
+──────────────────────────	──────────────
+Category: Customer to Institution	25
+Category: Institution to Customer	9
+Category: Customer to Customer	5
+Category: Institution to Institution	1
+
+
+
+Below changes are required in the prompt based on the output and the SME validation:
+
+1) Regarding "Conservative Bias", suggestion is to say "Possible Processes". I do understand that this can lead to hallucination but let's see if we can make a subtle change to it.
+2) Regarding the "Exclusion Gate", the suggestion is to remove it altogether or be lenient with it. The reason that I was given was that the exclusion gate is removing payroll processes where payments are made between employer and employee and is a payment category.
+3) We are looking for payment related processes and such processes may also include ITGC processes, change management etc. So keep an open mind there but be very careful to not hallucinate.
+4) We are also introducing two new fields in the data that will better understand the LLM about the payer to payee relationship in the process.
+   a) l3_activity_channels (e.g. values "BM 02.01.15 - Digital (Online and Mobile);BM 02.02.01 - Branch", "BM 02.02.13 - Relationship Manager", "BM 02.01.01 - ATM", "BM 02.01.02 - Digital - Corporate Online;BM 02.01.04 - Digital - GTS Direct Connectivity" etc.). This field appears to show where the process takes place or originates.
+   b) l3_activity_customer_segments (e.g values "BM 03.01.01 - Consumer", "BM 03.01.01 - Consumer;BM 03.01.02 - Consumer - High Net Worth;BM 03.02.01 - Commercial;BM 03.02.08 - Small Business", "BM 03.03.01 - Institutional", "BM 03.01.01 - Consumer;BM 03.02.01 - Commercial;BM 03.03.01 - Institutional" etc.). This field appears to show the parties involved in the process.
+
+
+Now the above will require changes to both the prompt as well as the script!
