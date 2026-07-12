@@ -1,0 +1,267 @@
+I need your help designing a robust and defensible linkage methodology for a Payments Risk Proof of Concept.
+
+Please think deeply about the problem before proposing a solution.
+
+DO NOT immediately provide code.
+
+First analyse the data model, linkage logic, population definitions and expected outcomes.
+
+Once you have determined the best approach, then propose:
+1. linkage methodology
+2. population definitions
+3. output datasets
+4. validation checks
+5. implementation approach
+6. Python code architecture
+
+=========================================================
+BUSINESS CONTEXT
+=========================================================
+
+Objective:
+
+Determine whether JUNO controls are linked to payment processes and classify them by:
+
+- Payment Category
+- Payment Lifecycle Stage
+
+These classifications come from Holocentric payment processes.
+
+The end goal is to assess payment control coverage.
+
+=========================================================
+INPUT FILES
+=========================================================
+
+FILE 1
+
+juno_payment_controls_gold.xlsx
+
+Columns include:
+
+Control_ID
+CTRL_NAME
+CTRL_DESC
+gold_control
+
+Population:
+
+Contains the payment controls population.
+
+Current control population size:
+
+708 controls
+
+
+=========================================================
+FILE 2
+
+juno_holo_deterministic_linkage.xlsx
+
+Columns:
+
+CTRL_ID
+CTRL_STUS
+bus_unit_bcrm_id
+link_level
+juno_value_stream
+BUS_UNIT_FLDR_LVL_3
+BUS_UNIT_FLDR_LVL_4
+l3_activity_uuid
+l3_activity_id
+l2_process_uuid
+l2_process_id
+holo_value_stream
+vcm_library_id
+vcm_library_name
+
+This is the JUNO → Holocentric linkage inventory.
+
+Controls may be linked to:
+
+- L3 activities
+- L2 processes
+
+A control may have multiple rows.
+
+Example:
+
+A single control may link to multiple L3 activities.
+
+=========================================================
+FILE 3
+
+holocentric_payment_processes.xlsx
+
+Columns:
+
+l3_process_UUID
+l2_process_UUID
+l2_process_id
+l2_process_name
+l2_process_description
+
+l3_activity_id
+l3_activity_name
+l3_activity_description
+
+value_stream_name
+vcm_library_name
+
+process_category
+process_lifecycle_stage
+
+This file contains the PAYMENT process inventory.
+
+Only payment-related Holocentric processes exist in this file.
+
+Payment categories include:
+
+- Customer to Customer
+- Customer to Institution
+- Institution to Customer
+- Institution to Institution
+
+Lifecycle stages include:
+
+- Initiation & Validation & Authorisation
+- Execution & Early Processing Assurance
+- Posting & Accounting
+- Detection
+- Investigation & Resolution
+etc
+
+=========================================================
+WHAT HAS BEEN TESTED
+=========================================================
+
+TEST 1
+
+Join:
+
+l3_activity_uuid
+=
+l3_process_UUID
+
+Results:
+
+Rows after linkage join: 3,124
+
+Unique controls matched:
+
+708
+
+This appears to work technically.
+
+However many controls link to multiple Holocentric activities.
+
+Question:
+
+Should all linked activities be retained or should there be process selection logic?
+
+=========================================================
+TEST 2
+
+Join:
+
+l2_process_uuid
+=
+l2_process_UUID
+
+Results:
+
+36,000+ rows returned.
+
+Reason:
+
+One L2 process can have many L3 activities.
+
+The join creates a many-to-many expansion.
+
+This appears incorrect because controls become associated with every child L3 activity.
+
+=========================================================
+PROBLEM TO SOLVE
+=========================================================
+
+I need a defensible methodology to answer:
+
+1.
+
+Which payment controls are linked to payment processes?
+
+2.
+
+Which payment controls are linked to non-payment processes?
+
+3.
+
+Which payment controls have no Holocentric linkage?
+
+4.
+
+How should controls linked only at L2 be handled?
+
+5.
+
+When a control is linked to multiple Holocentric processes, how should process_category and process_lifecycle_stage be assigned?
+
+6.
+
+Should:
+
+a) every linked process be retained?
+
+or
+
+b) a primary process be selected?
+
+or
+
+c) controls inherit multiple categories and lifecycle stages?
+
+=========================================================
+CURRENT OBSERVATIONS
+=========================================================
+
+The latest testing suggests:
+
+- all 708 payment controls have at least one L3 linkage
+- controls may link to multiple L3 activities
+- payment classification is stored at L3 level
+- L2 expansion produces misleading results
+
+I suspect this is no longer a coding problem.
+
+I suspect the real challenge is creating the correct linkage methodology and population definitions.
+
+=========================================================
+WHAT I NEED FROM YOU
+=========================================================
+
+Please provide:
+
+1. Deep analysis of the data model
+
+2. Identification of flaws in the approaches tested so far
+
+3. Recommended linkage methodology
+
+4. Recommended hierarchy of:
+   - L3 linkage
+   - L2 linkage
+   - multi-process linkage
+
+5. Recommended population definitions
+
+6. Recommended output datasets
+
+7. Recommended summary metrics
+
+8. Recommended validation checks
+
+9. Risks and assumptions
+
+10. Final recommended design for implementation
+
+Please challenge my assumptions where necessary and explain why.
