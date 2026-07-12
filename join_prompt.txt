@@ -1,0 +1,14 @@
+1. Column names in File 3
+Exact column names for payment category and lifecycle stage. The problem statement shows process_category and process_lifecycle_stage — are these exactly right, including case?
+2. CTRL_STUS filtering
+Should I filter to active controls only? If yes, what value means active?
+3. Gold control as an analysis dimension
+Should the coverage matrix include CT1-CT28 as a dimension alongside category and lifecycle stage?
+4. Payment categories in File 3
+Are there 4 categories (as listed) or 5 (including Supplier/Contractor/Employee)?
+5. Lifecycle stage names in File 3
+The problem statement shows stages that differ from our V10 prompt naming. What are the exact strings as they appear in the file?
+6. File 1 to File 2 join key
+File 1 has Control_ID, File 2 has CTRL_ID. Confirming these are the correct join keys despite the naming difference.
+7. L2-only rows in File 2
+Can rows in File 2 have l2_process_uuid populated but l3_activity_uuid empty or null? This determines whether L2-only linkage rows exist as distinct records — which affects how the L2 fallback logic is built.
