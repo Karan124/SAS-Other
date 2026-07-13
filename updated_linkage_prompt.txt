@@ -1,0 +1,531 @@
+I need help correcting and improving a Python script for a Payments Controls PoC.
+
+Please reason carefully before proposing corrections. The task is not just a coding task — it is a data modelling and controls coverage analysis task.
+
+============================================================
+BUSINESS OBJECTIVE
+============================================================
+
+We are analysing whether JUNO payment controls are appropriately linked to Holocentric payment processes.
+
+The goal is to build an analytical workbook that helps identify:
+
+1. Controls linked to payment processes.
+2. Controls linked only to non-payment Holocentric processes.
+3. Controls with no Holocentric linkage.
+4. Potentially misplaced controls, e.g. controls mapped to the wrong payment category or lifecycle stage.
+5. Duplicate / overlapping controls.
+6. Gaps in control coverage by:
+   - Gold Control CT1–CT28
+   - Payment Category
+   - Payment Lifecycle Stage
+
+The output should make it easy for a reviewer to find a clear example of a potentially misplaced control, duplicate control etc.
+
+============================================================
+INPUT FILES
+============================================================
+
+There are 3 input files.
+
+------------------------------------------------------------
+FILE 1: juno_payment_controls_gold.xlsx
+------------------------------------------------------------
+
+This is the payment controls population.
+
+Known columns:
+
+Control_ID
+CTRL_NAME
+CTRL_NATRE
+CTRL_STUS
+CTRL_OWNER
+CTRL_FREQ
+CTRL_KEY_CONTRL
+CTRL_DESC
+CTRL_TYP
+CTRL_ASSESS_RTNG
+CTRL_CTGRY_1
+CTRL_CTGRY_2
+CTRL_OE_RTNG
+CTRL_DE_RTNG
+CTRL_LOC_LIST
+CTRL_EVDNCD
+CTRL_MNTRD
+CTRL_CATEGORY
+COMMON_CTRL_REFERENCE
+COMMON_CTRL_TYP
+CTRL_DESC_OF_CTRL
+CTRL_FLDR
+object_path_leaf
+CTRL_FLDR_LVL_2
+gold_control
+
+Important:
+- Control_ID is the control key.
+- gold_control currently appears numeric, e.g. 1, 2, 3, etc.
+- It must be normalised to CT1, CT2, CT3, etc.
+- Known control population has been around 708 distinct controls, but the file currently has 709 rows. Please include a duplicate / distinct Control_ID check.
+
+------------------------------------------------------------
+FILE 2: juno_holo_deterministic_linkage.xlsx
+------------------------------------------------------------
+
+This is the JUNO-to-Holocentric deterministic linkage inventory.
+
+Known columns:
+
+CTRL_ID
+CTRL_STUS
+bus_unit_bcrm_id
+link_level
+juno_value_stream
+BUS_UNIT_FLDR_LVL_3
+BUS_UNIT_FLDR_LVL_4
+l3_activity_uuid
+l3_activity_id
+l2_process_uuid
+l2_process_id
+holo_value_stream
+vcm_library_id
+vcm_library_name
+
+Important:
+- CTRL_ID joins to File 1 Control_ID.
+- Controls can have multiple linkage rows.
+- Some rows have L3 linkage populated.
+- Some rows have L2-only linkage.
+- The linkage file contains full Holocentric linkage inventory, not just payment processes.
+
+------------------------------------------------------------
+FILE 3: holocentric_payment_processes.xlsx
+------------------------------------------------------------
+
+This is the Holocentric payment process inventory.
+
+Known columns:
+
+l3_process_UUID
+l2_process_UUID
+l2_process_id
+l2_process_name
+l2_process_description
+l3_activity_id
+l3_activity_name
+l3_activity_description
+l3_activity_channels
+l3_activity_customer_segments
+l3_activity_product/service
+value_stream_name
+vcm_library_name
+vcm_library_type
+value_chain
+bcm
+task_name
+process_category
+process_lifecycle_stage
+
+Important:
+- This file contains payment-deemed Holocentric processes only.
+- l3_process_UUID joins to linkage.l3_activity_uuid.
+- l3_activity_id can be used as secondary L3 join key.
+- l2_process_UUID can be used only carefully because joining on L2 expands to all child L3 processes and can overstate control coverage.
+- process_category and process_lifecycle_stage are populated at L3 process/activity level.
+
+============================================================
+KNOWN PAYMENT CATEGORIES
+============================================================
+
+Valid process_category values:
+
+Customer to Customer
+Customer to Institution
+Institution to Customer
+Institution to Institution
+Supplier / Contractor / Employee Payments
+
+Values like 0, blank, nan, none, null should be treated as:
+Unclassified / Missing
+
+============================================================
+KNOWN LIFECYCLE STAGES
+============================================================
+
+Observed lifecycle stage strings include:
+
+Initiation & Validation & Authorisation
+Execution & Early Processing Assurance
+Clearing / Settlement
+Posting & Accounting, Detection
+Posting, Accounting & Detection
+Notification & Reporting
+Incident response, disputes, recovery followups
+
+Normalise:
+
+Posting, Accounting & Detection
+to:
+Posting & Accounting, Detection
+
+Also normalise common variants such as:
+Posting & Accounting & Detection
+Posting & Accounting and Detection
+
+============================================================
+CURRENT SCRIPT BEHAVIOUR
+============================================================
+
+The current script outputs 8 sheets in one workbook:
+
+summary
+linked_payment
+linked_payment_detail
+linked_non_payment
+linked_non_payment_detail
+not_linked
+one_big_table
+validation_checks
+
+It produced this log:
+
+Controls  : 709 rows
+Linkage   : 25,543 rows
+Processes : 1,042 rows
+
+Linkage rows L3: 13,337
+Linkage rows L2-only: 12,206
+
+Controls with L3 payment match : 553
+Controls with L2 fallback match: 122
+
+Group 1 — linked to payment    : 379
+Group 1 detail rows            : 4,455
+Group 2 — linked non-payment   : 143
+Group 2 detail rows            : 486
+Group 3 — not linked           : 187
+Total                          : 709
+
+One Big Table:
+OBT rows    : 4,457
+OBT columns : 54
+
+Validation checks passed.
+
+However, the CT lifecycle/category alignment flags look wrong:
+
+ct_lifecycle_alignment:
+CT not expected for Customer to Customer — review: 2,631
+CT not expected for Institution to Customer — review: 875
+CT not expected for Customer to Institution — review: 587
+CT not expected for Institution to Institution — review: 354
+CT not expected for Supplier / Contractor / Employee Payments — review: 10
+
+These counts total 4,457, which equals all OBT rows.
+
+This strongly suggests the CT alignment logic is wrong because every row is being flagged as unexpected.
+
+============================================================
+LIKELY ROOT CAUSE
+============================================================
+
+The CT alignment dictionary uses CT codes such as:
+
+CT1
+CT2
+CT3
+...
+CT28
+
+But the source field gold_control appears to contain numeric values:
+
+1
+2
+3
+...
+28
+
+Therefore the script likely compares:
+
+gold_control = "1"
+
+against expected CT map keys:
+
+"CT1"
+
+and fails for every row.
+
+Required fix:
+
+Create a normalised gold control code field, e.g.:
+
+gold_control_code
+
+where:
+1 becomes CT1
+2 becomes CT2
+...
+28 becomes CT28
+CT1 remains CT1
+
+Then use gold_control_code, not raw gold_control, in all CT alignment logic.
+
+============================================================
+GOLD CONTROL TITLES
+============================================================
+
+Use this mapping:
+
+CT1  = Validation of Human-Entered Data at Input
+CT2  = Payment processing error detection
+CT3  = Early Identification of Duplications and Processing Errors
+CT4  = Payment processing interface and batch error resolution
+CT5  = Incident response
+CT6  = Master/Reference data input validation
+CT7  = Service provider ongoing review
+CT8  = Service provider onboarding
+CT9  = Change management testing
+CT10 = Critical service chain mapping and risk identification
+CT11 = Rollback plans
+CT12 = System recovery capability
+CT13 = Business continuity plan
+CT14 = Logging and monitoring
+CT15 = Secure IT Design
+CT16 = Vulnerability Management
+CT17 = Access - Provision / deprovision (EIA)
+CT18 = Access - Monitoring
+CT19 = Patch Management
+CT20 = Physical Security Controls
+CT21 = Access - Privileged users
+CT22 = Mistaken Internet Payment Reports
+CT23 = Provision of Confirmations and Notifications
+CT24 = Treatment of Unauthorised and Disputed Transactions / Dealing with Mistaken Internet Payments
+CT25 = Provision of Confirmations and Notifications
+CT26 = Regulatory horizon scanning
+CT27 = Records retention
+CT28 = Crisis Management planning and testing
+
+============================================================
+CURRENT CT ALIGNMENT RULES IN SCRIPT
+============================================================
+
+The script currently defines:
+
+Stage 1:
+Initiation & Validation & Authorisation
+Expected CTs:
+CT1, CT6
+
+Stage 2:
+Execution & Early Processing Assurance
+Expected CTs:
+CT3, CT4
+
+Stage 3:
+Clearing / Settlement
+Expected CTs:
+CT14
+
+Stage 4:
+Posting & Accounting, Detection
+Expected CTs:
+CT2, CT27
+
+Stage 5:
+Notification & Reporting
+Expected CTs differ by category:
+- Customer to Customer: CT22, CT23
+- Customer to Institution: CT22, CT23
+- Institution to Customer: CT23 only
+- Institution to Institution: no Stage 5 controls expected
+- Supplier / Contractor / Employee Payments: no Stage 5 controls expected
+
+Stage 6:
+Incident response, disputes, recovery followups
+Expected:
+CT5 for all categories
+CT24 only for Customer to Customer and Customer to Institution
+
+Broad/system controls:
+CT8, CT12, CT14, CT15, CT16, CT18, CT19, CT21
+
+Governance/pervasive controls:
+CT7, CT9, CT10, CT11, CT13, CT17, CT20, CT25, CT26
+
+Broad controls should generally not be flagged as misplaced just because they appear across multiple categories/stages.
+
+CT14 has a dual role:
+- Expected at Clearing / Settlement as a stage-specific control.
+- Also expected across stages as a system-wide control.
+
+============================================================
+WHAT I NEED YOU TO DO
+============================================================
+
+Please review the script design and provide corrected logic.
+
+Specifically:
+
+1. Fix gold_control normalisation.
+   - Add gold_control_raw.
+   - Add gold_control_code.
+   - Use gold_control_code in all CT alignment checks.
+   - Add gold_control_title.
+
+2. Validate population counts using distinct Control_ID, not raw rows.
+   - controls row count may be 709, but distinct Control_ID is expected around 708.
+   - Include duplicate Control_ID diagnostics.
+
+3. Reassess the linkage methodology.
+   Existing methodology:
+   - L3 payment match first using l3_activity_uuid to l3_process_UUID.
+   - L2 fallback only for controls with zero L3 payment matches.
+   - L2 fallback labelled low confidence.
+   Please confirm whether this is appropriate or recommend a better method.
+
+4. Fix category/lifecycle alignment logic so it produces meaningful candidate exceptions.
+   The current result flags all rows as unexpected, which is not useful.
+
+5. Add clear exception flags that help pinpoint misplaced controls:
+   - ct_appropriate_for_category
+   - ct_expected_lifecycle_stages
+   - ct_lifecycle_alignment
+   - misplaced_candidate_flag
+   - misplaced_candidate_reason
+   - misplaced_candidate_strength
+
+6. Recommended hierarchy for misplaced candidate strength:
+   Strong candidate:
+   - L3 direct linkage only
+   - non-broad CT
+   - CT not expected for payment category
+   or
+   - non-broad CT at unexpected lifecycle stage
+
+   Medium candidate:
+   - L3 direct linkage
+   - broad/system CT with unusual category/stage concentration
+   or
+   - CT expected for category but lifecycle unclear
+
+   Weak candidate:
+   - L2 fallback linkage
+   - because L2 fallback is lower confidence and may not indicate precise L3 placement
+
+7. In the one_big_table sheet, add fields that make examples easy to review:
+   - Control_ID
+   - CTRL_NAME
+   - gold_control_raw
+   - gold_control_code
+   - gold_control_title
+   - link_type
+   - l2_process_name
+   - l3_activity_name
+   - process_category
+   - process_lifecycle_stage
+   - ct_appropriate_for_category
+   - ct_expected_lifecycle_stages
+   - ct_lifecycle_alignment
+   - misplaced_candidate_flag
+   - misplaced_candidate_reason
+   - misplaced_candidate_strength
+   - controls_on_same_process_and_ct
+   - process_level_duplicate
+   - sole_control_for_process_ct
+
+8. Add a new sheet:
+   misplaced_control_candidates
+
+This sheet should be filtered to rows where:
+misplaced_candidate_flag = True
+
+It should prioritise:
+- L3 direct rows first.
+- Strong candidates first.
+- Non-broad CTs first.
+- Unexpected lifecycle or wrong category first.
+
+9. Add a new sheet:
+   top_misplaced_examples
+
+This sheet should include a small number of high-quality examples, e.g. top 20, using ranking logic:
+- L3 direct = highest priority
+- Strong candidate = highest priority
+- Category mismatch higher than lifecycle mismatch
+- Exclude broad controls unless no other examples exist
+- Include enough context for a reviewer to understand the issue
+
+10. Add summary metrics:
+   - Total distinct controls
+   - Distinct controls linked to payment
+   - Distinct controls linked to non-payment only
+   - Distinct controls not linked
+   - Distinct controls with misplaced candidates
+   - Distinct strong misplaced candidates
+   - Distinct medium misplaced candidates
+   - Count by gold_control_code
+   - Count by process_category
+   - Count by process_lifecycle_stage
+   - Count by misplaced_candidate_reason
+
+11. Add validation checks:
+   - gold_control_code populated for all rows where gold_control exists
+   - gold_control_code values are in CT1 to CT28
+   - no overlap between population groups
+   - all distinct controls assigned to exactly one population group
+   - lifecycle normalisation completed
+   - no row has raw numeric gold_control used in CT alignment
+   - if one_big_table has every row flagged as unexpected, fail validation because that likely indicates a logic error
+
+============================================================
+EXPECTED BUSINESS OUTPUT
+============================================================
+
+The corrected workbook should make it easy to identify a defensible misplaced control example, such as:
+
+Example pattern 1:
+CT1 or CT6 control mapped to a process outside Initiation & Validation & Authorisation.
+
+Example pattern 2:
+CT2 control mapped outside Posting & Accounting, Detection.
+
+Example pattern 3:
+CT5 control mapped outside Incident response, disputes, recovery followups.
+
+Example pattern 4:
+CT22 or CT24 mapped to Institution to Institution or another category where they are not expected.
+
+Example pattern 5:
+A control with multiple same-CT duplicates on the same L3 process.
+
+Please recommend the best example patterns and explain why they are defensible.
+
+============================================================
+IMPORTANT CAUTIONS
+============================================================
+
+Do not overstate that a control is definitely misplaced.
+Use language like:
+- potential misplaced control
+- candidate for SME review
+- unexpected based on CT-to-lifecycle rules
+- requires validation
+
+Do not treat L2 fallback matches as high-confidence misplaced examples.
+
+Do not expand L2 to all child L3 activities and then treat all resulting L3s as direct control mappings. That creates misleading coverage.
+
+============================================================
+DELIVERABLE
+============================================================
+
+Please provide:
+1. Explanation of the script defects.
+2. Recommended corrected methodology.
+3. Specific code-level changes.
+4. Full corrected Python script if possible.
+5. Explanation of how to use the output workbook to find misplaced controls.
+6. Suggested validation checks and expected summary interpretation.
+
+
+The key bug I suspect is that gold_control is numeric in the source but the CT mapping expects CT1, CT2, etc. Please prioritise fixing that and ensuring not every row is incorrectly flagged as unexpected.
