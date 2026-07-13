@@ -1,0 +1,136 @@
+payment_category: Customer-to-Customer
+lifecycle_stages:
+  - Initiation_Validation_Authorisation
+  - Execution_Early_Processing_Assurance
+  - Clearing_Settlement
+  - Posting_Accounting_Detection
+  - Notification_Reporting
+  - Incident_Response_Disputes_Recovery
+
+process_controls:
+  - CT1
+  - CT2
+  - CT3
+  - CT4
+  - CT5
+  - CT6
+  - CT14
+  - CT22
+  - CT23
+  - CT24
+  - CT27
+
+system_controls:
+  - CT8
+  - CT12
+  - CT14
+  - CT15
+  - CT16
+  - CT18
+  - CT19
+  - CT21
+
+governance_controls: 9
+
+# Institution-to-Institution
+
+## Overview
+
+A layered control model across the payment lifecycle, with stage-specific controls addressing risks inherent at each point of the process, system-wide controls applied consistently across the lifecycle, and governance controls acting as an enabler.
+
+---
+
+## Payment Lifecycle
+
+### 1. Initiation, Validation & Authorisation
+
+Description:
+- Settlement or funding positions are calculated.
+- Payment instructions prepared.
+- Validate liquidity checks, limits and approvals.
+
+Stage-Specific Controls:
+- CT1: Validation of the correctness of transaction details
+- CT6: Master data input validation
+
+---
+
+### 2. Execution & Early Processing Assurance
+
+Description:
+- Settlement instructions released to the relevant clearing infrastructure.
+- RTGS or market infrastructure processing.
+- Highlight exceptions.
+
+Stage-Specific Controls:
+- CT3: Identification of duplications and processing errors
+- CT4: Payments interface / batch error detection
+
+---
+
+### 3. Clearing / Settlement
+
+Description:
+- RTGS.
+- Scheme settlement.
+- Financial Market Infrastructure (FMI).
+- Internal settlement.
+
+Stage-Specific Controls:
+- CT14: Logging and monitoring
+
+Note:
+- Risk mitigation is expected upstream.
+
+---
+
+### 4. Posting, Accounting & Detection
+
+Description:
+- Nostro postings.
+- Ledger postings.
+- Reconciliations.
+
+Stage-Specific Controls:
+- CT2: Error Detection
+- CT27: Records retention
+
+Note:
+- This stage is primarily controlled through upstream validation.
+
+---
+
+### 5. Incident Response, Disputes, Recovery Follow-ups
+
+Description:
+- Settlement failures.
+- Funding shortfalls.
+- Recoveries.
+
+Stage-Specific Controls:
+- CT5: Incident response
+
+---
+
+## System / Third-Party Controls
+
+- CT8: Material Service Provider Ongoing Review
+- CT12: System Recovery Capability
+- CT18: Access Monitoring
+- CT19: Patch Management
+- CT15: Secure IT Design
+- CT16: Vulnerability Management
+- CT21: Privileged Access Management
+- CT14: Logging & Monitoring
+
+---
+
+## Governance Controls
+
+Pervasive controls to manage:
+- Change execution
+- Resilience
+- Third-party governance
+
+Referenced governance population:
+- 9 controls
