@@ -1,0 +1,171 @@
+# Customer-to-Institution
+
+## Overview
+
+A layered control model across the payment lifecycle, with stage-specific controls addressing risks inherent at each point of the process, system-wide controls applied consistently across the lifecycle, and governance controls acting as an enabler.
+
+---
+
+## Payment Lifecycle
+
+### 1. Initiation, Validation & Authorisation
+
+**Description**
+- Customer submits a repayment or deposit via ATM, branch, or digital channel.
+- Validate account, reference, account matching, and cut-off checks.
+
+**Stage-Specific Controls**
+- **CT1:** Validation of the correctness of transaction details
+- **CT6:** Master data input validation
+
+---
+
+### 2. Execution & Early Processing Assurance
+
+**Description**
+- Receipt of funds via the relevant channel.
+- Highlight and identify exceptions.
+
+**Stage-Specific Controls**
+- **CT3:** Identification of duplications and processing errors
+- **CT4:** Payments interface / batch error detection
+
+---
+
+### 3. Clearing / Settlement
+
+**Description**
+- Interbank settlement or internal settlement.
+
+**Stage-Specific Controls**
+- **CT14:** Logging and monitoring
+
+**Note**
+- Risk mitigation is expected to occur upstream.
+
+---
+
+### 4. Posting, Accounting & Detection
+
+**Description**
+- Apply funds to loan, card or deposit account.
+- Perform reconciliations.
+
+**Stage-Specific Controls**
+- **CT2:** Error Detection
+- **CT27:** Records retention
+
+**Note**
+- This stage is primarily controlled via upstream validation activities.
+
+---
+
+### 5. Notification & Reporting
+
+**Description**
+- Customer confirmations.
+- Balance updates.
+- Statements.
+
+**Stage-Specific Controls**
+- **CT22:** Mistaken Internet Payment Reports
+- **CT23:** Provision of Confirmations and Notifications
+
+---
+
+### 6. Incident Response, Disputes, Recovery Follow-ups
+
+**Description**
+- Investigate mis-posting.
+- Resolve suspense items.
+- Process adjustments and recoveries.
+
+**Stage-Specific Controls**
+- **CT5:** Incident response
+- **CT24:** Treatment of Unauthorised Payments
+
+---
+
+# System / Third-Party Controls
+
+These controls operate across the entire payment lifecycle.
+
+- **CT8:** Material Service Provider Ongoing Review
+- **CT12:** System Recovery Capability
+- **CT18:** Access Monitoring
+- **CT19:** Patch Management
+- **CT15:** Secure IT Design
+- **CT16:** Vulnerability Management
+- **CT21:** Privileged Access Management
+- **CT14:** Logging & Monitoring
+
+---
+
+# Governance Controls
+
+**Pervasive controls to manage change execution, resilience and third-party governance**
+
+- Applies across all lifecycle stages.
+- Total governance control population referenced: **9 controls**.
+
+---
+
+# Large Reasoning Model Interpretation
+
+## Lifecycle Stages
+
+1. Initiation, Validation & Authorisation
+2. Execution & Early Processing Assurance
+3. Clearing / Settlement
+4. Posting, Accounting & Detection
+5. Notification & Reporting
+6. Incident Response, Disputes, Recovery Follow-ups
+
+## Control Architecture
+
+The operating model consists of three layers:
+
+### Layer 1: Process / Stage-Specific Controls
+Controls designed to address risks within a specific payment lifecycle stage.
+
+Examples:
+- CT1, CT2, CT3, CT4, CT5, CT6
+- CT22, CT23, CT24, CT27
+- CT14 (stage-specific monitoring)
+
+### Layer 2: System / Third-Party Controls
+Controls that provide technology, security, operational resilience and third-party risk management across all lifecycle stages.
+
+Examples:
+- Secure IT Design
+- Vulnerability Management
+- Privileged Access Management
+- Patch Management
+- Access Monitoring
+- System Recovery Capability
+- Logging & Monitoring
+- Material Service Provider Ongoing Review
+
+### Layer 3: Governance Controls
+Enterprise-wide controls responsible for:
+- Change management
+- Operational resilience
+- Governance oversight
+- Third-party governance
+
+These controls act as enablers and provide overarching risk management across the entire Customer-to-Institution payment process.
+
+## Key Design Principle
+
+For each payment lifecycle stage:
+
+Risk Mitigation = Stage-Specific Controls
+                + System Controls
+                + Third-Party Controls
+                + Governance Controls
+
+Where:
+- Stage-specific controls address process execution risk.
+- System controls address technology and security risk.
+- Third-party controls address external dependency risk.
+- Governance controls address oversight, resilience and change risk.
