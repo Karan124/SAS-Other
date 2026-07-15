@@ -1,0 +1,13 @@
+l3_activity_channels:
+1)BM 02.02.13 - Relationship Manager
+2) BM 02.01.01 - ATM;BM 02.01.02 - Digital - Corporate Online;BM 02.01.03 - Global Investment Service;BM 02.01.04 - Digital - GTS Direct Connectivity;BM 02.01.05 - Digital - Institutional Bank;BM 02.01.06 - Digital - Mobile;BM 02.01.09 - Digital - Online Share Trading;BM 02.01.10 - Digital - Public Website;BM 02.01.11 - Digital - SBG Business Banking Online (BBO);BM 02.01.12 - Digital - SBG Internet Banking (Compass);BM 02.01.13 - Digital - Westpac Digital Connect;BM 02.01.14 - Digital - Westpac Live;BM 02.01.15 - Digital (Online and Mobile);BM 02.01.16 - eFICC Trading Platform;BM 02.01.17 - Global Dealer;BM 02.01.18 - Point of Sale (POS);BM 02.01.19 - Westpac Online FX (OLFX);BM 02.01.20 - XYLO - FX Online Distribution Channel;BM 02.02.01 - Branch;BM 02.02.04 - Chat;BM 02.02.05 - Virtual Banking;BM 02.02.12 - Post or Courier;BM 02.02.13 - Relationship Manager;BM 02.02.27 - Transactional Banking Manager;BM 02.02.28 - Video;BM 02.03.01 - Third Party - Aggregator;BM 02.03.02 - Third Party - Broker;BM 02.03.03 - Custodian;BM 02.03.04 - Third Party - Dealer;BM 02.03.05 - Third Party - Fleet;BM 02.03.06 - Third Party - Franchise;BM 02.03.07 - Third Party - Intermediary;BM 02.03.08 - Third Party - Introducer;BM 02.03.09 - Third Party - Novated;BM 02.03.10 - Third Party - Referrer;BM 02.03.11 - Third Party - Vendor
+
+l3_activity_customer_segments
+1) BM 03.01.01 - Consumer;BM 03.02.01 - Commercial
+2) BM 03.02.09 - Property;BM 03.02.10 - Small and Medium Enterprise
+
+
+l3_activity_product/service:
+1) BM 04.07.01 - Bonds / REPOs;BM 04.07.02 - Commodity;BM 04.07.03 - Credit Derivatives;BM 04.07.04 - Electricity;BM 04.07.05 - Future / ETO;BM 04.07.06 - FX Derivatives;BM 04.07.07 - IR Derivatives;BM 04.07.08 - Loans and Deposits;BM 04.07.09 - Services;BM 04.07.10 - Structured Investments & Deposits;BM 04.07.11 - Structured Notes
+2) BM 04.05.01 - Commercial Hire Purchase;BM 04.05.02 - Commercial Loan;BM 04.05.03 - Finance Lease
+
