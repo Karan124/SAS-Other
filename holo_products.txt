@@ -1,0 +1,229 @@
+You are an expert Python data engineering assistant. I need you to generate a robust, production-quality Python script for a Payment Controls PoC.
+
+Context:
+I am working with a Holocentric payment process dataset. Product information is missing for some L3 process records. The intent is to clean existing product fields, create a distinct product catalogue from populated products, identify processes where product information is missing, and prepare an LLM-ready payload so a later script can infer products using the fixed product catalogue.
+
+Important:
+Do not assume anything that is not stated below. If something is unclear, explicitly call it out in comments or assumptions. Generate a full script, not snippets.
+
+Input file:
+C:\Users\m061400\ai-test\big_table\holocentric_payment_processes.xlsx
+
+Output folder:
+C:\Users\m061400\ai-test\big_table\products
+
+Input columns expected:
+- l3_process_UUID
+- l2_process_UUID
+- l2_process_id
+- l2_process_name
+- l2_process_description
+- l3_activity_id
+- l3_activity_name
+- l3_activity_description
+- l3_activity_channels
+- l3_activity_customer_segments
+- l3_activity_product/service
+- l3_activity_component_products
+- value_stream_name
+- vcm_library_name
+- vcm_library_type
+- value_chain
+- bcm
+- task_name
+- alphabet_app
+- process_category
+- process_lifecycle_stage
+- payment_rationale
+
+Product columns:
+- l3_activity_product/service
+- l3_activity_component_products
+
+Product value format example:
+BM 04.11.02 - Margin Lending;BM 04.11.05 - Managed Funds - Wholesale Plus;BM 04.11.06 - Managed Funds - Retail Investments (MIS);BM 04.11.07 - Managed Funds - Wrap Essentials
+
+Requirements for cleaning product values:
+1. Product values are semicolon-delimited.
+2. Remove the BM-style prefix from each product value.
+   Example:
+   "BM 04.11.02 - Margin Lending"
+   should become:
+   "Margin Lending"
+3. The prefix pattern may look like:
+   BM 04.11.02 -
+   BM 04.11.02-
+   BM 04.11.02 –
+   BM 04.11.02 —
+4. Do not retain the BM code in a separate column. It is not required for the LLM.
+5. Merge the cleaned products from both product columns into one final product field.
+6. The merged product field should be called:
+   clean_product
+7. If multiple products exist, separate them using comma + space.
+   Example:
+   Margin Lending, Managed Funds - Wholesale Plus
+8. Remove duplicate products case-insensitively while preserving readable product names.
+9. Preserve the original raw product columns in the cleaned output file for auditability.
+
+Definition of missing product:
+A product should be treated as missing if:
+- both product columns are blank or null; or
+- the cleaned merged product field is blank after stripping whitespace; or
+- the value is a placeholder such as:
+  - N/A
+  - NA
+  - None
+  - Null
+  - Unknown
+  - Not Applicable
+  - Not Available
+  - Not Specified
+  - TBD
+  - TBC
+  - -
+
+Grain of output:
+- l3_process_UUID is the unique identifier.
+- Final cleaned dataset must be aggregated to one row per l3_process_UUID.
+- If multiple source rows exist for the same l3_process_UUID, combine useful descriptive fields into a single row.
+- For text columns, combine unique non-blank values using " | " as the delimiter.
+- For clean_product, combine unique product values using ", " as the delimiter.
+- task_name should be included because it may contain useful information, even though it is sparse.
+- If task_name has multiple values for the same l3_process_UUID, aggregate unique values using " | ".
+
+Create the following outputs:
+
+1. holocentric_products_cleaned.xlsx
+This should contain the full cleaned and aggregated dataset at one row per l3_process_UUID.
+
+It should include these derived columns near the front:
+- l3_process_UUID
+- clean_product
+- has_product
+- requires_llm_product_inference
+- product_source
+
+Where:
+- has_product is True if clean_product is populated and not missing-like.
+- requires_llm_product_inference is True if has_product is False.
+- product_source should indicate whether the product came from:
+  - l3_activity_product/service
+  - l3_activity_component_products
+  - Both product/service and component_products
+  - Missing
+
+Also include the original descriptive fields after these derived columns.
+
+2. holocentric_missing_product_llm_payload.jsonl
+This should contain one JSON object per missing-product l3_process_UUID.
+
+Each JSON object should include:
+- l3_process_UUID
+- task
+- allowed_product_catalogue
+- process_details
+- expected_response_format
+
+The task should say:
+"Infer the most likely product or products for this Holocentric L3 payment process using only the allowed product catalogue."
+
+allowed_product_catalogue:
+- This should be a distinct sorted list of all clean products found from the populated product rows in the dataset.
+- The list should be derived from the cleaned product values only.
+- Do not invent product names.
+
+process_details should include:
+- l3_process_UUID
+- l2_process_UUID
+- l2_process_id
+- l2_process_name
+- l2_process_description
+- l3_activity_id
+- l3_activity_name
+- l3_activity_description
+- l3_activity_channels
+- l3_activity_customer_segments
+- value_stream_name
+- vcm_library_name
+- vcm_library_type
+- value_chain
+- bcm
+- task_name
+- alphabet_app
+- process_category
+- process_lifecycle_stage
+- payment_rationale
+
+expected_response_format should be:
+{
+  "inferred_products": ["Product name from allowed_product_catalogue"],
+  "confidence": "High | Medium | Low",
+  "rationale": "Brief explanation based on the process description fields",
+  "requires_human_review": true
+}
+
+3. holocentric_missing_product_llm_payload.xlsx
+This should be a human-readable review version of the JSONL payload.
+
+It should include:
+- l3_process_UUID
+- key process detail fields
+- allowed_product_catalogue_count
+- allowed_product_catalogue_preview
+- llm_payload_json
+
+The preview can show the first 30 products only.
+
+4. holocentric_product_cleaning_summary.xlsx
+This should contain summary sheets:
+- overall_summary
+- by_process_category
+- by_lifecycle_stage
+- by_product_source
+- product_catalogue
+
+overall_summary should include:
+- input row count
+- unique l3_process_UUID count
+- number of L3 processes with product
+- number of L3 processes missing product requiring LLM inference
+- distinct product catalogue count
+
+product_catalogue should contain one column:
+- product_name
+
+Script quality requirements:
+1. Use Python.
+2. Use pandas and openpyxl.
+3. Read Excel using:
+   pd.read_excel(..., engine="openpyxl", dtype=str)
+4. Validate that the input file exists.
+5. Validate that all expected columns exist.
+6. If expected columns are missing, raise a clear error listing the missing columns.
+7. Strip whitespace from column names after reading.
+8. Normalize text safely:
+   - convert NaN/null to blank string
+   - strip leading/trailing whitespace
+   - replace tabs, carriage returns, and newlines with spaces
+   - collapse repeated whitespace
+9. Do not allow blank l3_process_UUID values to silently flow into the final output.
+   - Count blank l3_process_UUID rows.
+   - Exclude them from the final aggregated output.
+   - Print a clear warning if any are found.
+10. Make the script robust to blank cells and unexpected data types.
+11. Use pathlib for file paths.
+12. Ensure the output folder is created if it does not exist.
+13. Print useful progress messages and final output paths.
+14. Make sure the script saves all outputs into:
+    C:\Users\m061400\ai-test\big_table\products
+15. Avoid complex dependencies beyond pandas and openpyxl.
+16. Do not call the LLM in this script.
+17. This script is only for cleaning, product catalogue creation, missing-product identification, and payload preparation.
+18. Add comments explaining each major section.
+19. Ensure there are no syntax errors.
+20. Make the script Windows-compatible.
+
+Important clarification:
+The LLM call script already exists separately and will be shared later. This script should only generate the required inputs for the later LLM stage.
+
+Please generate the complete final Python script.
