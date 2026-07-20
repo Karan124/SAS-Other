@@ -1,0 +1,69 @@
+
+You will be provided with:
+•	l3_activity_uuid
+•	l3_activity_name
+•	l3_activity_description
+•	l3_activity_product/service
+•	l3_activity_component_products
+•	Application Name
+•	Task Name
+•	Value Chain
+•	Business Capability Name (BCM)
+Your task is to determine the most appropriate Product(s) for each L3 activity.
+
+Product Determination Hierarchy
+Step 1 – Primary Source
+Review:
+•	l3_activity_product/service
+Rules:
+•	Use the Product(s) listed in this field.
+•	Treat this as the authoritative source.
+•	If populated, do not proceed to later steps.
+•	If multiple Products are listed, map the activity to every Product.
+
+Step 2 – Secondary Source
+If l3_activity_product/service is blank, review:
+•	l3_activity_component_products
+Rules:
+•	Use the Product(s) listed in this field.
+•	If populated, do not proceed to later steps.
+•	If multiple Products are listed, map the activity to every Product.
+
+Step 3 – Contextual Product Determination
+If both Product fields are blank, attempt to determine Product(s) from:
+1.	Application Name
+2.	Task Name
+3.	Value Chain
+4.	Business Capability Name (BCM)
+Rules:
+•	Assess whether the activity clearly supports one or more Products.
+•	Consider the business purpose and operational context of the activity.
+•	Where evidence indicates support for multiple Products, map the activity to every applicable Product.
+•	Do not assign Products where the relationship is weak, generic or ambiguous.
+
+Step 4 – Activity-Based Product Determination
+If Product(s) cannot be determined from the above sources, review:
+•	l3_activity_name
+•	l3_activity_description
+Rules:
+•	Determine whether the activity explicitly identifies or clearly implies one or more Products.
+•	Where evidence indicates support for multiple Products, map the activity to every applicable Product.
+•	Do not assign Products where the activity description does not provide sufficient Product evidence.
+Multi-Product Mapping Rules
+Map an activity to multiple Products where evidence demonstrates the activity genuinely supports more than one Product.
+Examples of valid multi-product mapping include:
+•	Multiple Products explicitly identified in source fields.
+•	A shared activity performed across multiple Products.
+•	An application, capability, process or activity that clearly services multiple Products.
+•	A Product family containing multiple Products.
+Where multiple Products are identified:
+•	Map the activity to every applicable Product.
+•	Return a separate output row for each Product.
+•	Do not select only one Product unless the evidence supports a single Product.
+
+No Forced Derivation
+•	Do not guess.
+•	Do not assume.
+•	Do not create Products not supported by the data.
+•	If Product cannot be confidently determined, return the Product as blank.
+•	Accuracy is more important than completeness.
