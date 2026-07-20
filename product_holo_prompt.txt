@@ -1,0 +1,90 @@
+Q1 - Application names in control descriptions
+Response: The below control text fields will be used and application names may appear as plain text within these fields.
+Control_ID
+CTRL_NAME
+CTRL_NATRE
+CTRL_STUS
+CTRL_OWNER
+CTRL_FREQ
+CTRL_KEY_CONTRL
+CTRL_DESC
+CTRL_TYP
+CTRL_ASSESS_RTNG
+CTRL_CTGRY_1
+CTRL_CTGRY_2
+CTRL_OE_RTNG
+CTRL_DE_RTNG
+CTRL_LOC_LIST
+CTRL_EVDNCD
+CTRL_MNTRD
+CTRL_CATEGORY
+COMMON_CTRL_REFERENCE
+COMMON_CTRL_TYP
+CTRL_DESC_OF_CTRL
+CTRL_FLDR
+object_path_leaf
+CTRL_FLDR_LVL_2
+gold_control
+
+A few examples of control descriptions:
+Example 1
+A monitoring and exception management platform is automatically updated from multiple source systems on a daily basis. The platform provides reporting and exception management capabilities for a range of monitoring rules reviewed periodically by the relevant business team.
+Examples of rules include:
+
+Incorrect pricing or rate application
+Statementing exceptions
+Inactive merchant/customer monitoring
+Fee charging exceptions
+
+Supporting documentation and dashboards are referenced via internal knowledge repositories.
+
+Example 2
+A billing and pricing request maker/checker process.
+Requests are received through workflow tools and validated for completeness before processing in a billing platform. Where required information is missing, requests are returned to the requester for clarification.
+Activities include:
+
+Customer setup
+Pricing configuration
+Billing establishment
+Independent quality checking
+Exception reporting and investigation
+
+Certain pricing changes require approval through an automated approval workflow before they can be finalised.
+Weekly exception reporting is reviewed by relevant oversight teams.
+
+Example 3
+In the event an automation or robot fails to execute as designed, a manual fallback process is followed.
+Activities include:
+
+Receiving settlement data from multiple counterparties
+Extracting and validating figures from source reports
+Comparing results across systems
+Independent checker review
+Uploading settlement files to an external settlement platform
+Performing reconciliations
+Retaining evidence including spreadsheets, reports, screenshots and emails
+
+
+Q2 - Master application list
+Response: A master application inventory is available and application names appear in a dedicated field.
+Example application names:
+
+Batch Interface System
+Direct Entry
+Trading Bank
+IMS Database
+Bankfile
+Automated Balancing System
+Automatic Teller Online
+Data Warehouse Platform
+ORMB
+
+
+Q3 - Product information on the control side
+Response: There is no dedicated product column. Product information may appear within the control description text.
+
+Q4 - Output format
+Response: Open to recommendation based on what is most effective for the use case.
+
+Q5 - Scope of controls to link
+Response: Scope remains unchanged.
