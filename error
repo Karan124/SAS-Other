@@ -1,3 +1,2 @@
-curl -s -o NUL -w "%{http_code}\n" -u M061400:<token> https://artifactory.srv.westpac.com.au/artifactory/api/pypi/westpac-pypi/simple/openpyxl/
-
-curl -s -o NUL -w "%{http_code}\n" -H "Authorization: Bearer <token>" https://artifactory.srv.westpac.com.au/artifactory/api/pypi/westpac-pypi/simple/openpyxl/
+pip config set global.index-url https://M061400:<token>@artifactory.srv.westpac.com.au/artifactory/api/pypi/westpac-pypi/simple
+pip install openpyxl
