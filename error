@@ -1,0 +1,4 @@
+S C:\Users\M061400\ai-test> pip install openpyxl
+Looking in indexes: https://artifactory.srv.westpac.com.au/artifactory/api/pypi/westpac-pypi/simple
+ERROR: Could not find a version that satisfies the requirement openpyxl (from versions: none)
+ERROR: No matching distribution found for openpyxl
