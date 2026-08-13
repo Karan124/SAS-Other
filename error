@@ -1,4 +1,52 @@
-S C:\Users\M061400\ai-test> pip install openpyxl
+PS C:\Users\M061400\ai-test> pip install openpyxl -v
+Using pip 26.2.1 from C:\Users\M061400\AppData\Local\Programs\Python\Python312\Lib\site-packages\pip (python 3.12)
 Looking in indexes: https://artifactory.srv.westpac.com.au/artifactory/api/pypi/westpac-pypi/simple
 ERROR: Could not find a version that satisfies the requirement openpyxl (from versions: none)
 ERROR: No matching distribution found for openpyxl
+PS C:\Users\M061400\ai-test> curl -v https://artifactory.srv.westpac.com.au/artifactory/api/pypi/westpac-pypi/simple/openpyxl/
+* Host artifactory.srv.westpac.com.au:443 was resolved.
+* IPv6: (none)
+* IPv4: 100.64.1.28
+*   Trying 100.64.1.28:443...
+* schannel: disabled automatic use of client certificate
+* ALPN: curl offers http/1.1
+* ALPN: server accepted http/1.1
+* Established connection to artifactory.srv.westpac.com.au (100.64.1.28 port 443) from 192.168.0.112 port 59433 
+* using HTTP/1.x
+> GET /artifactory/api/pypi/westpac-pypi/simple/openpyxl/ HTTP/1.1
+> Host: artifactory.srv.westpac.com.au
+> User-Agent: curl/8.21.0
+> Accept: */*
+> 
+* Request completely sent off
+* schannel: remote party requests renegotiation
+* schannel: renegotiating SSL/TLS connection
+* schannel: SSL/TLS connection renegotiated
+* schannel: remote party requests renegotiation
+* schannel: renegotiating SSL/TLS connection
+* schannel: SSL/TLS connection renegotiated
+< HTTP/1.1 403 Forbidden
+< content-type: application/json
+< date: Thu, 13 Aug 2026 01:13:06 GMT
+< x-artifactory-id: a2dc6ecf26aae1833eaf847ed12729cfae7ad0da
+< x-artifactory-node-id: art-dc1-app1
+< x-jfrog-version: Artifactory/7.117.14 81714900
+< transfer-encoding: chunked
+< strict-transport-security: max-age=63072000
+< 
+{
+  "errors" : [ {
+    "status" : 403,
+    "message" : "{\"error\":\"Forbidden\",\"reason\":\"User has no permissions to resolve packages.\"}"
+  } ]
+}* Connection #0 to host artifactory.srv.westpac.com.au:443 left intact
+PS C:\Users\M061400\ai-test> Invoke-WebRequest -Uri "https://artifactory.srv.westpac.com.au/artifactory/api/pypi/westpac-pypi/simple/openpyxl" -UseBasicParsing
+Invoke-WebRequest:                                                                                          
+{
+  "errors": [
+    {
+      "status": 403,
+      "message": "{\u0022error\u0022:\u0022Forbidden\u0022,\u0022reason\u0022:\u0022User has no permissionsto resolve packages.\u0022}"
+    }
+  ]
+}
