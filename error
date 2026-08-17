@@ -1,80 +1,29 @@
-PS C:\Users\m061400\ai-test\big_table\duplicates\product> python .\03_run_llm_assessment.py
-2026-08-17 22:10:22 [INFO] ======================================================================
-2026-08-17 22:10:22 [INFO]   Control Rationalisation — Step 3: LLM Assessment
-2026-08-17 22:10:22 [INFO]   Model    : gpt-5.4 (medium reasoning)
-2026-08-17 22:10:22 [INFO]   Started  : 2026-08-17 22:10:22
-2026-08-17 22:10:22 [INFO] ======================================================================
-2026-08-17 22:10:22 [INFO] Loading data...
-2026-08-17 22:10:23 [INFO]   Expanded rows: 3,155
-2026-08-17 22:10:23 [INFO] Initialising Azure OpenAI client...
-2026-08-17 22:10:24 [INFO] Client ready.
-2026-08-17 22:10:24 [INFO]
-Processing within-product scopes...
-2026-08-17 22:10:24 [INFO]   Total WP scopes : 428 | Already done: 0
-  [  0.9%] WP|AUD Investment Accounts|Customer to Customer|Posting ETA 4h 24m  A$0.282026-08-17 22:14:43 [WARNING]   Attempt 1 failed for WP|AUD Investment Accounts|Customer to Customer|Posting, Accounting & Detection|CT2::0: Expecting value: line 1 column 1 (char 0). Retrying in 6s..
+# Find (in both functions):
+lines.append(row.get("llm_payload_text", f"Control_ID: {row['Control_ID']}"))
 
-Below is a partially shown script where calling the LLM worked:
+# Change to:
+lines.append(build_short_control_text(row))
 
-"""
-run_linkage_llm_reranker.py
-─────────────────────────────────────────────────────────────────────────────
-Payments Controls PoC — Multi-Signal Linkage LLM Reranker
-Stage 2 of 2
 
-Reads the top-15 candidates per control from Stage 1 and uses the LLM to
-determine which candidates represent defensible control-to-process linkages.
+def build_short_control_text(row: pd.Series) -> str:
+    """Condensed control text for LLM prompts — essential fields only."""
+    def f(field, label):
+        val = str(row.get(field, "") or "").strip()
+        return f"{label}: {val}" if val else ""
 
-The LLM has full context:
-  - Complete control description and all signals
-  - Each candidate's process name, description, Alfabet apps, products
-  - Which signals fired (app match, product match, composite score)
-  - CT taxonomy alignment
-
-Output distinguishes linkage confidence levels and always requires SME review.
-
-Before running (PowerShell):
-  az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
-  $env:REQUESTS_CA_BUNDLE = "C:\\path\\to\\cacert.pem"
-  $env:SSL_CERT_FILE      = "C:\\path\\to\\cacert.pem"
-  Remove-Item Env:AZURE_CA_BUNDLE -ErrorAction SilentlyContinue
-  python run_linkage_llm_reranker.py
-  python run_linkage_llm_reranker.py --force
-"""
-
-import argparse
-import json
-import random
-import re
-import time
-from pathlib import Path
-
-import pandas as pd
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from openai import AzureOpenAI
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  CONFIG
-# ─────────────────────────────────────────────────────────────────────────────
-
-AZURE_ENDPOINT        = "https://ai.eng.azure.srv.westpac.com.au"
-API_VERSION           = "2024-10-21"
-MODEL                 = "gpt-5.4"
-REASONING_EFFORT      = "medium"
-MAX_COMPLETION_TOKENS = 16000
-
-BASE_DIR     = Path(r"C:\Users\m061400\ai-test\big_table")
-MULTI_DIR    = BASE_DIR / "multi_signal"
-
-CANDIDATES_FILE  = MULTI_DIR / "candidates_top15.xlsx"
-CONTROLS_FILE    = BASE_DIR / "juno_payment_controls_gold.xlsx"
-LINKAGE_WB       = BASE_DIR / "phase1e_outputs" / "payment_control_linkage_analysis.xlsx"
-CHECKPOINT       = MULTI_DIR / "llm_reranker_checkpoint.jsonl"
-OUTPUT_FILE      = MULTI_DIR / "linkage_recommendations.xlsx"
-
-RETRY_COUNT   = 3
-RETRY_BASE    = 5
-SLEEP_BETWEEN = 0.5
-
-INPUT_PRICE_USD_PER_M  = 1.75
-OUTPUT_PRICE_USD_PER_M = 14.00
-AUD_USD_RATE           = 0.65
+    lines = [
+        f("Control_ID",          "Control ID"),
+        f("CTRL_NAME",           "Control Name"),
+        f("Control Objective",   "Control Objective"),
+        f("Control_Description", "Control Description"),
+        f("CTRL_NATRE",          "Nature"),
+        f("CTRL_TYP",            "Type"),
+        f("CTRL_FREQ",           "Frequency"),
+        f("CTRL_EVDNCD",         "Evidence"),
+        f("Product",             "Product"),
+        f("Payment Category",    "Payment Category"),
+        f("Consolidated Stage",  "Stage"),
+        f("ct_ref_norm",         "CT Reference"),
+        f("CTRL_FLDR_LVL_2(Division)", "Division"),
+    ]
+    return "\n".join(line for line in lines if line)
