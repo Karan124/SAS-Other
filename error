@@ -1,6 +1,20 @@
-$env:HTTP_PROXY          = "http://127.0.0.1:9000"
-$env:HTTPS_PROXY         = "http://127.0.0.1:9000"
-$env:REQUESTS_CA_BUNDLE  = "C:\Users\m061400\ai-test\cacert.pem"
-$env:SSL_CERT_FILE       = "C:\Users\m061400\ai-test\cacert.pem"
-Remove-Item Env:AZURE_CA_BUNDLE -ErrorAction SilentlyContinue
-python 03_run_llm_assessment.py
+PS C:\Users\m061400\ai-test\big_table\duplicates\product> $env:HTTP_PROXY          = "http://127.0.0.1:9000"
+PS C:\Users\m061400\ai-test\big_table\duplicates\product> $env:HTTPS_PROXY         = "http://127.0.0.1:9000"
+PS C:\Users\m061400\ai-test\big_table\duplicates\product> $env:REQUESTS_CA_BUNDLE  = "C:\Users\m061400\ai-test\cacert.pem"
+PS C:\Users\m061400\ai-test\big_table\duplicates\product> $env:SSL_CERT_FILE       = "C:\Users\m061400\ai-test\cacert.pem"
+PS C:\Users\m061400\ai-test\big_table\duplicates\product> Remove-Item Env:AZURE_CA_BUNDLE -ErrorAction SilentlyContinue
+PS C:\Users\m061400\ai-test\big_table\duplicates\product> python 03_run_llm_assessment.py
+2026-08-17 22:45:23 [INFO] ======================================================================
+2026-08-17 22:45:23 [INFO]   Control Rationalisation — Step 3: LLM Assessment
+2026-08-17 22:45:23 [INFO]   Model          : gpt-5.4 (low reasoning)
+2026-08-17 22:45:23 [INFO]   Sub-batch size : 5 controls per LLM call
+2026-08-17 22:45:23 [INFO]   Started        : 2026-08-17 22:45:23
+2026-08-17 22:45:23 [INFO] ======================================================================
+2026-08-17 22:45:23 [INFO] Loading data...
+2026-08-17 22:45:23 [INFO]   Expanded rows: 3,155
+2026-08-17 22:45:23 [INFO] Initialising Azure OpenAI client...
+2026-08-17 22:45:24 [INFO] Client ready.
+2026-08-17 22:45:24 [INFO]
+Processing within-product scopes...
+2026-08-17 22:45:24 [INFO]   Total WP scopes : 428 | Already done keys: 1
+  [ 19.9%] WP|Credit Derivatives|Institution to Institution|Execut ETA 3h 6m  A$6.253
