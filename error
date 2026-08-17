@@ -1,37 +1,105 @@
+PS C:\Users\m061400\ai-test\big_table\duplicates\product> python .\02_generate_embeddings_and_candidates.py --force
+2026-08-17 21:39:26 [INFO] ======================================================================
+2026-08-17 21:39:26 [INFO]   Control Rationalisation — Step 2: Embeddings & Candidate Pairs
+2026-08-17 21:39:26 [INFO]   Started: 2026-08-17 21:39:26
+2026-08-17 21:39:26 [INFO] ======================================================================
+2026-08-17 21:39:26 [INFO]   Similarity threshold   : 0.58
+2026-08-17 21:39:26 [INFO]   Max controls per batch : 20
+2026-08-17 21:39:26 [INFO]   Run within-product     : True
+2026-08-17 21:39:26 [INFO]   Run cross-product      : True
+2026-08-17 21:39:26 [INFO] Loading expanded dataset...
+2026-08-17 21:39:26 [INFO]   Rows: 3,155 | Unique controls: 390
+2026-08-17 21:39:26 [INFO] Generating embeddings for unique controls...
+2026-08-17 21:39:26 [INFO]   Unique controls to embed: 390
+2026-08-17 21:39:26 [INFO] Initialising Azure OpenAI client...
+2026-08-17 21:39:26 [INFO] Client ready.
+2026-08-17 21:39:26 [INFO]   Embedding 390 controls in batches of 20...
+2026-08-17 21:39:37 [WARNING] Batch 1 attempt 1 failed: Connection error.. Retrying in 5s...
+2026-08-17 21:39:44 [WARNING] Batch 1 attempt 2 failed: Connection error.. Retrying in 10s...
+
+Below is one of the file that uses LLM (only partial code shown)
+
 """
-02_generate_embeddings_and_candidates.py
+run_linkage_llm_reranker.py
 ─────────────────────────────────────────────────────────────────────────────
-Control Rationalisation — Step 2 of 4: Embeddings and Candidate Pairs
+Payments Controls PoC — Multi-Signal Linkage LLM Reranker
+Stage 2 of 2
 
-Reads the expanded parquet from Step 1.
-Generates embeddings for unique controls (cached to avoid re-generation).
-Builds within-product and cross-product assessment scopes.
-Identifies candidate pairs using cosine similarity + structured field matching.
-Flags small groups (≤ MAX_CONTROLS_PER_LLM_CALL) for full-group LLM calls.
-Batches large groups using embedding similarity.
+Reads the top-15 candidates per control from Stage 1 and uses the LLM to
+determine which candidates represent defensible control-to-process linkages.
 
-Outputs:
-  control_embeddings.parquet             — embeddings per unique control
-  candidate_pairs_within_product.parquet — candidate pairs + batch assignments
-  candidate_pairs_cross_product.parquet  — candidate pairs + batch assignments
-  scope_summary_within_product.parquet   — one row per scope with metadata
-  scope_summary_cross_product.parquet    — one row per scope with metadata
+The LLM has full context:
+  - Complete control description and all signals
+  - Each candidate's process name, description, Alfabet apps, products
+  - Which signals fired (app match, product match, composite score)
+  - CT taxonomy alignment
+
+Output distinguishes linkage confidence levels and always requires SME review.
 
 Before running (PowerShell):
   az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
-  $env:REQUESTS_CA_BUNDLE = "C:\\Users\\m061400\\ai-test\\cacert.pem"
-  $env:SSL_CERT_FILE      = "C:\\Users\\m061400\\ai-test\\cacert.pem"
+  $env:REQUESTS_CA_BUNDLE = "C:\\path\\to\\cacert.pem"
+  $env:SSL_CERT_FILE      = "C:\\path\\to\\cacert.pem"
   Remove-Item Env:AZURE_CA_BUNDLE -ErrorAction SilentlyContinue
-  python 02_generate_embeddings_and_candidates.py
-  python 02_generate_embeddings_and_candidates.py --force
+  python run_linkage_llm_reranker.py
+  python run_linkage_llm_reranker.py --force
 """
 
 import argparse
 import json
-import logging
-import sys
+import random
+import re
 import time
-from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from openai import AzureOpenAI
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  CONFIG
+# ─────────────────────────────────────────────────────────────────────────────
+
+AZURE_ENDPOINT        = "https://ai.eng.azure.srv.westpac.com.au"
+API_VERSION           = "2024-10-21"
+MODEL                 = "gpt-5.4"
+REASONING_EFFORT      = "medium"
+MAX_COMPLETION_TOKENS = 16000
+
+
+
+Another embeddings script:
+
+"""
+build_linkage_candidates.py
+─────────────────────────────────────────────────────────────────────────────
+Payments Controls PoC — Multi-Signal Linkage Candidate Generation
+Stage 1 of 2
+
+Generates candidate control-to-process linkages for:
+  Population A: 141 controls linked to non-payment Holo processes only
+  Population B: 187 controls with no Holo linkage
+
+Three signals combined into a composite score per control-process pair:
+  1. Application matching  — Alfabet apps in control text vs process Alfabet apps
+  2. Product matching      — Product terms in control text vs process products
+  3. Semantic similarity   — Text embedding cosine similarity (enriched with apps/products)
+  4. CT alignment          — Rule-based CT outcome vs process lifecycle stage
+
+Outputs top 15 candidates per control for LLM reranking in Stage 2.
+
+Before running (PowerShell):
+  az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
+  $env:REQUESTS_CA_BUNDLE = "C:\\path\\to\\cacert.pem"
+  $env:SSL_CERT_FILE      = "C:\\path\\to\\cacert.pem"
+  Remove-Item Env:AZURE_CA_BUNDLE -ErrorAction SilentlyContinue
+  python build_linkage_candidates.py
+  python build_linkage_candidates.py --force   # regenerate embeddings
+"""
+
+import argparse
+import re
+import time
 from pathlib import Path
 
 import numpy as np
@@ -40,535 +108,14 @@ from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import AzureOpenAI
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  CONFIG — must match Script 1
+#  CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
-
-OUTPUT_DIR       = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
 
 AZURE_ENDPOINT   = "https://ai.eng.azure.srv.westpac.com.au"
 API_VERSION      = "2024-10-21"
 EMBEDDING_MODEL  = "text-embedding-3-large"
 EMBEDDING_DIM    = 3072
+MAX_CHAR         = 24000   # ~8000 tokens safety margin
 
-EMBED_BATCH      = 20      # texts per embedding API call
-EMBED_SLEEP      = 2.0     # seconds between batches (rate limit buffer)
-
-# Paths (all relative to OUTPUT_DIR)
-EXPANDED_PARQUET        = OUTPUT_DIR / "expanded_product_control_mapping.parquet"
-EMBEDDINGS_PARQUET      = OUTPUT_DIR / "control_embeddings.parquet"
-CAND_WP_PARQUET         = OUTPUT_DIR / "candidate_pairs_within_product.parquet"
-CAND_CP_PARQUET         = OUTPUT_DIR / "candidate_pairs_cross_product.parquet"
-SCOPE_WP_PARQUET        = OUTPUT_DIR / "scope_summary_within_product.parquet"
-SCOPE_CP_PARQUET        = OUTPUT_DIR / "scope_summary_cross_product.parquet"
-RUN_CONFIG              = OUTPUT_DIR / "run_config.json"
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  LOGGING (append to existing log from Script 1)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def get_logger() -> logging.Logger:
-    logger = logging.getLogger("ctrl_rat")
-    if logger.handlers:
-        return logger
-    log_path = OUTPUT_DIR / "processing_log.txt"
-    fh = logging.FileHandler(log_path, encoding="utf-8")
-    fh.setLevel(logging.DEBUG)
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.INFO)
-    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s",
-                            datefmt="%Y-%m-%d %H:%M:%S")
-    fh.setFormatter(fmt)
-    ch.setFormatter(fmt)
-    logger.addHandler(fh)
-    logger.addHandler(ch)
-    logger.setLevel(logging.DEBUG)
-    return logger
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  AZURE CLIENT
-# ─────────────────────────────────────────────────────────────────────────────
-
-def init_client() -> AzureOpenAI:
-    token_provider = get_bearer_token_provider(
-        DefaultAzureCredential(),
-        "https://cognitiveservices.azure.com/.default"
-    )
-    return AzureOpenAI(
-        azure_endpoint=AZURE_ENDPOINT,
-        api_version=API_VERSION,
-        azure_ad_token_provider=token_provider,
-    )
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  EMBEDDING GENERATION
-# ─────────────────────────────────────────────────────────────────────────────
-
-def generate_embeddings(client: AzureOpenAI,
-                        texts: list[str],
-                        label: str,
-                        log: logging.Logger) -> np.ndarray:
-    """Generate embeddings in batches with retry and rate-limit handling."""
-    all_embs = []
-    total = len(texts)
-    log.info(f"  Embedding {total:,} {label} in batches of {EMBED_BATCH}...")
-
-    for i in range(0, total, EMBED_BATCH):
-        batch = texts[i:i + EMBED_BATCH]
-        # Truncate to ~24k chars (~8000 tokens) as safety margin
-        batch = [t[:24000] for t in batch]
-
-        for attempt in range(4):
-            try:
-                resp = client.embeddings.create(
-                    model=EMBEDDING_MODEL, input=batch)
-                all_embs.extend([d.embedding for d in resp.data])
-                done = min(i + EMBED_BATCH, total)
-                print(f"    {done:,}/{total:,} ({done/total*100:.0f}%)", end="\r")
-                time.sleep(EMBED_SLEEP)
-                break
-            except Exception as e:
-                if attempt == 3:
-                    log.error(f"Embedding batch {i//EMBED_BATCH+1} failed: {e}")
-                    raise
-                wait = min(5 * 2**attempt, 60)
-                log.warning(f"Batch {i//EMBED_BATCH+1} attempt {attempt+1} failed: "
-                            f"{e}. Retrying in {wait}s...")
-                time.sleep(wait)
-
-    print(f"    {total:,}/{total:,} (100%) done        ")
-    return np.array(all_embs, dtype=np.float32)
-
-
-def load_or_generate_embeddings(df: pd.DataFrame,
-                                force: bool,
-                                log: logging.Logger) -> pd.DataFrame:
-    """
-    Returns a DataFrame with columns: Control_ID, embedding (list of float).
-    Uses cached parquet if available and --force not set.
-    """
-    if EMBEDDINGS_PARQUET.exists() and not force:
-        log.info(f"Loading cached embeddings: {EMBEDDINGS_PARQUET.name}")
-        emb_df = pd.read_parquet(EMBEDDINGS_PARQUET, engine="pyarrow")
-        log.info(f"  Loaded {len(emb_df):,} embeddings")
-        return emb_df
-
-    log.info("Generating embeddings for unique controls...")
-    unique_ctrl = (df[["Control_ID","embedding_text"]]
-                   .drop_duplicates(subset=["Control_ID"])
-                   .reset_index(drop=True))
-    log.info(f"  Unique controls to embed: {len(unique_ctrl):,}")
-
-    log.info("Initialising Azure OpenAI client...")
-    client = init_client()
-    log.info("Client ready.")
-
-    texts  = unique_ctrl["embedding_text"].tolist()
-    embs   = generate_embeddings(client, texts, "controls", log)
-
-    emb_df = pd.DataFrame({
-        "Control_ID": unique_ctrl["Control_ID"].tolist(),
-        "embedding":  [e.tolist() for e in embs],
-    })
-    emb_df.to_parquet(EMBEDDINGS_PARQUET, index=False, engine="pyarrow")
-    log.info(f"Embeddings cached: {EMBEDDINGS_PARQUET.name} ({len(emb_df):,} rows)")
-    return emb_df
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  COSINE SIMILARITY
-# ─────────────────────────────────────────────────────────────────────────────
-
-def cosine_sim_matrix(embs: np.ndarray) -> np.ndarray:
-    """N×N cosine similarity matrix for a set of embeddings."""
-    norms = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-9
-    normed = embs / norms
-    return (normed @ normed.T).astype(np.float32)
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  BATCH ASSIGNMENT FOR LARGE GROUPS
-# ─────────────────────────────────────────────────────────────────────────────
-
-def assign_batches(ctrl_ids: list[str],
-                   sim_matrix: np.ndarray,
-                   threshold: float,
-                   max_per_batch: int) -> dict[str, int]:
-    """
-    For groups larger than max_per_batch, assign each control to a batch.
-    Strategy:
-      1. Build a graph where edges connect controls with similarity >= threshold.
-      2. Use a greedy approach: seed a batch from the unassigned control with
-         the most neighbours, fill to max_per_batch with its most similar
-         unassigned neighbours.
-      3. Repeat until all controls are assigned.
-      4. Every control appears in at least one batch.
-
-    Returns: {control_id: batch_id}
-    """
-    n = len(ctrl_ids)
-    assigned   = {}   # control_id → batch_id
-    batch_id   = 0
-
-    # Build adjacency: for each control, sorted neighbour indices by similarity
-    neighbours = {}
-    for i in range(n):
-        # Sort by descending similarity, exclude self
-        sorted_idx = np.argsort(sim_matrix[i])[::-1]
-        sorted_idx = [j for j in sorted_idx if j != i]
-        neighbours[i] = sorted_idx
-
-    unassigned = set(range(n))
-
-    while unassigned:
-        # Seed with unassigned control that has most unassigned neighbours above threshold
-        def degree(i):
-            return sum(1 for j in neighbours[i]
-                       if j in unassigned and sim_matrix[i][j] >= threshold)
-
-        seed = max(unassigned, key=degree)
-        batch = [seed]
-        unassigned.discard(seed)
-
-        # Fill batch with most similar unassigned neighbours
-        for j in neighbours[seed]:
-            if len(batch) >= max_per_batch:
-                break
-            if j in unassigned:
-                batch.append(j)
-                unassigned.discard(j)
-
-        for idx in batch:
-            assigned[ctrl_ids[idx]] = batch_id
-
-        batch_id += 1
-
-    return assigned
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  CANDIDATE PAIR BUILDING
-# ─────────────────────────────────────────────────────────────────────────────
-
-def build_candidate_pairs(scope_df: pd.DataFrame,
-                          emb_lookup: dict[str, np.ndarray],
-                          scope_id: str,
-                          scope_type: str,
-                          threshold: float,
-                          max_per_batch: int,
-                          log: logging.Logger) -> tuple[list[dict], dict]:
-    """
-    For one scope (group), build candidate pairs and batch assignments.
-
-    Returns:
-      pairs_rows: list of dicts (one per candidate pair)
-      scope_meta: dict describing this scope
-    """
-    ctrl_ids = scope_df["Control_ID"].unique().tolist()
-    n = len(ctrl_ids)
-
-    # Retrieve embeddings in order
-    embs = []
-    missing = []
-    for cid in ctrl_ids:
-        if cid in emb_lookup:
-            embs.append(emb_lookup[cid])
-        else:
-            missing.append(cid)
-            embs.append(np.zeros(EMBEDDING_DIM, dtype=np.float32))
-
-    if missing:
-        log.warning(f"  Scope {scope_id}: {len(missing)} controls missing embeddings: "
-                    f"{missing[:3]}")
-
-    embs_arr = np.array(embs, dtype=np.float32)
-    sim_mat  = cosine_sim_matrix(embs_arr)
-
-    send_all  = (n <= max_per_batch)
-    pairs_rows = []
-    batch_map  = {}
-
-    if send_all:
-        # All controls go to LLM in one call — all pairs are candidates
-        batch_map = {cid: 0 for cid in ctrl_ids}
-        for i in range(n):
-            for j in range(i + 1, n):
-                pairs_rows.append({
-                    "scope_id":         scope_id,
-                    "scope_type":       scope_type,
-                    "control_id_a":     ctrl_ids[i],
-                    "control_id_b":     ctrl_ids[j],
-                    "cosine_similarity":float(sim_mat[i, j]),
-                    "above_threshold":  bool(sim_mat[i, j] >= threshold),
-                    "batch_id":         0,
-                    "send_all":         True,
-                })
-    else:
-        # Large group — assign batches using embedding similarity
-        batch_map = assign_batches(ctrl_ids, sim_mat, threshold, max_per_batch)
-        # Candidate pairs: all pairs above threshold (cross-batch pairs included
-        # so post-processing can detect cross-batch redundancy)
-        for i in range(n):
-            for j in range(i + 1, n):
-                sim = float(sim_mat[i, j])
-                if sim >= threshold:
-                    pairs_rows.append({
-                        "scope_id":         scope_id,
-                        "scope_type":       scope_type,
-                        "control_id_a":     ctrl_ids[i],
-                        "control_id_b":     ctrl_ids[j],
-                        "cosine_similarity":sim,
-                        "above_threshold":  True,
-                        "batch_id":         batch_map.get(ctrl_ids[i], 0),
-                        "send_all":         False,
-                    })
-
-    # n_batches
-    n_batches = len(set(batch_map.values())) if batch_map else 1
-
-    scope_meta = {
-        "scope_id":       scope_id,
-        "scope_type":     scope_type,
-        "n_controls":     n,
-        "send_all":       send_all,
-        "n_batches":      n_batches,
-        "n_pairs_above_threshold": sum(1 for r in pairs_rows
-                                       if r.get("above_threshold")),
-    }
-    return pairs_rows, scope_meta
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  SCOPE BUILDING
-# ─────────────────────────────────────────────────────────────────────────────
-
-def build_within_product_scopes(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    """
-    Within-product scope key:
-      Product + Payment Category + Consolidated Stage + ct_ref_norm
-    """
-    groups = {}
-    grp_cols = ["Product", "Payment Category", "Consolidated Stage", "ct_ref_norm"]
-    for keys, grp in df.groupby(grp_cols, dropna=False):
-        prod, pay_cat, stage, ct_ref = keys
-        scope_id = f"WP|{prod}|{pay_cat}|{stage}|{ct_ref}"
-        # Deduplicate controls within this scope
-        groups[scope_id] = grp.drop_duplicates(subset=["Control_ID"]).copy()
-    return groups
-
-
-def build_cross_product_scopes(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    """
-    Cross-product scope key: ct_ref_norm only.
-    Controls are deduplicated by Control_ID across all products.
-    """
-    groups = {}
-    for ct_ref, grp in df.groupby("ct_ref_norm", dropna=False):
-        if not ct_ref:
-            continue
-        scope_id = f"CP|{ct_ref}"
-        groups[scope_id] = grp.drop_duplicates(subset=["Control_ID"]).copy()
-    return groups
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  MAIN
-# ─────────────────────────────────────────────────────────────────────────────
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--force", action="store_true",
-                        help="Regenerate embeddings and candidate pairs even if cached.")
-    args = parser.parse_args()
-
-    log = get_logger()
-    log.info("=" * 70)
-    log.info("  Control Rationalisation — Step 2: Embeddings & Candidate Pairs")
-    log.info(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    log.info("=" * 70)
-
-    # ── Load config from Script 1 ──────────────────────────────────────────
-    if not RUN_CONFIG.exists():
-        log.error(f"run_config.json not found. Run Script 1 first.")
-        sys.exit(1)
-    with open(RUN_CONFIG) as f:
-        config = json.load(f)
-
-    threshold        = config.get("similarity_threshold", 0.78)
-    max_per_batch    = config.get("max_controls_per_llm_call", 20)
-    run_within       = config.get("run_within_product", True)
-    run_cross        = config.get("run_cross_product", True)
-    force_emb        = args.force or config.get("force_refresh_embeddings", False)
-
-    log.info(f"  Similarity threshold   : {threshold}")
-    log.info(f"  Max controls per batch : {max_per_batch}")
-    log.info(f"  Run within-product     : {run_within}")
-    log.info(f"  Run cross-product      : {run_cross}")
-
-    # ── Load expanded parquet ──────────────────────────────────────────────
-    if not EXPANDED_PARQUET.exists():
-        log.error(f"Expanded parquet not found. Run Script 1 first.")
-        sys.exit(1)
-
-    log.info(f"Loading expanded dataset...")
-    df = pd.read_parquet(EXPANDED_PARQUET, engine="pyarrow")
-    log.info(f"  Rows: {len(df):,} | Unique controls: {df['Control_ID'].nunique():,}")
-
-    # ── Check if outputs already exist ────────────────────────────────────
-    outputs_exist = (CAND_WP_PARQUET.exists() and CAND_CP_PARQUET.exists()
-                     and SCOPE_WP_PARQUET.exists() and SCOPE_CP_PARQUET.exists())
-    if outputs_exist and not args.force:
-        log.info("Candidate pair outputs already exist. Use --force to regenerate.")
-        log.info("Exiting Step 2.")
-        return
-
-    # ── Load or generate embeddings ────────────────────────────────────────
-    emb_df = load_or_generate_embeddings(df, force_emb, log)
-    emb_lookup = {
-        row["Control_ID"]: np.array(row["embedding"], dtype=np.float32)
-        for _, row in emb_df.iterrows()
-    }
-    log.info(f"Embedding lookup ready: {len(emb_lookup):,} controls")
-
-    # ── Build scopes ───────────────────────────────────────────────────────
-    all_wp_pairs, all_wp_scopes = [], []
-    all_cp_pairs, all_cp_scopes = [], []
-
-    if run_within:
-        log.info("\nBuilding within-product scopes and candidate pairs...")
-        wp_scopes = build_within_product_scopes(df)
-        log.info(f"  Within-product scopes: {len(wp_scopes):,}")
-
-        small, large = 0, 0
-        for scope_id, scope_df in wp_scopes.items():
-            n = scope_df["Control_ID"].nunique()
-            if n < 2:
-                # Single-control scope — no comparison possible
-                all_wp_scopes.append({
-                    "scope_id":   scope_id,
-                    "scope_type": "within_product",
-                    "n_controls": n,
-                    "send_all":   True,
-                    "n_batches":  1,
-                    "n_pairs_above_threshold": 0,
-                    "skip_reason": "single_control",
-                })
-                # Add a single-control "pair" row so Script 3 knows about this control
-                for _, row in scope_df.iterrows():
-                    all_wp_pairs.append({
-                        "scope_id":         scope_id,
-                        "scope_type":       "within_product",
-                        "control_id_a":     row["Control_ID"],
-                        "control_id_b":     None,
-                        "cosine_similarity":None,
-                        "above_threshold":  None,
-                        "batch_id":         0,
-                        "send_all":         True,
-                        "single_control":   True,
-                    })
-                continue
-
-            pairs_rows, scope_meta = build_candidate_pairs(
-                scope_df, emb_lookup, scope_id, "within_product",
-                threshold, max_per_batch, log)
-            scope_meta["skip_reason"] = ""
-            all_wp_pairs.extend(pairs_rows)
-            all_wp_scopes.append(scope_meta)
-
-            if scope_meta["send_all"]:
-                small += 1
-            else:
-                large += 1
-                log.info(f"  Large scope ({n} controls, "
-                         f"{scope_meta['n_batches']} batches): {scope_id[:80]}")
-
-        log.info(f"  Small scopes (send_all): {small:,} | "
-                 f"Large scopes (batched): {large:,}")
-
-    if run_cross:
-        log.info("\nBuilding cross-product scopes and candidate pairs...")
-        cp_scopes = build_cross_product_scopes(df)
-        log.info(f"  Cross-product scopes: {len(cp_scopes):,}")
-
-        for scope_id, scope_df in cp_scopes.items():
-            n = scope_df["Control_ID"].nunique()
-            if n < 2:
-                all_cp_scopes.append({
-                    "scope_id":   scope_id,
-                    "scope_type": "cross_product",
-                    "n_controls": n,
-                    "send_all":   True,
-                    "n_batches":  1,
-                    "n_pairs_above_threshold": 0,
-                    "skip_reason": "single_control",
-                })
-                for _, row in scope_df.iterrows():
-                    all_cp_pairs.append({
-                        "scope_id":         scope_id,
-                        "scope_type":       "cross_product",
-                        "control_id_a":     row["Control_ID"],
-                        "control_id_b":     None,
-                        "cosine_similarity":None,
-                        "above_threshold":  None,
-                        "batch_id":         0,
-                        "send_all":         True,
-                        "single_control":   True,
-                    })
-                continue
-
-            pairs_rows, scope_meta = build_candidate_pairs(
-                scope_df, emb_lookup, scope_id, "cross_product",
-                threshold, max_per_batch, log)
-            scope_meta["skip_reason"] = ""
-            all_cp_pairs.extend(pairs_rows)
-            all_cp_scopes.append(scope_meta)
-
-            if not scope_meta["send_all"]:
-                log.info(f"  Large cross-product scope ({n} controls, "
-                         f"{scope_meta['n_batches']} batches): {scope_id}")
-
-    # ── Save outputs ───────────────────────────────────────────────────────
-    log.info("\nSaving candidate pair outputs...")
-
-    if all_wp_pairs:
-        wp_df = pd.DataFrame(all_wp_pairs)
-        wp_df.to_parquet(CAND_WP_PARQUET, index=False, engine="pyarrow")
-        log.info(f"  {CAND_WP_PARQUET.name}: {len(wp_df):,} rows")
-    else:
-        pd.DataFrame().to_parquet(CAND_WP_PARQUET, index=False, engine="pyarrow")
-
-    if all_wp_scopes:
-        ws_df = pd.DataFrame(all_wp_scopes)
-        ws_df.to_parquet(SCOPE_WP_PARQUET, index=False, engine="pyarrow")
-        log.info(f"  {SCOPE_WP_PARQUET.name}: {len(ws_df):,} scopes")
-        log.info(f"    send_all scopes   : "
-                 f"{ws_df['send_all'].sum():,}")
-        log.info(f"    batched scopes    : "
-                 f"{(~ws_df['send_all']).sum():,}")
-    else:
-        pd.DataFrame().to_parquet(SCOPE_WP_PARQUET, index=False, engine="pyarrow")
-
-    if all_cp_pairs:
-        cp_df = pd.DataFrame(all_cp_pairs)
-        cp_df.to_parquet(CAND_CP_PARQUET, index=False, engine="pyarrow")
-        log.info(f"  {CAND_CP_PARQUET.name}: {len(cp_df):,} rows")
-    else:
-        pd.DataFrame().to_parquet(CAND_CP_PARQUET, index=False, engine="pyarrow")
-
-    if all_cp_scopes:
-        cs_df = pd.DataFrame(all_cp_scopes)
-        cs_df.to_parquet(SCOPE_CP_PARQUET, index=False, engine="pyarrow")
-        log.info(f"  {SCOPE_CP_PARQUET.name}: {len(cs_df):,} scopes")
-    else:
-        pd.DataFrame().to_parquet(SCOPE_CP_PARQUET, index=False, engine="pyarrow")
-
-    # Update run_config with Step 2 results
-    config["step2_completed_at"] = datetime.now().isoformat()
-    config["n_within_product_scopes"] = len(all_wp_scopes)
-    config["n_cross_product_scopes"]  = len(all_cp_scopes)
-    config["n_wp_candidate_pairs"]    = len(all_wp_pairs)
-    config["n_cp_candidate_pairs"]    = len(all_cp_pairs)
-    with open(RUN_CONFIG, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2)
-
-    log.info("=" * 70)
-    log.info("  Step 2 complete. Run 03_run_llm_assessment.py next.")
-    log.info("=" * 70)
-
-
-if __name__ == "__main__":
-    main()
+BASE_DIR         = Path(r"C:\Users\m061400\ai-test\big_table")
+OUTPUT_DIR       = BASE_DIR / "multi_signal"
