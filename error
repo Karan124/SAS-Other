@@ -1,19 +1,740 @@
-PS C:\Users\m061400\ai-test\big_table\duplicates\product> python 03_run_llm_assessment.py --force
-2026-08-18 07:39:41 [INFO] ======================================================================
-2026-08-18 07:39:41 [INFO]   Control Rationalisation — Step 3: LLM Assessment
-2026-08-18 07:39:41 [INFO]   Model           : gpt-5.4 (low reasoning)
-2026-08-18 07:39:41 [INFO]   Sub-batch size  : 5 controls per call
-2026-08-18 07:39:41 [INFO]   Client strategy : fresh connection per attempt
-2026-08-18 07:39:41 [INFO]   Started         : 2026-08-18 07:39:41
-2026-08-18 07:39:41 [INFO] ======================================================================
-2026-08-18 07:39:41 [INFO] Checkpoint cleared: llm_checkpoint_within_product.jsonl
-2026-08-18 07:39:41 [INFO] Loading data...
-2026-08-18 07:39:43 [INFO]   Expanded rows: 3,155
-2026-08-18 07:39:43 [INFO] Verifying connectivity (test client)...
-2026-08-18 07:39:43 [INFO]   Connectivity OK.
-2026-08-18 07:39:43 [INFO]
-Processing within-product scopes...
-2026-08-18 07:39:43 [INFO]   Total WP scopes : 428 | Done keys in checkpoint: 0
-  [  0.2%] WP|AUD Investment Accounts|Customer to Customer|Executi ETA 0s  A$0.002026-08-18 07:46:14 [WARNING]   Connection/timeout error [WP|AUD Investment Accounts|Customer to Customer|Execution & Early Processing Assurance|CT3::0::0] attempt 1: Request timed out.. Waiting 90s for proxy to recover...
-  [  9.6%] WP|Business Insights - Data Analytics and Insights|Inst ETA 8h 44m  A$3.102026-08-18 08:42:47 [WARNING]   Connection/timeout error [WP|Business Insights - Data Analytics and Insights|Institution to Institution|Posting, Accounting & Detection|CT2::0::1] attempt 1: Request timed out.. Waiting 90s for proxy to recover...
-  [ 14.3%] WP|Commercial Cards|Institution to Customer|Execution & ETA 9h 1m  A$4.865
+"""
+03_run_llm_assessment.py
+─────────────────────────────────────────────────────────────────────────────
+Control Rationalisation — Step 3 of 4: LLM Assessment
+
+Key design decision: a fresh AzureOpenAI client and httpx connection is
+created on every API call attempt. This eliminates stale proxy connection
+issues that occur when the corporate proxy drops sessions after ~30-40 mins.
+
+Before running (PowerShell):
+  az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
+  python 03_run_llm_assessment.py
+  python 03_run_llm_assessment.py --force     # clear checkpoints, restart
+  python 03_run_llm_assessment.py --wp-only   # within-product only
+  python 03_run_llm_assessment.py --cp-only   # cross-product only
+"""
+
+import argparse
+import json
+import logging
+import random
+import re
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+import httpx
+import pandas as pd
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from openai import AzureOpenAI
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  CONFIG
+# ─────────────────────────────────────────────────────────────────────────────
+
+OUTPUT_DIR     = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
+AZURE_ENDPOINT = "https://ai.eng.azure.srv.westpac.com.au"
+API_VERSION    = "2024-10-21"
+LLM_MODEL      = "gpt-5.4"
+
+# Proxy and cert — hardcoded so env vars are not required
+PROXY_URL = "http://127.0.0.1:9000"
+CA_BUNDLE = r"C:\Users\m061400\ai-test\cacert.pem"
+
+SUB_BATCH_SIZE        = 5      # controls per LLM call — keep small
+RETRY_COUNT           = 5      # attempts per sub-batch
+RETRY_BASE_SECS       = 5
+CONNECTION_SLEEP_SECS = 90     # wait after connection/timeout error
+SLEEP_BETWEEN         = 1.0    # seconds between successful calls
+MAX_COMPLETION_TOKENS = 16000
+HTTP_TIMEOUT          = 180.0  # seconds per request
+
+INPUT_PRICE_PER_M  = 1.75
+OUTPUT_PRICE_PER_M = 14.00
+AUD_USD_RATE       = 0.65
+
+EXPANDED_PARQUET = OUTPUT_DIR / "expanded_product_control_mapping.parquet"
+SCOPE_WP_PARQUET = OUTPUT_DIR / "scope_summary_within_product.parquet"
+SCOPE_CP_PARQUET = OUTPUT_DIR / "scope_summary_cross_product.parquet"
+CAND_WP_PARQUET  = OUTPUT_DIR / "candidate_pairs_within_product.parquet"
+CAND_CP_PARQUET  = OUTPUT_DIR / "candidate_pairs_cross_product.parquet"
+RUN_CONFIG       = OUTPUT_DIR / "run_config.json"
+CHECKPOINT_WP    = OUTPUT_DIR / "llm_checkpoint_within_product.jsonl"
+CHECKPOINT_CP    = OUTPUT_DIR / "llm_checkpoint_cross_product.jsonl"
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  FRESH CLIENT — created on every retry to avoid stale proxy connections
+# ─────────────────────────────────────────────────────────────────────────────
+
+def make_client() -> AzureOpenAI:
+    """
+    Create a fresh AzureOpenAI client with a new httpx connection.
+    Called on every API attempt so stale proxy sessions never block retries.
+    DefaultAzureCredential caches tokens internally — repeated calls are fast.
+    """
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default"
+    )
+    http_client = httpx.Client(
+        proxy=PROXY_URL,
+        verify=CA_BUNDLE,
+        timeout=httpx.Timeout(HTTP_TIMEOUT, connect=30.0),
+        # Disable connection pooling — prevents stale connection reuse
+        limits=httpx.Limits(
+            max_keepalive_connections=0,
+            max_connections=1,
+        ),
+    )
+    return AzureOpenAI(
+        azure_endpoint=AZURE_ENDPOINT,
+        api_version=API_VERSION,
+        azure_ad_token_provider=token_provider,
+        http_client=http_client,
+    )
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  PROMPTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+SYSTEM_PROMPT = """
+You are an Operational Risk and Controls Analyst with expertise in risk
+management. Your role is to assess groups of controls to identify
+opportunities for consolidation and standardisation.
+
+Return valid JSON only. No markdown. No text outside the JSON object.
+""".strip()
+
+CLASSIFICATION_DEFINITIONS = """
+DEFINITIONS
+
+Redundant Control
+  A control that does not provide additional risk mitigation because its
+  objective and outcome are already addressed by another control operating
+  at the same or a more effective point in the process.
+
+Common Control Opportunity (Fragmentation)
+  A control may be fragmented where the same control objective and
+  substantially similar control activities are performed separately across
+  multiple products, systems, channels, processes, or business units. The
+  controls operate independently but achieve the same risk management
+  outcome. This may indicate an opportunity to standardise, centralise,
+  or consolidate the controls into a single common control capability.
+
+Process-Split Fragmentation
+  A control may be fragmented where multiple controls form different stages
+  of a single end-to-end control activity rather than operating as
+  genuinely distinct controls. The control has been divided across process
+  steps, systems, teams, or manual and automated activities, with each
+  control performing only part of the overall control objective.
+
+Retain
+  The control provides distinct and necessary risk mitigation, contributes
+  meaningful risk coverage, and is not redundant, fragmented, or a
+  candidate for consolidation. It should continue to operate in its
+  current form.
+
+Unclear
+  Assign Unclear where:
+  - The control description lacks sufficient detail
+  - The relationship between controls cannot be determined from available
+    information
+  - There is insufficient evidence to conclude a control is redundant,
+    fragmented, or a common control opportunity
+  - Multiple interpretations are reasonably possible
+
+DUAL CLASSIFICATION RULE
+  Where a control is BOTH Fragmented AND Redundant:
+  - Primary classification: Redundant
+  - classification_group_key: the Redundant group key (R-x)
+  - fragmented_group_id: the Fragmented group key (F-x)
+  - dual_classified: true
+  - Rationale must explain both the fragmentation context and why the
+    control is redundant within that fragmented set
+
+CLASSIFICATION GROUP KEYS
+  Redundant                           : R-1, R-2, R-3 ...
+  Common Control Opportunity          : CC-1, CC-2, CC-3 ...
+  Process-Split Fragmentation         : P-1, P-2, P-3 ...
+  Dual classification (supplementary) : F-1, F-2, F-3 ...
+  Retain  : use the control own Control_ID as the key
+  Unclear : use the control own Control_ID as the key
+
+ASSESSMENT RULES
+  Focus on whether the underlying control objective, control activity,
+  and risk outcome are substantially the same.
+  Look beyond differences in wording, ownership, systems, products,
+  channels, or implementation methods.
+  Do NOT assume redundant solely because controls contain similar wording.
+  Do NOT assume fragmented solely because controls share a Control
+  Objective Group.
+  Do NOT assume common controls solely because controls operate within
+  the same product, process, or payment stage.
+  Look for evidence of overlapping objectives, activities, inputs,
+  outputs, or risk outcomes before assigning a classification.
+  Do NOT force a rationalisation outcome. If sufficient evidence does
+  not exist, classify as Unclear.
+  Do not compare controls across different Control Objective Groups.
+
+CONFIDENCE LEVELS
+  High   : Strong evidence supports the classification
+  Medium : Some evidence; minor assumptions or interpretation required
+  Low    : Limited evidence; treat classification as indicative only
+
+OUTPUT RULES
+  - One assessment object per control, no exceptions
+  - Every control in the input must appear in assessments exactly once
+  - Do not invent Control_IDs
+  - redundant_by_control_ids: empty list if not Redundant
+  - fragmented_control_id_group: empty list if not fragmented
+""".strip()
+
+RESPONSE_FORMAT = """
+Return this JSON structure exactly. No markdown. No text outside the JSON.
+
+{
+  "scope_id": "<scope_id from input>",
+  "scope_type": "<within_product or cross_product>",
+  "batch_key": "<batch_key from input>",
+  "assessments": [
+    {
+      "control_id": "<Control_ID — copied exactly>",
+      "control_name": "<CTRL_NAME>",
+      "control_objective": "<Control Objective>",
+      "classification": "<Retain|Redundant|Process-Split Fragmentation|Common Control Opportunity|Unclear>",
+      "classification_group_key": "<R-1|P-1|CC-1|control_id>",
+      "fragmented_group_id": "<F-1 or P-1 if fragmented, else empty string>",
+      "dual_classified": false,
+      "redundant_by_control_ids": [],
+      "fragmented_control_id_group": [],
+      "rationale": "<plain English, cite specific evidence>",
+      "confidence": "<High|Medium|Low>"
+    }
+  ]
+}
+""".strip()
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  CONTROL TEXT (condensed for prompt efficiency)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_short_control_text(row: pd.Series) -> str:
+    def f(field, label):
+        val = str(row.get(field, "") or "").strip()
+        return f"{label}: {val}" if val else ""
+    lines = [
+        f("Control_ID",              "Control ID"),
+        f("CTRL_NAME",               "Control Name"),
+        f("Control Objective",       "Control Objective"),
+        f("Control_Description",     "Control Description"),
+        f("CTRL_NATRE",              "Nature"),
+        f("CTRL_TYP",                "Type"),
+        f("CTRL_FREQ",               "Frequency"),
+        f("CTRL_EVDNCD",             "Evidence"),
+        f("CTRL_MNTRD",              "Monitoring"),
+        f("Product",                 "Product"),
+        f("Payment Category",        "Payment Category"),
+        f("Consolidated Stage",      "Stage"),
+        f("ct_ref_norm",             "CT Reference"),
+        f("Expected Control",        "Expected Control"),
+        f("CTRL_FLDR_LVL_2(Division)", "Division"),
+        f("object_path_leaf",        "Business Area"),
+        f("CTRL_CATEGORY",           "Control Category"),
+    ]
+    return "\n".join(line for line in lines if line)
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  PROMPT BUILDERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_within_product_prompt(scope_id, batch_key, n_total,
+                                sub_controls, scope_meta):
+    n = len(sub_controls)
+    sub_note = (
+        f"\nNOTE: Sub-batch of {n} from {n_total} controls in this scope. "
+        f"Assess duplicates within this sub-batch only."
+        if n < n_total else ""
+    )
+    lines = [
+        "SCOPE CONTEXT",
+        f"Type            : Within-Product Assessment",
+        f"Scope ID        : {scope_id}",
+        f"Product         : {scope_meta.get('Product','')}",
+        f"Payment Category: {scope_meta.get('Payment Category','')}",
+        f"Lifecycle Stage : {scope_meta.get('Consolidated Stage','')}",
+        f"CT Reference    : {scope_meta.get('ct_ref_norm','')}",
+        f"Expected Control: {scope_meta.get('Expected Control','')}",
+        sub_note, "",
+        f"CONTROLS TO ASSESS ({n}):", "",
+    ]
+    for _, row in sub_controls.iterrows():
+        lines += ["─"*60, build_short_control_text(row), ""]
+    lines += [
+        "─"*60, "",
+        "TASK — WITHIN-PRODUCT ASSESSMENT",
+        "All controls share the same Product, Payment Category, Lifecycle",
+        "Stage, and CT Reference. Compare each against all others.",
+        "Assess for Redundant Controls, Process-Split Fragmentation,",
+        "Common Control Opportunities. Focus on underlying objective,",
+        "activity, and risk outcome — not surface wording differences.", "",
+        CLASSIFICATION_DEFINITIONS, "",
+        RESPONSE_FORMAT,
+        f'\nUse scope_id: "{scope_id}" and batch_key: "{batch_key}".',
+    ]
+    return "\n".join(lines)
+
+
+def build_cross_product_prompt(scope_id, batch_key, n_total,
+                               sub_controls, ct_ref):
+    n = len(sub_controls)
+    products = (sub_controls["Product"].dropna().unique().tolist()
+                if "Product" in sub_controls.columns else [])
+    sub_note = (
+        f"\nNOTE: Sub-batch of {n} from {n_total} controls. "
+        f"Assess within this sub-batch only."
+        if n < n_total else ""
+    )
+    lines = [
+        "SCOPE CONTEXT",
+        f"Type         : Cross-Product Assessment",
+        f"Scope ID     : {scope_id}",
+        f"CT Reference : {ct_ref}",
+        f"Products     : {', '.join(products[:10])}",
+        sub_note, "",
+        f"CONTROLS TO ASSESS ({n} across multiple products):", "",
+    ]
+    for _, row in sub_controls.iterrows():
+        lines += ["─"*60, build_short_control_text(row), ""]
+    lines += [
+        "─"*60, "",
+        "TASK — CROSS-PRODUCT ASSESSMENT WITHIN CONTROL OBJECTIVE GROUP",
+        "Controls share the same CT Reference but come from different products",
+        "and may be owned by different business areas.",
+        "Do NOT compare controls across different Control Objective Groups.",
+        "Assess for Redundant Controls, Process-Split Fragmentation, and",
+        "Common Control Opportunities where similar controls could be",
+        "consolidated into a single shared control capability.", "",
+        CLASSIFICATION_DEFINITIONS, "",
+        RESPONSE_FORMAT,
+        f'\nUse scope_id: "{scope_id}" and batch_key: "{batch_key}".',
+    ]
+    return "\n".join(lines)
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  LOGGING
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_logger() -> logging.Logger:
+    logger = logging.getLogger("ctrl_rat")
+    if logger.handlers:
+        return logger
+    log_path = OUTPUT_DIR / "processing_log.txt"
+    fh = logging.FileHandler(log_path, encoding="utf-8")
+    fh.setLevel(logging.DEBUG)
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(logging.INFO)
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s",
+                            datefmt="%Y-%m-%d %H:%M:%S")
+    fh.setFormatter(fmt)
+    ch.setFormatter(fmt)
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+    logger.setLevel(logging.DEBUG)
+    return logger
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  CHECKPOINT
+# ─────────────────────────────────────────────────────────────────────────────
+
+def load_checkpoint(path: Path) -> set:
+    done = set()
+    if not path.exists():
+        return done
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+                key = rec.get("batch_key", "")
+                if key:
+                    done.add(key)
+            except json.JSONDecodeError:
+                continue
+    return done
+
+
+def write_checkpoint(rec: dict, path: Path) -> None:
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=True) + "\n")
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  LLM CALL — fresh client on every attempt
+# ─────────────────────────────────────────────────────────────────────────────
+
+def parse_llm_response(text: str) -> dict:
+    text = re.sub(r'^```(?:json)?\s*', '', (text or "").strip())
+    text = re.sub(r'\s*```$', '', text).strip()
+    if not text:
+        raise ValueError("Empty response from model")
+    try:
+        result = json.loads(text)
+    except json.JSONDecodeError:
+        m = re.search(r'\{.*\}', text, re.DOTALL)
+        if m:
+            result = json.loads(m.group(0))
+        else:
+            raise
+    if "assessments" not in result:
+        raise ValueError("Response missing 'assessments' key")
+    return result
+
+
+def call_llm(prompt: str, batch_key: str,
+             log: logging.Logger) -> tuple:
+    """
+    Call the LLM. Creates a fresh client on every attempt to guarantee
+    a clean proxy connection regardless of how long the script has been running.
+    Returns (parsed_result_or_None, usage_dict).
+    """
+    usage = {"input_tokens": 0, "output_tokens": 0,
+             "reasoning_tokens": 0, "latency_ms": 0}
+
+    for attempt in range(1, RETRY_COUNT + 1):
+        is_connection_error = False
+        try:
+            # Fresh client on every attempt — the key fix
+            client = make_client()
+
+            t0   = time.time()
+            resp = client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user",   "content": prompt},
+                ],
+                reasoning_effort="low",
+                max_completion_tokens=MAX_COMPLETION_TOKENS,
+            )
+            latency = int((time.time() - t0) * 1000)
+            text    = resp.choices[0].message.content or ""
+
+            u = getattr(resp, "usage", None)
+            if u:
+                usage["input_tokens"]  = getattr(u, "prompt_tokens", 0)
+                usage["output_tokens"] = getattr(u, "completion_tokens", 0)
+                d = getattr(u, "completion_tokens_details", None)
+                if d:
+                    usage["reasoning_tokens"] = getattr(d, "reasoning_tokens", 0)
+            usage["latency_ms"] = latency
+
+            parsed = parse_llm_response(text)
+            return parsed, usage
+
+        except Exception as exc:
+            exc_str = str(exc).lower()
+            is_connection_error = (
+                "connection" in exc_str or
+                "timed out" in exc_str or
+                "timeout" in exc_str or
+                "network" in exc_str or
+                "proxy" in exc_str
+            )
+
+            if attempt < RETRY_COUNT:
+                # Longer wait for connection/timeout errors to let proxy recover
+                if is_connection_error:
+                    wait = CONNECTION_SLEEP_SECS
+                    log.warning(
+                        f"  Connection/timeout error [{batch_key}] attempt {attempt}: "
+                        f"{exc}. Waiting {wait}s for proxy to recover...")
+                else:
+                    wait = min(RETRY_BASE_SECS * 2**(attempt-1)
+                               + random.uniform(0, 2), 60)
+                    log.warning(
+                        f"  Attempt {attempt} failed [{batch_key}]: "
+                        f"{exc}. Retrying in {wait:.0f}s...")
+                time.sleep(wait)
+            else:
+                log.error(f"  All {RETRY_COUNT} retries failed [{batch_key}]: {exc}")
+                return None, usage
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  SCOPE DATA HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_scope_controls(scope_id: str,
+                       pairs_df: pd.DataFrame,
+                       expanded_df: pd.DataFrame) -> pd.DataFrame:
+    scope_pairs = pairs_df[pairs_df["scope_id"] == scope_id]
+    ctrl_ids = set(scope_pairs["control_id_a"].dropna().tolist())
+    ctrl_ids.update(
+        c for c in scope_pairs["control_id_b"].dropna().tolist() if c
+    )
+    return (expanded_df[expanded_df["Control_ID"].isin(ctrl_ids)]
+            .drop_duplicates(subset=["Control_ID"])
+            .reset_index(drop=True))
+
+
+def get_batch_controls(scope_id: str,
+                       batch_id: int,
+                       send_all: bool,
+                       pairs_df: pd.DataFrame,
+                       expanded_df: pd.DataFrame) -> pd.DataFrame:
+    if send_all:
+        return get_scope_controls(scope_id, pairs_df, expanded_df)
+    scope_pairs = pairs_df[pairs_df["scope_id"] == scope_id]
+    batch_pairs = scope_pairs[scope_pairs["batch_id"] == batch_id]
+    ctrl_ids    = set(batch_pairs["control_id_a"].dropna().tolist())
+    return (expanded_df[expanded_df["Control_ID"].isin(ctrl_ids)]
+            .drop_duplicates(subset=["Control_ID"])
+            .reset_index(drop=True))
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  PROCESSING LOOP
+# ─────────────────────────────────────────────────────────────────────────────
+
+def process_scopes(scope_type: str,
+                   scope_df: pd.DataFrame,
+                   pairs_df: pd.DataFrame,
+                   expanded_df: pd.DataFrame,
+                   checkpoint_path: Path,
+                   done_keys: set,
+                   log: logging.Logger) -> float:
+    total_in_tok = total_out_tok = 0
+    n_processed  = n_skipped = n_errors = 0
+    total_scopes = len(scope_df)
+    run_start    = time.time()
+
+    for row_num, scope_row in enumerate(scope_df.itertuples(index=False), 1):
+        scope_id    = scope_row.scope_id
+        send_all    = bool(getattr(scope_row, "send_all", True))
+        n_controls  = int(getattr(scope_row, "n_controls", 0))
+        n_batches   = int(getattr(scope_row, "n_batches", 1))
+        skip_reason = getattr(scope_row, "skip_reason", "")
+
+        # Skip single-control scopes
+        if skip_reason == "single_control" or n_controls < 2:
+            n_skipped += 1
+            bk = f"{scope_id}::0::0"
+            if bk not in done_keys:
+                write_checkpoint({
+                    "batch_key": bk, "scope_id": scope_id,
+                    "scope_type": scope_type, "skipped": True,
+                    "skip_reason": "single_control", "assessments": [],
+                }, checkpoint_path)
+                done_keys.add(bk)
+            continue
+
+        # Progress
+        elapsed = time.time() - run_start
+        pct     = row_num / total_scopes * 100
+        eta_s   = (elapsed / row_num) * (total_scopes - row_num) if row_num > 1 else 0
+        eta_str = (f"{int(eta_s//3600)}h {int((eta_s%3600)//60)}m"
+                   if eta_s > 60 else f"{int(eta_s)}s")
+        cost    = ((total_in_tok / 1e6 * INPUT_PRICE_PER_M +
+                    total_out_tok / 1e6 * OUTPUT_PRICE_PER_M) / AUD_USD_RATE)
+        print(f"\r  [{pct:5.1f}%] {scope_id[:55]:<55} "
+              f"ETA {eta_str}  A${cost:.2f}", end="")
+
+        # Scope metadata for prompt
+        all_scope_ctrls = get_scope_controls(scope_id, pairs_df, expanded_df)
+        n_scope_total   = len(all_scope_ctrls)
+        if n_scope_total == 0:
+            continue
+        sample     = all_scope_ctrls.iloc[0]
+        scope_meta = {col: str(sample.get(col, "") or "")
+                      for col in ["Product", "Payment Category",
+                                  "Consolidated Stage", "ct_ref_norm",
+                                  "Expected CT Reference", "Expected Control"]}
+
+        for batch_id in (range(n_batches) if not send_all else [0]):
+            batch_ctrls = get_batch_controls(
+                scope_id, batch_id, send_all, pairs_df, expanded_df)
+            if len(batch_ctrls) == 0:
+                continue
+
+            # Sub-batch into groups of SUB_BATCH_SIZE
+            n_sub = max(1, (len(batch_ctrls) + SUB_BATCH_SIZE - 1)
+                        // SUB_BATCH_SIZE)
+
+            for sub_idx in range(n_sub):
+                sub_ctrls = batch_ctrls.iloc[
+                    sub_idx * SUB_BATCH_SIZE:(sub_idx + 1) * SUB_BATCH_SIZE
+                ].reset_index(drop=True)
+
+                if len(sub_ctrls) == 0:
+                    continue
+
+                batch_key = f"{scope_id}::{batch_id}::{sub_idx}"
+                if batch_key in done_keys:
+                    n_skipped += 1
+                    continue
+
+                # Build prompt
+                if scope_type == "within_product":
+                    prompt = build_within_product_prompt(
+                        scope_id, batch_key, n_scope_total,
+                        sub_ctrls, scope_meta)
+                else:
+                    prompt = build_cross_product_prompt(
+                        scope_id, batch_key, n_scope_total,
+                        sub_ctrls, scope_id.replace("CP|", ""))
+
+                # Call LLM (fresh client per attempt inside call_llm)
+                result, usage = call_llm(prompt, batch_key, log)
+
+                in_tok  = usage.get("input_tokens", 0)
+                out_tok = usage.get("output_tokens", 0)
+                total_in_tok  += in_tok
+                total_out_tok += out_tok
+
+                if result is None:
+                    n_errors += 1
+                    write_checkpoint({
+                        "batch_key":  batch_key,
+                        "scope_id":   scope_id,
+                        "scope_type": scope_type,
+                        "error":      True,
+                        "assessments": [],
+                        "control_ids_in_batch": sub_ctrls["Control_ID"].tolist(),
+                    }, checkpoint_path)
+                else:
+                    result.update({
+                        "batch_key":          batch_key,
+                        "scope_type":         scope_type,
+                        "n_controls_in_batch":len(sub_ctrls),
+                        "input_tokens":       in_tok,
+                        "output_tokens":      out_tok,
+                        "error":              False,
+                        "control_ids_in_batch": sub_ctrls["Control_ID"].tolist(),
+                    })
+                    write_checkpoint(result, checkpoint_path)
+                    n_processed += 1
+
+                done_keys.add(batch_key)
+                time.sleep(SLEEP_BETWEEN)
+
+    print()
+    cost_aud = ((total_in_tok / 1e6 * INPUT_PRICE_PER_M +
+                 total_out_tok / 1e6 * OUTPUT_PRICE_PER_M) / AUD_USD_RATE)
+    log.info(f"  Processed: {n_processed:,} | Skipped: {n_skipped:,} | "
+             f"Errors: {n_errors:,} | Cost: A${cost_aud:.2f}")
+    return cost_aud
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  MAIN
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--force",    action="store_true",
+                        help="Clear checkpoints and reprocess everything.")
+    parser.add_argument("--wp-only",  action="store_true",
+                        help="Within-product scopes only.")
+    parser.add_argument("--cp-only",  action="store_true",
+                        help="Cross-product scopes only.")
+    parser.add_argument("--wp-range", nargs=2, type=int,
+                        metavar=("START", "END"),
+                        help="Process only WP scopes[START:END]. e.g. --wp-range 0 107")
+    parser.add_argument("--cp-range", nargs=2, type=int,
+                        metavar=("START", "END"),
+                        help="Process only CP scopes[START:END].")
+    parser.add_argument("--suffix",   default="",
+                        help="Checkpoint file suffix for parallel runs. e.g. --suffix _p2")
+    args = parser.parse_args()
+
+    log = get_logger()
+    log.info("=" * 70)
+    log.info("  Control Rationalisation — Step 3: LLM Assessment")
+    log.info(f"  Model           : {LLM_MODEL} (low reasoning)")
+    log.info(f"  Sub-batch size  : {SUB_BATCH_SIZE} controls per call")
+    log.info(f"  Client strategy : fresh connection per attempt")
+    log.info(f"  Started         : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    log.info("=" * 70)
+
+    for f in [EXPANDED_PARQUET, SCOPE_WP_PARQUET, SCOPE_CP_PARQUET,
+              CAND_WP_PARQUET, CAND_CP_PARQUET, RUN_CONFIG]:
+        if not f.exists():
+            log.error(f"Required input not found: {f.name}. "
+                      f"Run Scripts 1 and 2 first.")
+            sys.exit(1)
+
+    with open(RUN_CONFIG) as f:
+        config = json.load(f)
+
+    run_wp = config.get("run_within_product", True) and not args.cp_only
+    run_cp = config.get("run_cross_product",  True) and not args.wp_only
+
+    # Checkpoint paths — suffix enables parallel runs writing separate files
+    ck_wp = OUTPUT_DIR / f"llm_checkpoint_within_product{args.suffix}.jsonl"
+    ck_cp = OUTPUT_DIR / f"llm_checkpoint_cross_product{args.suffix}.jsonl"
+
+    if args.force:
+        for ck in [ck_wp, ck_cp]:
+            if ck.exists():
+                ck.unlink()
+                log.info(f"Checkpoint cleared: {ck.name}")
+
+    log.info("Loading data...")
+    expanded = pd.read_parquet(EXPANDED_PARQUET, engine="pyarrow")
+    log.info(f"  Expanded rows: {len(expanded):,}")
+
+    # Warm up — verify connectivity before starting the main loop
+    log.info("Verifying connectivity (test client)...")
+    try:
+        _ = make_client()
+        log.info("  Connectivity OK.")
+    except Exception as e:
+        log.error(f"  Cannot create client: {e}")
+        sys.exit(1)
+
+    total_cost = 0.0
+
+    if run_wp:
+        log.info("\nProcessing within-product scopes...")
+        scope_wp = pd.read_parquet(SCOPE_WP_PARQUET, engine="pyarrow")
+        pairs_wp = pd.read_parquet(CAND_WP_PARQUET, engine="pyarrow")
+        done_wp  = load_checkpoint(ck_wp)
+        log.info(f"  Total WP scopes : {len(scope_wp):,} | "
+                 f"Done keys in checkpoint: {len(done_wp):,}")
+        if args.wp_range:
+            s, e = args.wp_range
+            scope_wp = scope_wp.iloc[s:e].reset_index(drop=True)
+            log.info(f"  Sliced to scopes {s}:{e} ({len(scope_wp):,} scopes)")
+        cost = process_scopes("within_product", scope_wp, pairs_wp,
+                              expanded, ck_wp, done_wp, log)
+        total_cost += cost
+
+    if run_cp:
+        log.info("\nProcessing cross-product scopes...")
+        scope_cp = pd.read_parquet(SCOPE_CP_PARQUET, engine="pyarrow")
+        pairs_cp = pd.read_parquet(CAND_CP_PARQUET, engine="pyarrow")
+        done_cp  = load_checkpoint(ck_cp)
+        log.info(f"  Total CP scopes : {len(scope_cp):,} | "
+                 f"Done keys in checkpoint: {len(done_cp):,}")
+        if args.cp_range:
+            s, e = args.cp_range
+            scope_cp = scope_cp.iloc[s:e].reset_index(drop=True)
+            log.info(f"  Sliced to scopes {s}:{e} ({len(scope_cp):,} scopes)")
+        cost = process_scopes("cross_product", scope_cp, pairs_cp,
+                              expanded, ck_cp, done_cp, log)
+        total_cost += cost
+
+    config[f"step3{args.suffix}_completed_at"]   = datetime.now().isoformat()
+    config[f"step3{args.suffix}_total_cost_aud"] = round(total_cost, 2)
+    config[f"step3{args.suffix}_sub_batch_size"] = SUB_BATCH_SIZE
+    with open(RUN_CONFIG, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
+
+    log.info("=" * 70)
+    log.info(f"  Step 3 complete. Total cost: A${total_cost:.2f}")
+    log.info("  Run 04_postprocess_outputs.py next.")
+    log.info("=" * 70)
+
+
+if __name__ == "__main__":
+    main()
