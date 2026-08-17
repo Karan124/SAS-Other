@@ -1,673 +1,217 @@
-"""
-03_run_llm_assessment.py
-─────────────────────────────────────────────────────────────────────────────
-Control Rationalisation — Step 3 of 4: LLM Assessment
-
-Reads scope summaries and candidate pairs from Script 2.
-Sends each scope (or batch within a large scope) to GPT-5.4 for classification.
-Saves raw LLM responses to a JSONL checkpoint for Script 4.
-
-Classification types:
-  Redundant                   — same objective and mechanism, retire one
-  Process-Split Fragmentation — same control split across processes unnecessarily
-  Common Control Opportunity  — same objective across different business areas
-  Retain                      — distinct control, keep as-is
-  Unclear                     — insufficient evidence to classify
-
-Checkpointing: already-processed scope+batch combinations are skipped on re-run.
-
-Before running (PowerShell):
-  az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
-  $env:HTTP_PROXY          = "http://127.0.0.1:9000"
-  $env:HTTPS_PROXY         = "http://127.0.0.1:9000"
-  $env:REQUESTS_CA_BUNDLE  = "C:\\Users\\m061400\\ai-test\\cacert.pem"
-  $env:SSL_CERT_FILE       = "C:\\Users\\m061400\\ai-test\\cacert.pem"
-  Remove-Item Env:AZURE_CA_BUNDLE -ErrorAction SilentlyContinue
-  python 03_run_llm_assessment.py
-  python 03_run_llm_assessment.py --force     # clear checkpoint and restart
-  python 03_run_llm_assessment.py --wp-only   # within-product scopes only
-  python 03_run_llm_assessment.py --cp-only   # cross-product scopes only
-"""
-
-import argparse
-import json
-import logging
-import random
-import re
-import sys
-import time
-from datetime import datetime
-from pathlib import Path
-
-import pandas as pd
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from openai import AzureOpenAI
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  CONFIG
-# ─────────────────────────────────────────────────────────────────────────────
-
-OUTPUT_DIR     = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
-AZURE_ENDPOINT = "https://ai.eng.azure.srv.westpac.com.au"
-API_VERSION    = "2024-10-21"
-LLM_MODEL      = "gpt-5.4"
-
-EXPANDED_PARQUET   = OUTPUT_DIR / "expanded_product_control_mapping.parquet"
-SCOPE_WP_PARQUET   = OUTPUT_DIR / "scope_summary_within_product.parquet"
-SCOPE_CP_PARQUET   = OUTPUT_DIR / "scope_summary_cross_product.parquet"
-CAND_WP_PARQUET    = OUTPUT_DIR / "candidate_pairs_within_product.parquet"
-CAND_CP_PARQUET    = OUTPUT_DIR / "candidate_pairs_cross_product.parquet"
-RUN_CONFIG         = OUTPUT_DIR / "run_config.json"
-CHECKPOINT_WP      = OUTPUT_DIR / "llm_checkpoint_within_product.jsonl"
-CHECKPOINT_CP      = OUTPUT_DIR / "llm_checkpoint_cross_product.jsonl"
-
-RETRY_COUNT      = 3
-RETRY_BASE_SECS  = 5
-SLEEP_BETWEEN    = 0.5   # seconds between calls
-
-INPUT_PRICE_PER_M  = 1.75    # USD per 1M input tokens
-OUTPUT_PRICE_PER_M = 14.00   # USD per 1M output tokens (includes reasoning)
-AUD_USD_RATE       = 0.65
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  PROMPTS
-# ─────────────────────────────────────────────────────────────────────────────
-
-SYSTEM_PROMPT = """
-You are a senior risk and control analyst specialising in payment control
-rationalisation at an Australian bank.
-
-Your task is to review a group of payment controls and classify each one
-within its assessment scope. You must identify duplicates, fragmented
-controls, and common control opportunities.
-
-Return valid JSON only. No markdown. No text outside the JSON object.
-""".strip()
-
-CLASSIFICATION_DEFINITIONS = """
-CLASSIFICATION DEFINITIONS
-
-Redundant
-  The control performs the same objective, mechanism, and activity as one
-  or more other controls in this scope. Only one is needed. Classify all
-  but the strongest as Redundant and identify which control each is
-  redundant to via redundant_by_control_ids.
-
-Process-Split Fragmentation
-  The same control activity has been split across multiple controls that
-  collectively address one coherent risk. They should be consolidated into
-  a single control. List all controls in the fragmented group via
-  fragmented_control_id_group.
-
-Common Control Opportunity
-  The controls perform the same or very similar objective but are owned
-  by different business areas (different divisions or departments). They
-  are not exact duplicates — they are intentional local copies that could
-  be consolidated into a shared common control. Use this classification
-  in cross-product assessments when the same CT objective is repeated
-  across products without a master common control.
-
-Retain
-  The control is distinct and necessary. It does not duplicate any other
-  control in this scope. Keep it as-is.
-
-Unclear
-  There is insufficient information to make a confident classification.
-  Flag for SME review.
-
-CONFIDENCE LEVELS
-  High   — Clear evidence from control description, mechanism, and context
-  Medium — Reasonable evidence but some ambiguity
-  Low    — Limited information; classification is tentative
-
-IMPORTANT RULES
-  - Every control in the scope must appear in the assessments array exactly once
-  - classification_group_key: assign the same key to controls that belong
-    together (e.g. all controls in a Redundant group share one key like
-    "R-1"; each distinct group gets a different key: "R-1", "R-2" etc.)
-    Use "R-n" for Redundant groups, "P-n" for Process-Split Fragmentation
-    groups, "CC-n" for Common Control Opportunity groups.
-    For Retain and Unclear use the control's own ID as the key.
-  - redundant_by_control_ids: list the Control_ID(s) this control is
-    redundant to (the ones being kept). Leave empty [] if not Redundant.
-  - fragmented_control_id_group: list all Control_IDs in the fragmented
-    group including this control. Leave empty [] if not fragmentation.
-  - Do not invent control IDs. Only use IDs from the input list.
-""".strip()
-
-RESPONSE_FORMAT = """
-REQUIRED RESPONSE FORMAT — return this JSON structure exactly:
-
-{
-  "scope_id": "<scope_id from input>",
-  "scope_type": "<within_product or cross_product>",
-  "batch_id": <integer>,
-  "assessments": [
-    {
-      "control_id": "<Control_ID>",
-      "classification": "Redundant | Process-Split Fragmentation | Common Control Opportunity | Retain | Unclear",
-      "classification_group_key": "<R-1 / P-1 / CC-1 / control_id>",
-      "redundant_by_control_ids": [],
-      "fragmented_control_id_group": [],
-      "rationale": "<2-3 sentences citing specific evidence from the control details>",
-      "confidence": "High | Medium | Low"
-    }
-  ]
-}
-""".strip()
-
-
-def build_within_product_prompt(scope_id: str, batch_id: int,
-                                n_batches: int, send_all: bool,
-                                controls_df: pd.DataFrame,
-                                scope_meta: dict) -> str:
-    """Build the user message for a within-product scope batch."""
-    product    = scope_meta.get("Product", "")
-    pay_cat    = scope_meta.get("Payment Category", "")
-    stage      = scope_meta.get("Consolidated Stage", "")
-    ct_ref     = scope_meta.get("ct_ref_norm", "") or scope_meta.get("Expected CT Reference", "")
-    exp_ctrl   = scope_meta.get("Expected Control", "")
-    n_controls = len(controls_df)
-
-    batch_note = ""
-    if not send_all:
-        batch_note = (
-            f"\nNOTE: This is batch {batch_id + 1} of {n_batches} for this scope. "
-            f"Only {n_controls} of the total controls are shown in this batch. "
-            f"Assess duplicates within this batch only."
-        )
-
-    lines = [
-        "SCOPE CONTEXT",
-        f"Scope type      : Within-Product Assessment",
-        f"Scope ID        : {scope_id}",
-        f"Product         : {product}",
-        f"Payment Category: {pay_cat}",
-        f"Lifecycle Stage : {stage}",
-        f"Expected CT Ref : {ct_ref}",
-        f"Expected Control: {exp_ctrl}",
-        batch_note,
-        "",
-        f"CONTROLS TO ASSESS ({n_controls} controls):",
-        "",
-    ]
-
-    for _, row in controls_df.iterrows():
-        lines.append("─" * 60)
-        lines.append(row.get("llm_payload_text", f"Control_ID: {row['Control_ID']}"))
-        lines.append("")
-
-    lines += [
-        "─" * 60,
-        "",
-        "TASK",
-        "Review the controls above. All controls share the same product,",
-        "payment category, lifecycle stage, and expected control type.",
-        "Identify which are Redundant, Process-Split Fragmentation,",
-        "or distinct controls that should be Retained.",
-        "",
-        CLASSIFICATION_DEFINITIONS,
-        "",
-        RESPONSE_FORMAT,
-        f'\nUse scope_id: "{scope_id}" and batch_id: {batch_id} in your response.',
-    ]
-    return "\n".join(lines)
-
-
-def build_cross_product_prompt(scope_id: str, batch_id: int,
-                               n_batches: int, send_all: bool,
-                               controls_df: pd.DataFrame,
-                               ct_ref: str) -> str:
-    """Build the user message for a cross-product scope batch."""
-    n_controls = len(controls_df)
-    products   = controls_df["Product"].dropna().unique().tolist() \
-                 if "Product" in controls_df.columns else []
-
-    batch_note = ""
-    if not send_all:
-        batch_note = (
-            f"\nNOTE: This is batch {batch_id + 1} of {n_batches} for this scope. "
-            f"Only {n_controls} controls are shown. Assess duplicates and common "
-            f"control opportunities within this batch only."
-        )
-
-    lines = [
-        "SCOPE CONTEXT",
-        f"Scope type      : Cross-Product Assessment",
-        f"Scope ID        : {scope_id}",
-        f"CT Reference    : {ct_ref}",
-        f"Products covered: {', '.join(products[:10])}",
-        batch_note,
-        "",
-        f"CONTROLS TO ASSESS ({n_controls} controls across multiple products):",
-        "",
-    ]
-
-    for _, row in controls_df.iterrows():
-        lines.append("─" * 60)
-        lines.append(row.get("llm_payload_text", f"Control_ID: {row['Control_ID']}"))
-        lines.append("")
-
-    lines += [
-        "─" * 60,
-        "",
-        "TASK",
-        "These controls share the same CT reference but may come from different",
-        "products and business areas. Identify:",
-        "  1. Redundant controls performing identical functions",
-        "  2. Common Control Opportunities where the same control exists across",
-        "     different products without a shared master control",
-        "  3. Controls that should be Retained as distinct",
-        "",
-        CLASSIFICATION_DEFINITIONS,
-        "",
-        RESPONSE_FORMAT,
-        f'\nUse scope_id: "{scope_id}" and batch_id: {batch_id} in your response.',
-    ]
-    return "\n".join(lines)
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  LOGGING
-# ─────────────────────────────────────────────────────────────────────────────
-
-def get_logger() -> logging.Logger:
-    logger = logging.getLogger("ctrl_rat")
-    if logger.handlers:
-        return logger
-    log_path = OUTPUT_DIR / "processing_log.txt"
-    fh = logging.FileHandler(log_path, encoding="utf-8")
-    fh.setLevel(logging.DEBUG)
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.INFO)
-    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s",
-                            datefmt="%Y-%m-%d %H:%M:%S")
-    fh.setFormatter(fmt)
-    ch.setFormatter(fmt)
-    logger.addHandler(fh)
-    logger.addHandler(ch)
-    logger.setLevel(logging.DEBUG)
-    return logger
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  AZURE CLIENT
-# ─────────────────────────────────────────────────────────────────────────────
-
-def init_client() -> AzureOpenAI:
-    token_provider = get_bearer_token_provider(
-        DefaultAzureCredential(),
-        "https://cognitiveservices.azure.com/.default"
-    )
-    return AzureOpenAI(
-        azure_endpoint=AZURE_ENDPOINT,
-        api_version=API_VERSION,
-        azure_ad_token_provider=token_provider,
-    )
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  CHECKPOINT
-# ─────────────────────────────────────────────────────────────────────────────
-
-def load_checkpoint(path: Path) -> set[str]:
-    """Return set of already-processed 'scope_id::batch_id' keys."""
-    done = set()
-    if not path.exists():
-        return done
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-                key = f"{rec['scope_id']}::{rec['batch_id']}"
-                done.add(key)
-            except (json.JSONDecodeError, KeyError):
-                continue
-    return done
-
-
-def write_checkpoint(rec: dict, path: Path) -> None:
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(rec, ensure_ascii=True) + "\n")
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  LLM CALL
-# ─────────────────────────────────────────────────────────────────────────────
-
-def parse_llm_response(text: str) -> dict:
-    """Parse and validate the LLM JSON response."""
-    text = re.sub(r'^```(?:json)?\s*', '', text.strip())
-    text = re.sub(r'\s*```$', '', text).strip()
-    try:
-        result = json.loads(text)
-    except json.JSONDecodeError:
-        m = re.search(r'\{.*\}', text, re.DOTALL)
-        if m:
-            result = json.loads(m.group(0))
-        else:
-            raise
-    if "assessments" not in result:
-        raise ValueError("Response missing 'assessments' key")
-    return result
-
-
-def call_llm(client: AzureOpenAI, prompt: str,
-             scope_id: str, batch_id: int,
-             log: logging.Logger) -> tuple[dict | None, dict]:
-    """
-    Call GPT-5.4 with medium reasoning. Returns (parsed_result, usage).
-    Returns (None, usage) if all retries fail.
-    """
-    usage = {"input_tokens": 0, "output_tokens": 0,
-             "reasoning_tokens": 0, "latency_ms": 0}
-
-    for attempt in range(1, RETRY_COUNT + 1):
-        try:
-            t0 = time.time()
-            resp = client.chat.completions.create(
-                model=LLM_MODEL,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user",   "content": prompt},
-                ],
-                reasoning_effort="medium",
-                max_completion_tokens=8000,
-            )
-            latency = int((time.time() - t0) * 1000)
-            text    = resp.choices[0].message.content or ""
-
-            u = resp.usage if hasattr(resp, "usage") else None
-            if u:
-                usage["input_tokens"]  = getattr(u, "prompt_tokens", 0)
-                usage["output_tokens"] = getattr(u, "completion_tokens", 0)
-                d = getattr(u, "completion_tokens_details", None)
-                if d:
-                    usage["reasoning_tokens"] = getattr(d, "reasoning_tokens", 0)
-            usage["latency_ms"] = latency
-
-            parsed = parse_llm_response(text)
-            parsed["scope_id"] = scope_id
-            parsed["batch_id"] = batch_id
-            return parsed, usage
-
-        except Exception as exc:
-            if attempt < RETRY_COUNT:
-                wait = min(RETRY_BASE_SECS * 2 ** (attempt - 1)
-                           + random.uniform(0, 2), 60)
-                log.warning(f"  Attempt {attempt} failed for {scope_id}::{batch_id}: "
-                            f"{exc}. Retrying in {wait:.0f}s...")
-                time.sleep(wait)
-            else:
-                log.error(f"  All retries failed for {scope_id}::{batch_id}: {exc}")
-                return None, usage
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  PROCESSING LOOP
-# ─────────────────────────────────────────────────────────────────────────────
-
-def process_scopes(client: AzureOpenAI,
-                   scope_type: str,
-                   scope_df: pd.DataFrame,
-                   pairs_df: pd.DataFrame,
-                   expanded_df: pd.DataFrame,
-                   checkpoint_path: Path,
-                   done_keys: set[str],
-                   config: dict,
-                   log: logging.Logger) -> tuple[int, int, float]:
-    """
-    Process all scopes of one type (within_product or cross_product).
-    Returns (n_processed, n_skipped, cost_aud).
-    """
-    max_per_batch = config.get("max_controls_per_llm_call", 20)
-    total_in_tok  = total_out_tok = 0
-    n_processed   = n_skipped = n_errors = 0
-    total_scopes  = len(scope_df)
-    run_start     = time.time()
-
-    for row_idx, scope_row in scope_df.iterrows():
-        scope_id   = scope_row["scope_id"]
-        send_all   = bool(scope_row.get("send_all", True))
-        n_controls = int(scope_row.get("n_controls", 0))
-        n_batches  = int(scope_row.get("n_batches", 1))
-        skip_reason= scope_row.get("skip_reason", "")
-
-        # Skip single-control scopes
-        if skip_reason == "single_control" or n_controls < 2:
-            n_skipped += 1
-            write_checkpoint({
-                "scope_id":    scope_id,
-                "scope_type":  scope_type,
-                "batch_id":    0,
-                "skipped":     True,
-                "skip_reason": "single_control",
-                "assessments": [],
-            }, checkpoint_path)
-            continue
-
-        # Progress display
-        elapsed  = time.time() - run_start
-        pct      = (row_idx + 1) / total_scopes * 100
-        eta_s    = (elapsed / (row_idx + 1)) * (total_scopes - row_idx - 1) \
-                   if row_idx > 0 else 0
-        eta_str  = (f"{int(eta_s//3600)}h {int((eta_s%3600)//60)}m"
-                    if eta_s > 60 else f"{int(eta_s)}s")
-        cost_aud = ((total_in_tok / 1e6 * INPUT_PRICE_PER_M +
-                     total_out_tok / 1e6 * OUTPUT_PRICE_PER_M) / AUD_USD_RATE)
-        print(f"\r  [{pct:5.1f}%] {scope_id[:55]:<55} "
-              f"ETA {eta_str}  A${cost_aud:.2f}", end="")
-
-        # Get candidate pairs for this scope to build batch assignments
-        scope_pairs = pairs_df[pairs_df["scope_id"] == scope_id]
-
-        # Determine which controls are in each batch
-        if send_all:
-            batches = {0: expanded_df[expanded_df["Control_ID"].isin(
-                scope_pairs["control_id_a"].tolist() +
-                scope_pairs["control_id_b"].dropna().tolist()
-            )].drop_duplicates(subset=["Control_ID"])}
-            # For send_all, all controls in scope — use scope pairs to find them
-            all_ctrl_ids_in_scope = set(scope_pairs["control_id_a"].tolist())
-            all_ctrl_ids_in_scope.update(
-                c for c in scope_pairs["control_id_b"].dropna().tolist()
-                if c
-            )
-            batches = {0: expanded_df[
-                expanded_df["Control_ID"].isin(all_ctrl_ids_in_scope)
-            ].drop_duplicates(subset=["Control_ID"])}
-        else:
-            # Build batch dict from pair batch_id assignments
-            batch_assignments = {}
-            for _, pair in scope_pairs.iterrows():
-                bid = int(pair.get("batch_id", 0))
-                cid = pair["control_id_a"]
-                if cid not in batch_assignments:
-                    batch_assignments[cid] = bid
-            batches = {}
-            for cid, bid in batch_assignments.items():
-                if bid not in batches:
-                    batches[bid] = []
-                batches[bid].append(cid)
-            batches = {
-                bid: expanded_df[expanded_df["Control_ID"].isin(cids)]
-                         .drop_duplicates(subset=["Control_ID"])
-                for bid, cids in batches.items()
-            }
-
-        # Process each batch
-        for batch_id, batch_controls in sorted(batches.items()):
-            ck_key = f"{scope_id}::{batch_id}"
-            if ck_key in done_keys:
-                n_skipped += 1
-                continue
-
-            if len(batch_controls) == 0:
-                continue
-
-            # Build prompt
-            if scope_type == "within_product":
-                scope_meta = {
-                    "Product":            scope_row.get("Product", ""),
-                    "Payment Category":   scope_row.get("Payment Category", ""),
-                    "Consolidated Stage": scope_row.get("Consolidated Stage", ""),
-                    "ct_ref_norm":        scope_row.get("ct_ref_norm", ""),
-                    "Expected Control":   scope_row.get("Expected Control", ""),
-                } if hasattr(scope_row, "get") else {}
-                # Try to get scope context from expanded data
-                sample = expanded_df[
-                    expanded_df["Control_ID"].isin(batch_controls["Control_ID"])
-                ].iloc[0] if len(batch_controls) > 0 else pd.Series()
-                for col in ["Product","Payment Category",
-                            "Consolidated Stage","Expected Control"]:
-                    if col in sample.index:
-                        scope_meta[col] = sample[col]
-
-                prompt = build_within_product_prompt(
-                    scope_id, batch_id, n_batches, send_all,
-                    batch_controls, scope_meta)
-            else:
-                ct_ref = scope_id.replace("CP|", "")
-                prompt = build_cross_product_prompt(
-                    scope_id, batch_id, n_batches, send_all,
-                    batch_controls, ct_ref)
-
-            # Call LLM
-            result, usage = call_llm(client, prompt, scope_id, batch_id, log)
-            in_tok  = usage.get("input_tokens", 0)
-            out_tok = usage.get("output_tokens", 0)
-            total_in_tok  += in_tok
-            total_out_tok += out_tok
-
-            if result is None:
-                n_errors += 1
-                write_checkpoint({
-                    "scope_id":   scope_id,
-                    "scope_type": scope_type,
-                    "batch_id":   batch_id,
-                    "error":      True,
-                    "assessments": [],
-                }, checkpoint_path)
-            else:
-                result["scope_type"]   = scope_type
-                result["n_controls"]   = len(batch_controls)
-                result["input_tokens"] = in_tok
-                result["output_tokens"]= out_tok
-                result["error"]        = False
-                write_checkpoint(result, checkpoint_path)
-                n_processed += 1
-
-            done_keys.add(ck_key)
-            time.sleep(SLEEP_BETWEEN)
-
-    print()  # newline after progress display
-    cost_aud = ((total_in_tok / 1e6 * INPUT_PRICE_PER_M +
-                 total_out_tok / 1e6 * OUTPUT_PRICE_PER_M) / AUD_USD_RATE)
-    log.info(f"  Processed: {n_processed:,} | Skipped: {n_skipped:,} | "
-             f"Errors: {n_errors:,} | Cost: A${cost_aud:.2f}")
-    return n_processed, n_skipped, cost_aud
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  MAIN
-# ─────────────────────────────────────────────────────────────────────────────
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--force",   action="store_true",
-                        help="Clear checkpoints and reprocess everything.")
-    parser.add_argument("--wp-only", action="store_true",
-                        help="Run within-product scopes only.")
-    parser.add_argument("--cp-only", action="store_true",
-                        help="Run cross-product scopes only.")
-    args = parser.parse_args()
-
-    log = get_logger()
-    log.info("=" * 70)
-    log.info("  Control Rationalisation — Step 3: LLM Assessment")
-    log.info(f"  Model    : {LLM_MODEL} (medium reasoning)")
-    log.info(f"  Started  : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    log.info("=" * 70)
-
-    # ── Validate inputs ────────────────────────────────────────────────────
-    for f in [EXPANDED_PARQUET, SCOPE_WP_PARQUET, SCOPE_CP_PARQUET,
-              CAND_WP_PARQUET, CAND_CP_PARQUET, RUN_CONFIG]:
-        if not f.exists():
-            log.error(f"Required input not found: {f.name}. "
-                      f"Run Scripts 1 and 2 first.")
-            sys.exit(1)
-
-    with open(RUN_CONFIG) as f:
-        config = json.load(f)
-
-    run_wp = config.get("run_within_product", True) and not args.cp_only
-    run_cp = config.get("run_cross_product",  True) and not args.wp_only
-
-    # ── Clear checkpoints if --force ───────────────────────────────────────
-    if args.force:
-        for ck in [CHECKPOINT_WP, CHECKPOINT_CP]:
-            if ck.exists():
-                ck.unlink()
-                log.info(f"Checkpoint cleared: {ck.name}")
-
-    # ── Load data ──────────────────────────────────────────────────────────
-    log.info("Loading data...")
-    expanded = pd.read_parquet(EXPANDED_PARQUET, engine="pyarrow")
-    log.info(f"  Expanded rows: {len(expanded):,}")
-
-    # ── Init client ────────────────────────────────────────────────────────
-    log.info("Initialising Azure OpenAI client...")
-    client = init_client()
-    log.info("Client ready.")
-
-    total_cost = 0.0
-
-    # ── Within-product ─────────────────────────────────────────────────────
-    if run_wp:
-        log.info("\nProcessing within-product scopes...")
-        scope_wp = pd.read_parquet(SCOPE_WP_PARQUET, engine="pyarrow")
-        pairs_wp = pd.read_parquet(CAND_WP_PARQUET, engine="pyarrow")
-        done_wp  = load_checkpoint(CHECKPOINT_WP)
-
-        # Merge scope metadata into scope summary
-        scope_context = (expanded[["Product","Payment Category",
-                                   "Consolidated Stage","ct_ref_norm",
-                                   "Expected CT Reference","Expected Control"]]
-                         .drop_duplicates())
-
-        log.info(f"  Total WP scopes : {len(scope_wp):,} "
-                 f"| Already done: {len(done_wp):,}")
-
-        n_proc, n_skip, cost = process_scopes(
-            client, "within_product",
-            scope_wp, pairs_wp, expanded,
-            CHECKPOINT_WP, done_wp, config, log)
-        total_cost += cost
-
-    # ── Cross-product ──────────────────────────────────────────────────────
-    if run_cp:
-        log.info("\nProcessing cross-product scopes...")
-        scope_cp = pd.read_parquet(SCOPE_CP_PARQUET, engine="pyarrow")
-        pairs_cp = pd.read_parquet(CAND_CP_PARQUET, engine="pyarrow")
-        done_cp  = load_checkpoint(CHECKPOINT_CP)
-
-        log.info(f"  Total CP scopes : {len(scope_cp):,} "
-                 f"| Already done: {len(done_cp):,}")
-
-        n_proc, n_skip, cost = process_scopes(
-            client, "cross_product",
-            scope_cp, pairs_cp, expanded,
-            CHECKPOINT_CP, done_cp, config, log)
-        total_cost += cost
-
-    # Update config
-    config["step3_completed_at"] = datetime.now().isoformat()
-    config["step3_total_cost_aud"] = round(total_cost, 2)
-    with open(RUN_CONFIG, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2)
-
-    log.info("=" * 70)
-    log.info(f"  Step 3 complete. Total cost: A${total_cost:.2f}")
-    log.info("  Run 04_postprocess_outputs.py next.")
-    log.info("=" * 70)
-
-
-if __name__ == "__main__":
-    main()
+Redundant and Fragmented Control Assessment 
+
+Role 
+
+You are an Operational Risk and Controls Analyst with expertise in risk management. Your role is to assess groups of controls to identify opportunities for consolidation and standardization. 
+
+Important Dataset Structure 
+
+The input dataset has been cut by both Control Objective Group and Product. This means the assessment must occur at two levels: 
+
+•	Within the same Control Objective + Product group: assess redundant controls and fragmented controls: Dataset Product Cluster for Redundant and Fragmented Control Run, Tab Product Cluster 
+
+•	Across Products within the same Control Objective group: assess redundant controls and fragmented controls: Dataset Product Cluster for Redundant and Fragmented Control Run, Tab Objective Cluster 
+
+•	Do not compare controls across different Control Objective Groups. 
+
+Definitions 
+
+Redundant Control: A control that does not provide additional risk mitigation because its objective and outcome are already addressed by another control operating at the same or a more effective point in the process. 
+
+Fragmented controls can occur in two ways: 
+
+Common Control Opportunity (Fragmentation): A control may be fragmented where the same control objective and substantially similar control activities are performed separately across multiple products, systems, channels, processes, or business units. The controls operate independently but achieve the same risk management outcome. This may indicate an opportunity to standardise, centralise, or consolidate the controls into a single common control capability. 
+
+Process-Split Fragmentation: A control may be fragmented where multiple controls form different stages of a single end-to-end control activity rather than operating as genuinely distinct controls. The control has been divided across process steps, systems, teams, or manual and automated activities, with each control performing only part of the overall control objective. 
+
+Redundant controls: A control may be redundant where it does not provide additional risk mitigation because its objective and outcome are already addressed by another control operating at the same or a more effective point in the process. 
+
+Assessment Methodology for the LLM 
+
+Step 1: Within-Product Assessment 
+
+For each Control Objective Group and Product combination: 
+
+Compare each control against all other controls within the same Control Objective Group and Product. 
+
+Assess for Redundant Controls. 
+
+Assess for Process-Split Fragmentation, where multiple controls collectively perform a single end-to-end control activity. 
+
+Assess for Common Control Opportunities, where substantially similar controls may exist within the same Product and could be consolidated into a single control capability. 
+
+Provide Rationale 
+
+Step 2: Cross-Product Assessment Within the Control Objective Group 
+
+For each Control Objective Group: 
+
+Compare controls across all Products within the same Control Objective Group. 
+
+Assess for Redundant Controls. 
+
+Assess for Process-Split Fragmentation, where multiple controls collectively perform a single end-to-end control activity. 
+
+Assess for Common Control Opportunities, where substantially similar controls may exist within the same Product and could be consolidated into a single control capability. 
+
+Provide Rationale 
+
+Note: 
+
+Look beyond differences in wording, ownership, systems, products, channels, or implementation methods. Focus on whether the underlying control objective, control activity, and risk outcome are substantially the same. 
+
+A control should be retained if it provides distinct and necessary risk mitigation, contributes meaningful risk coverage, and is not considered redundant, fragmented, or a candidate for consolidation or standardisation. The control should continue to operate in its current form. A control should be retained if it is not redundant or fragmented. 
+
+Output 1: Within-Product Assessment 
+
+Field Required: 
+
+Product – From tab Product Cluster, column A 
+
+Payment Category - From tab Product Cluster, column B 
+
+Payment Stage - From tab Product Cluster, column C 
+
+Expected CT Reference - From tab Product Cluster, column D 
+
+Control ID: The unique identifier of the control being assessed. 
+
+Control Name – From tab Control Details, column B 
+
+Control Objective - From tab Control Details, column H 
+
+Control Rationalized Classification: Retain / Redundant / Process-Split Fragmentation / Common Control Opportunity / Unclear. 
+
+Control Rationalized Classification ID: A unique identifier assigned to the control's primary rationalisation outcome. This field categorises the control based on the assessment result and supports grouping. For redundant control, start the grouping ID with R-1; for Common controls, start the grouping ID with CC-1; for Process split, start the grouping with P-1. 
+
+Redundant by CT ID: If a control is classified as redundant, identify the Control ID(s) against which the control is considered redundant. 
+
+Fragmented Control ID Groups: If a control is identified as Process-Split Fragmented or Common Control Opportunity, provide the Control ID(s) of all other controls within the same Fragmentation Group. 
+
+Rationale: Brief plain English explanation 
+
+Confidence of control rationalization outcome: High/Medium/Low 
+
+ 
+
+Note:  
+
+Create one output row for every control assessed. 
+
+Do not aggregate multiple controls into a single output row. 
+
+Where a control is assessed as both Fragmented and Redundant, classify the control as Redundant as the primary Control Rationalisation Classification. 
+
+Assign the control to the relevant Redundant Group ID (R-x). 
+
+Assign the control to the relevant Fragmented Group ID (F-x). 
+
+Clearly document in the rationale that the control forms part of a fragmented control set but is considered redundant because it provides little or no incremental risk mitigation. 
+
+Complete this in a separate row 
+
+ 
+
+Output 2: Cross-Product Assessment Within the Control Objective Group 
+
+Field Required: 
+
+Control ID: The unique identifier of the control being assessed. 
+
+Control Name – From tab Control Details, column B 
+
+Control Objective - From tab Control Details, column H 
+
+Expected Gold Control- From tab Objective Cluster. Column B 
+
+Control Rationalized Classification: Retain / Redundant / Process-Split Fragmentation / Common Control Opportunity / Unclear. 
+
+Control Rationalized Classification ID: A unique identifier assigned to the control's primary rationalisation outcome. This field categorises the control based on the assessment result and supports grouping. For redundant control, start the grouping ID with R-1; for Common controls, start the grouping ID with CC-1; for Process split, start the grouping with P-1. 
+
+Redundant by CT ID: If a control is classified as redundant, identify the Control ID(s) against which the control is considered redundant. 
+
+Fragmented Control ID Groups: If a control is identified as Process-Split Fragmented or Common Control Opportunity, provide the Control ID(s) of all other controls within the same Fragmentation Group. 
+
+Rationale: Brief plain English explanation 
+
+Confidence of control rationalization outcome: High/Medium/Low 
+
+ 
+
+Note:  
+
+Create one output row for every control assessed. 
+
+Do not aggregate multiple controls into a single output row. 
+
+Where a control is assessed as both Fragmented and Redundant, classify the control as Redundant as the primary Control Rationalisation Classification. 
+
+Assign the control to the relevant Redundant Group ID (R-x). 
+
+Assign the control to the relevant Fragmented Group ID (F-x). 
+
+Clearly document in the rationale that the control forms part of a fragmented control set but is considered redundant because it provides little or no incremental risk mitigation. 
+
+Complete this in a separate row 
+
+Output Structure Instructions 
+
+Produce two separate output workbooks: 
+
+Workbook 1: Within-Product Assessment 
+
+Workbook 2: Cross-Product Control Objective Assessment 
+
+Assessment Rules 
+
+Base all classifications solely on the information contained in the source data. 
+
+Do not infer or assume control activities, risk coverage, process steps, dependencies, ownership, effectiveness, or relationships that are not explicitly described. 
+
+Do not create fragmented, redundant, or common control relationships without sufficient supporting evidence. 
+
+Where the available information is insufficient to confidently determine a relationship between controls, classify the outcome as Unclear and explain why. 
+
+Do not assume that controls are redundant solely because they contain similar wording. 
+
+Do not assume that controls are fragmented solely because they belong to the same Control Objective Group. 
+
+Do not assume that controls are common controls solely because they operate within the same product, process, or payment stage. 
+
+Look for evidence of overlapping control objectives, activities, inputs, outputs, or risk outcomes before assigning a rationalisation classification. 
+
+Apply classifications consistently across all controls within the assessment scope. 
+
+ 
+
+Confidence Assessment 
+
+Assign a confidence rating for every assessment outcome: 
+
+High: Strong evidence supports the classification. 
+
+Medium: Some evidence supports the classification, but minor assumptions or interpretation were required. 
+
+Low: Limited evidence is available and the classification should be treated as indicative only. 
+
+Unclear Classification 
+
+ 
+
+Assign Unclear where: 
+
+The control description lacks sufficient detail. 
+
+The relationship between controls cannot be determined from the available information. 
+
+There is insufficient evidence to conclude that a control is redundant, fragmented, or a common control opportunity. 
+
+Multiple interpretations are reasonably possible. 
+
+ 
+
+Critical Output Rule 
+
+Do not force a rationalisation outcome. A control should only be classified as Redundant, Process-Split Fragmentation, or Common Control Opportunity where sufficient evidence exists. If sufficient evidence does not exist, classify the control as Unclear and provide the reason. 
+
+ 
