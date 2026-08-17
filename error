@@ -1,9 +1,82 @@
-az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
-
-$env:HTTP_PROXY          = "http://127.0.0.1:9000"
-$env:HTTPS_PROXY         = "http://127.0.0.1:9000"
-$env:REQUESTS_CA_BUNDLE  = "C:\Users\m061400\ai-test\cacert.pem"
-$env:SSL_CERT_FILE       = "C:\Users\m061400\ai-test\cacert.pem"
-Remove-Item Env:AZURE_CA_BUNDLE -ErrorAction SilentlyContinue
-
-python .\02_generate_embeddings_and_candidates.py --force
+2026-08-17 21:46:39 [INFO] ======================================================================
+2026-08-17 21:46:39 [INFO]   Control Rationalisation — Step 2: Embeddings & Candidate Pairs
+2026-08-17 21:46:39 [INFO]   Started: 2026-08-17 21:46:39
+2026-08-17 21:46:39 [INFO] ======================================================================
+2026-08-17 21:46:39 [INFO]   Similarity threshold   : 0.58
+2026-08-17 21:46:39 [INFO]   Max controls per batch : 20
+2026-08-17 21:46:39 [INFO]   Run within-product     : True
+2026-08-17 21:46:39 [INFO]   Run cross-product      : True
+2026-08-17 21:46:39 [INFO] Loading expanded dataset...
+2026-08-17 21:46:39 [INFO]   Rows: 3,155 | Unique controls: 390
+2026-08-17 21:46:39 [INFO] Generating embeddings for unique controls...
+2026-08-17 21:46:39 [INFO]   Unique controls to embed: 390
+2026-08-17 21:46:39 [INFO] Initialising Azure OpenAI client...
+2026-08-17 21:46:39 [INFO] Client ready.
+2026-08-17 21:46:39 [INFO]   Embedding 390 controls in batches of 20...
+    390/390 (100%) done
+2026-08-17 21:48:17 [INFO] Embeddings cached: control_embeddings.parquet (390 rows)
+2026-08-17 21:48:17 [INFO] Embedding lookup ready: 390 controls
+2026-08-17 21:48:17 [INFO]
+Building within-product scopes and candidate pairs...
+2026-08-17 21:48:18 [INFO]   Within-product scopes: 428
+2026-08-17 21:48:18 [INFO]   Large scope (24 controls, 2 batches): WP|AUD Investment Accounts|Customer to Customer|Posting, Accounting & Detection|
+2026-08-17 21:48:18 [INFO]   Large scope (24 controls, 2 batches): WP|AUD Overdrafts|Customer to Customer|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (24 controls, 2 batches): WP|AUD Transaction Accounts|Customer to Customer|Posting, Accounting & Detection
+2026-08-17 21:48:18 [INFO]   Large scope (25 controls, 2 batches): WP|Bonds / REPOs|Institution to Institution|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (37 controls, 2 batches): WP|Commercial Cards|Customer to Customer|Initiation & Validation & Authorisation
+2026-08-17 21:48:18 [INFO]   Large scope (31 controls, 2 batches): WP|Commercial Cards|Customer to Customer|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (26 controls, 2 batches): WP|Commodity|Institution to Institution|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (26 controls, 2 batches): WP|Credit Derivatives|Institution to Institution|Posting, Accounting & Detection
+2026-08-17 21:48:18 [INFO]   Large scope (23 controls, 2 batches): WP|Digital Solutions|Customer to Customer|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (41 controls, 3 batches): WP|Domestic Payments - Credit|Customer to Customer|Initiation & Validation & Aut
+2026-08-17 21:48:18 [INFO]   Large scope (40 controls, 2 batches): WP|Domestic Payments - Credit|Customer to Customer|Posting, Accounting & Detecti
+2026-08-17 21:48:18 [INFO]   Large scope (23 controls, 2 batches): WP|Domestic Payments - Credit|Institution to Institution|Posting, Accounting & D
+2026-08-17 21:48:18 [INFO]   Large scope (37 controls, 2 batches): WP|Domestic Payments - Non Credit|Customer to Customer|Initiation & Validation &
+2026-08-17 21:48:18 [INFO]   Large scope (31 controls, 2 batches): WP|Domestic Payments - Non Credit|Customer to Customer|Posting, Accounting & Det
+2026-08-17 21:48:18 [INFO]   Large scope (21 controls, 2 batches): WP|Domestic Payments - Non Credit|Institution to Institution|Posting, Accounting
+2026-08-17 21:48:18 [INFO]   Large scope (37 controls, 2 batches): WP|Domestic Payments - Payer Initiated|Customer to Customer|Initiation & Validat
+2026-08-17 21:48:18 [INFO]   Large scope (31 controls, 2 batches): WP|Domestic Payments - Payer Initiated|Customer to Customer|Posting, Accounting
+2026-08-17 21:48:18 [INFO]   Large scope (22 controls, 2 batches): WP|Domestic Payments - Payer Initiated|Institution to Institution|Posting, Accou
+2026-08-17 21:48:18 [INFO]   Large scope (26 controls, 2 batches): WP|FX Derivatives|Institution to Institution|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (23 controls, 2 batches): WP|Foreign Currency Account Overdrafts|Customer to Customer|Posting, Accounting
+2026-08-17 21:48:18 [INFO]   Large scope (24 controls, 2 batches): WP|Foreign Currency Accounts|Customer to Customer|Posting, Accounting & Detectio
+2026-08-17 21:48:18 [INFO]   Large scope (26 controls, 2 batches): WP|Future / ETO|Institution to Institution|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (26 controls, 2 batches): WP|IR Derivatives|Institution to Institution|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (46 controls, 3 batches): WP|International Needs|Customer to Customer|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (41 controls, 3 batches): WP|International Payments|Customer to Customer|Initiation & Validation & Authori
+2026-08-17 21:48:18 [INFO]   Large scope (31 controls, 2 batches): WP|International Payments|Customer to Customer|Posting, Accounting & Detection|C
+2026-08-17 21:48:18 [INFO]   Large scope (26 controls, 2 batches): WP|Investor Home Loans|Institution to Customer|Initiation & Validation & Authori
+2026-08-17 21:48:18 [INFO]   Large scope (24 controls, 2 batches): WP|Liquidity Notional Poling|Customer to Customer|Posting, Accounting & Detectio
+2026-08-17 21:48:18 [INFO]   Large scope (25 controls, 2 batches): WP|Loans and Deposits|Institution to Institution|Posting, Accounting & Detection
+2026-08-17 21:48:18 [INFO]   Large scope (26 controls, 2 batches): WP|Owner Occupied Home Loans|Institution to Customer|Initiation & Validation & A
+2026-08-17 21:48:18 [INFO]   Large scope (35 controls, 2 batches): WP|Prepaid Cards|Customer to Customer|Initiation & Validation & Authorisation|CT
+2026-08-17 21:48:18 [INFO]   Large scope (29 controls, 2 batches): WP|Prepaid Cards|Customer to Customer|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (22 controls, 2 batches): WP|Savings Accounts|Customer to Customer|Initiation & Validation & Authorisation
+2026-08-17 21:48:18 [INFO]   Large scope (49 controls, 3 batches): WP|Savings Accounts|Customer to Customer|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (26 controls, 2 batches): WP|Savings Accounts|Institution to Customer|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (23 controls, 2 batches): WP|Services|Institution to Institution|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (26 controls, 2 batches): WP|Structured Investments & Deposits|Institution to Institution|Posting, Account
+2026-08-17 21:48:18 [INFO]   Large scope (26 controls, 2 batches): WP|Structured Notes|Institution to Institution|Posting, Accounting & Detection|C
+2026-08-17 21:48:18 [INFO]   Large scope (22 controls, 2 batches): WP|Term Deposits|Customer to Customer|Initiation & Validation & Authorisation|CT
+2026-08-17 21:48:18 [INFO]   Large scope (49 controls, 3 batches): WP|Term Deposits|Customer to Customer|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (26 controls, 2 batches): WP|Term Deposits|Institution to Customer|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (23 controls, 2 batches): WP|Transaction Accounts|Customer to Customer|Initiation & Validation & Authorisa
+2026-08-17 21:48:18 [INFO]   Large scope (49 controls, 3 batches): WP|Transaction Accounts|Customer to Customer|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (28 controls, 2 batches): WP|Transaction Accounts|Institution to Customer|Posting, Accounting & Detection|
+2026-08-17 21:48:18 [INFO]   Large scope (46 controls, 3 batches): WP|Trust Accounts|Customer to Customer|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Large scope (23 controls, 2 batches): WP|Trust Accounts|Institution to Customer|Posting, Accounting & Detection|CT2
+2026-08-17 21:48:18 [INFO]   Small scopes (send_all): 382 | Large scopes (batched): 46
+2026-08-17 21:48:18 [INFO]
+Building cross-product scopes and candidate pairs...
+2026-08-17 21:48:18 [INFO]   Cross-product scopes: 9
+2026-08-17 21:48:18 [INFO]   Large cross-product scope (162 controls, 9 batches): CP|CT1
+2026-08-17 21:48:18 [INFO]   Large cross-product scope (174 controls, 9 batches): CP|CT2
+2026-08-17 21:48:18 [INFO]
+Saving candidate pair outputs...
+2026-08-17 21:48:18 [INFO]   candidate_pairs_within_product.parquet: 26,371 rows
+2026-08-17 21:48:18 [INFO]   scope_summary_within_product.parquet: 428 scopes
+2026-08-17 21:48:18 [INFO]     send_all scopes   : 382
+2026-08-17 21:48:18 [INFO]     batched scopes    : 46
+2026-08-17 21:48:18 [INFO]   candidate_pairs_cross_product.parquet: 28,293 rows
+2026-08-17 21:48:18 [INFO]   scope_summary_cross_product.parquet: 9 scopes
+2026-08-17 21:48:18 [INFO] ======================================================================
