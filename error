@@ -1,19 +1,6 @@
-PS C:\Users\m061400\ai-test\big_table\duplicates\product> python .\03_run_llm_assessment.py
-2026-08-17 22:41:39 [INFO] ======================================================================
-2026-08-17 22:41:39 [INFO]   Control Rationalisation — Step 3: LLM Assessment
-2026-08-17 22:41:39 [INFO]   Model          : gpt-5.4 (low reasoning)
-2026-08-17 22:41:39 [INFO]   Sub-batch size : 5 controls per LLM call
-2026-08-17 22:41:39 [INFO]   Started        : 2026-08-17 22:41:39
-2026-08-17 22:41:39 [INFO] ======================================================================
-2026-08-17 22:41:39 [INFO] Loading data...
-2026-08-17 22:41:40 [INFO]   Expanded rows: 3,155
-2026-08-17 22:41:40 [INFO] Initialising Azure OpenAI client...
-2026-08-17 22:41:40 [INFO] Client ready.
-2026-08-17 22:41:40 [INFO]
-Processing within-product scopes...
-2026-08-17 22:41:40 [INFO]   Total WP scopes : 428 | Already done keys: 0
-  [  0.2%] WP|AUD Investment Accounts|Customer to Customer|Executi ETA 0s  A$0.002026-08-17 22:42:06 [WARNING]   Attempt 1 failed [WP|AUD Investment Accounts|Customer to Customer|Execution & Early Processing Assurance|CT3::0::0]: Connection error.. Retrying in 6s...
-2026-08-17 22:42:13 [WARNING]   Attempt 2 failed [WP|AUD Investment Accounts|Customer to Customer|Execution & Early Processing Assurance|CT3::0::0]: Connection error.. Retrying in 12s...
-2026-08-17 22:42:27 [ERROR]   All retries failed [WP|AUD Investment Accounts|Customer to Customer|Execution & Early Processing Assurance|CT3::0::0]: Connection error.
-  [  0.5%] WP|AUD Investment Accounts|Customer to Customer|Executi ETA 2h 46m  A$0.002026-08-17 22:42:29 [WARNING]   Attempt 1 failed [WP|AUD Investment Accounts|Customer to Customer|Execution & Early Processing Assurance|CT4::0::0]: Connection error.. Retrying in 7s...
-2026-08-17 22:42:37 [WARNING]   Attempt 2 failed [WP|AUD Investment Accounts|Customer to Customer|Execution & Early Processing Assurance|CT4::0::0]: Connection error.. Retrying in 12s...
+$env:HTTP_PROXY          = "http://127.0.0.1:9000"
+$env:HTTPS_PROXY         = "http://127.0.0.1:9000"
+$env:REQUESTS_CA_BUNDLE  = "C:\Users\m061400\ai-test\cacert.pem"
+$env:SSL_CERT_FILE       = "C:\Users\m061400\ai-test\cacert.pem"
+Remove-Item Env:AZURE_CA_BUNDLE -ErrorAction SilentlyContinue
+python 03_run_llm_assessment.py
