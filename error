@@ -1,114 +1,19 @@
-"""
-preview_results.py
-Reads whatever is in the checkpoint so far and writes a sample Excel for SME review.
-Run at any point while Script 3 is still running.
+python 03_run_llm_assessment.py --wp-range 0 30 --suffix _sample --wp-only
 
-Usage:
-  python preview_results.py
-"""
-import json
-from pathlib import Path
-import pandas as pd
+python preview_results.py
 
-OUTPUT_DIR   = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
-EXPANDED     = OUTPUT_DIR / "expanded_product_control_mapping.parquet"
-CHECKPOINTS  = [
-    OUTPUT_DIR / "llm_checkpoint_within_product.jsonl",
-    OUTPUT_DIR / "llm_checkpoint_within_product_p1.jsonl",
-    OUTPUT_DIR / "llm_checkpoint_within_product_p2.jsonl",
-    OUTPUT_DIR / "llm_checkpoint_within_product_p3.jsonl",
-    OUTPUT_DIR / "llm_checkpoint_within_product_p4.jsonl",
-]
-OUTPUT_FILE  = OUTPUT_DIR / "sme_sample_preview.xlsx"
 
-# ── Load expanded data for context ────────────────────────────────────────────
-expanded = pd.read_parquet(EXPANDED, engine="pyarrow")
-ctrl_lookup = (expanded[["Control_ID","CTRL_NAME","Control Objective",
-                          "Product","Payment Category","Consolidated Stage",
-                          "Expected CT Reference","ct_ref_norm"]]
-               .drop_duplicates(subset=["Control_ID"])
-               .set_index("Control_ID")
-               .to_dict("index"))
+# Window 1
+python 03_run_llm_assessment.py --wp-range 0 107 --suffix _p1 --wp-only
 
-# ── Read all checkpoint files ─────────────────────────────────────────────────
-rows = []
-seen_keys = set()
+# Window 2
+python 03_run_llm_assessment.py --wp-range 107 214 --suffix _p2 --wp-only
 
-for ck_path in CHECKPOINTS:
-    if not ck_path.exists():
-        continue
-    with open(ck_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+# Window 3
+python 03_run_llm_assessment.py --wp-range 214 321 --suffix _p3 --wp-only
 
-            if rec.get("skipped") or rec.get("error"):
-                continue
+# Window 4
+python 03_run_llm_assessment.py --wp-range 321 428 --suffix _p4 --wp-only
 
-            scope_id = rec.get("scope_id","")
-            batch_key = rec.get("batch_key","")
-
-            for a in rec.get("assessments", []):
-                ctrl_id = a.get("control_id","")
-                dedup_key = f"{scope_id}::{ctrl_id}"
-                if dedup_key in seen_keys:
-                    continue
-                seen_keys.add(dedup_key)
-
-                ctx = ctrl_lookup.get(ctrl_id, {})
-                rows.append({
-                    "Product":                        ctx.get("Product",""),
-                    "Payment Category":               ctx.get("Payment Category",""),
-                    "Payment Stage":                  ctx.get("Consolidated Stage",""),
-                    "Expected CT Reference":          ctx.get("Expected CT Reference",""),
-                    "Control ID":                     ctrl_id,
-                    "Control Name":                   a.get("control_name","") or ctx.get("CTRL_NAME",""),
-                    "Control Objective":              a.get("control_objective","") or ctx.get("Control Objective",""),
-                    "Classification":                 a.get("classification",""),
-                    "Classification Group Key":       a.get("classification_group_key",""),
-                    "Fragmented Group ID":            a.get("fragmented_group_id",""),
-                    "Dual Classified":                a.get("dual_classified", False),
-                    "Redundant By Control IDs":       "; ".join(a.get("redundant_by_control_ids") or []),
-                    "Fragmented Control ID Group":    "; ".join(a.get("fragmented_control_id_group") or []),
-                    "Rationale":                      a.get("rationale",""),
-                    "Confidence":                     a.get("confidence",""),
-                    "Scope ID":                       scope_id,
-                    "Batch Key":                      batch_key,
-                })
-
-if not rows:
-    print("No completed assessments in checkpoint yet. Try again in a few minutes.")
-else:
-    df = pd.DataFrame(rows)
-    # Summary
-    summary_rows = [
-        ("Controls assessed so far", len(df)),
-        ("Unique scopes covered",    df["Scope ID"].nunique()),
-        ("Redundant",                (df["Classification"]=="Redundant").sum()),
-        ("Process-Split Fragmentation", (df["Classification"]=="Process-Split Fragmentation").sum()),
-        ("Common Control Opportunity",  (df["Classification"]=="Common Control Opportunity").sum()),
-        ("Retain",                   (df["Classification"]=="Retain").sum()),
-        ("Unclear",                  (df["Classification"]=="Unclear").sum()),
-    ]
-    summary_df = pd.DataFrame(summary_rows, columns=["Metric","Value"])
-
-    with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as w:
-        summary_df.to_excel(w, index=False, sheet_name="summary")
-        df.to_excel(w, index=False, sheet_name="all_assessments")
-        # Duplicates and fragmentation only
-        flags = df[df["Classification"].isin([
-            "Redundant","Process-Split Fragmentation","Common Control Opportunity"])]
-        flags.to_excel(w, index=False, sheet_name="findings_only")
-
-    print(f"Written: {OUTPUT_FILE}")
-    print(f"Controls assessed : {len(df):,}")
-    print(f"Scopes covered    : {df['Scope ID'].nunique():,}")
-    print(f"Findings          : {len(flags):,} "
-          f"(Redundant: {(df['Classification']=='Redundant').sum()}, "
-          f"Fragmented: {(df['Classification']=='Process-Split Fragmentation').sum()}, "
-          f"CCO: {(df['Classification']=='Common Control Opportunity').sum()})")
+# Window 5 — cross-product (only 9 scopes, ~20 minutes)
+python 03_run_llm_assessment.py --cp-only --suffix _cp
