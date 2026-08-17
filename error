@@ -1,20 +1,29 @@
-PS C:\Users\m061400\ai-test\big_table\duplicates\product> $env:HTTP_PROXY          = "http://127.0.0.1:9000"
-PS C:\Users\m061400\ai-test\big_table\duplicates\product> $env:HTTPS_PROXY         = "http://127.0.0.1:9000"
-PS C:\Users\m061400\ai-test\big_table\duplicates\product> $env:REQUESTS_CA_BUNDLE  = "C:\Users\m061400\ai-test\cacert.pem"
-PS C:\Users\m061400\ai-test\big_table\duplicates\product> $env:SSL_CERT_FILE       = "C:\Users\m061400\ai-test\cacert.pem"
-PS C:\Users\m061400\ai-test\big_table\duplicates\product> Remove-Item Env:AZURE_CA_BUNDLE -ErrorAction SilentlyContinue
-PS C:\Users\m061400\ai-test\big_table\duplicates\product> python 03_run_llm_assessment.py
-2026-08-17 22:45:23 [INFO] ======================================================================
-2026-08-17 22:45:23 [INFO]   Control Rationalisation — Step 3: LLM Assessment
-2026-08-17 22:45:23 [INFO]   Model          : gpt-5.4 (low reasoning)
-2026-08-17 22:45:23 [INFO]   Sub-batch size : 5 controls per LLM call
-2026-08-17 22:45:23 [INFO]   Started        : 2026-08-17 22:45:23
-2026-08-17 22:45:23 [INFO] ======================================================================
-2026-08-17 22:45:23 [INFO] Loading data...
-2026-08-17 22:45:23 [INFO]   Expanded rows: 3,155
-2026-08-17 22:45:23 [INFO] Initialising Azure OpenAI client...
-2026-08-17 22:45:24 [INFO] Client ready.
-2026-08-17 22:45:24 [INFO]
+S C:\Users\m061400\ai-test\big_table\duplicates\product> python 03_run_llm_assessment.py --force
+2026-08-18 06:44:14 [INFO] ======================================================================
+2026-08-18 06:44:14 [INFO]   Control Rationalisation — Step 3: LLM Assessment
+2026-08-18 06:44:14 [INFO]   Model          : gpt-5.4 (low reasoning)
+2026-08-18 06:44:14 [INFO]   Sub-batch size : 5 controls per LLM call
+2026-08-18 06:44:14 [INFO]   Started        : 2026-08-18 06:44:14
+2026-08-18 06:44:14 [INFO] ======================================================================
+2026-08-18 06:44:14 [INFO] Checkpoint cleared: llm_checkpoint_within_product.jsonl
+2026-08-18 06:44:14 [INFO] Checkpoint cleared: llm_checkpoint_cross_product.jsonl
+2026-08-18 06:44:14 [INFO] Loading data...
+2026-08-18 06:44:15 [INFO]   Expanded rows: 3,155
+2026-08-18 06:44:15 [INFO] Initialising Azure OpenAI client...
+2026-08-18 06:44:15 [INFO] Client ready.
+2026-08-18 06:44:15 [INFO]
 Processing within-product scopes...
-2026-08-17 22:45:24 [INFO]   Total WP scopes : 428 | Already done keys: 1
-  [ 19.9%] WP|Credit Derivatives|Institution to Institution|Execut ETA 3h 6m  A$6.253
+2026-08-18 06:44:16 [INFO]   Total WP scopes : 428 | Already done keys: 0
+  [ 16.8%] WP|Commodity|Institution to Institution|Posting, Accoun ETA 2h 58m  A$5.292026-08-18 07:21:12 [WARNING]   Attempt 1 failed [WP|Commodity|Institution to Institution|Posting, Accounting & Detection|CT2::0::2]: Connection error.. Retrying in 6s...
+2026-08-18 07:21:19 [WARNING]   Attempt 2 failed [WP|Commodity|Institution to Institution|Posting, Accounting & Detection|CT2::0::2]: Connection error.. Retrying in 11s...
+2026-08-18 07:21:32 [ERROR]   All retries failed [WP|Commodity|Institution to Institution|Posting, Accounting & Detection|CT2::0::2]: Connection error.
+2026-08-18 07:21:34 [WARNING]   Attempt 1 failed [WP|Commodity|Institution to Institution|Posting, Accounting & Detection|CT2::0::3]: Connection error.. Retrying in 6s...
+2026-08-18 07:21:42 [WARNING]   Attempt 2 failed [WP|Commodity|Institution to Institution|Posting, Accounting & Detection|CT2::0::3]: Connection error.. Retrying in 12s...
+2026-08-18 07:21:55 [ERROR]   All retries failed [WP|Commodity|Institution to Institution|Posting, Accounting & Detection|CT2::0::3]: Connection error.
+2026-08-18 07:21:57 [WARNING]   Attempt 1 failed [WP|Commodity|Institution to Institution|Posting, Accounting & Detection|CT2::1::0]: Connection error.. Retrying in 5s...
+2026-08-18 07:22:04 [WARNING]   Attempt 2 failed [WP|Commodity|Institution to Institution|Posting, Accounting & Detection|CT2::1::0]: Connection error.. Retrying in 10s...
+2026-08-18 07:22:15 [ERROR]   All retries failed [WP|Commodity|Institution to Institution|Posting, Accounting & Detection|CT2::1::0]: Connection error.
+2026-08-18 07:22:17 [WARNING]   Attempt 1 failed [WP|Commodity|Institution to Institution|Posting, Accounting & Detection|CT2::1::1]: Connection error.. Retrying in 6s...
+2026-08-18 07:22:25 [WARNING]   Attempt 2 failed [WP|Commodity|Institution to Institution|Posting, Accounting & Detection|CT2::1::1]: Connection error.. Retrying in 10s...
+2026-08-18 07:22:36 [ERROR]   All retries failed [WP|Commodity|Institution to Institution|Posting, Accounting & Detection|CT2::1::1]: Connection error.
+  [ 17.1%] WP|Consumer Credit Insurance|Customer to Institution|Po ETA 3h 6m  A$5.402026-08-18 07:22:38 [WARNING]   Attempt 1 failed [WP|Consumer Credit Insurance|Customer to Institution|Posting, Accounting & Detection|CT2::0::0]: Connection error.. Retrying in 6s...
