@@ -1,618 +1,501 @@
-You are a senior Python data engineer and operational risk analytics specialist. Generate a complete, production-ready Python solution to identify redundant controls, fragmented controls, common control opportunities, and retained or unclear controls across payment products.
-
-The solution must be designed for an enterprise Windows environment and must work with the two Excel input files below.
-
-INPUT FILES
-
-1. Control details file:
-C:\Users\M061400\ai-test\big_table\duplicates\product\raw\ctrl_details.xlsx
-
-This dataset is used for both embeddings and LLM payload construction. It contains one row per control and includes the following fields:
-
-- Control_ID: Unique ID
-- CTRL_NAME: Name of the control
-- CTRL_NATRE: Preventative, Detective, or Recovery
-- CTRL_STUS: Assessed or Awaiting Assessment
-- CTRL_OWNER: Human name of the control owner
-- CTRL_FREQ: Daily, Ad-hoc, etc.
-- CTRL_KEY_CONTRL: Key Control Yes or No
-- Control Objective: Objective of control
-- CTRL_TYP: Manual, Automated, Semi-Manual
-- CTRL_ASSESS_RTNG: Effective, Requires Improvement, or Unsatisfactory
-- CTRL_CTGRY_1: Values such as Data validation, Authorisation & Approval, etc.
-- CTRL_CTGRY_2: Values such as Functional segregation of duties, System validation, etc.
-- CTRL_OE_RTNG: Effective, Requires Improvement, or Unsatisfactory
-- CTRL_DE_RTNG: Effective, Requires Improvement, or Unsatisfactory
-- CTRL_LOC_LIST: Australia, NZ, etc.
-- CTRL_EVDNCD: How the control is evidenced, blank for some controls
-- CTRL_MNTRD: How the control is monitored, blank for some controls
-- CTRL_CATEGORY: Unique, Common, etc.
-- Control Description: Description
-- CTRL_FLDR: Area of business where control operates, shown as hierarchy, for example /Westpac Group/Business and Wealth Division/Private Wealth/Global Investment Services
-- object_path_leaf: Area of business where control operates shown as absolute value, for example Global Investment Services
-- CTRL_FLDR_LVL_2(Division): Division of Westpac where control exists
-- gold_control: CT 1 to CT 28
-
-2. Product cluster file:
-C:\Users\M061400\ai-test\big_table\duplicates\product\raw\product_clusters.xlsx
-
-This dataset contains products with control clusters that appear to operate across those products. It includes the following fields:
-
-- Product: Name of the product
-- Payment Category: Such as Customer to Customer, Institution to Customer, Institution to Institution, etc.
-- Consolidated Stage: Payment lifecycle stage such as Initiation & Validation & Authorisation, Posting, Accounting & Detection, etc.
-- Expected CT Reference: Such as CT1, CT2, through CT28
-- Expected Control: Name of CT1, CT2, through CT28
-- Unique Control Count: Total count of controls for the product
-- Unique Control IDs: Comma-separated Control IDs
-
-Example structure:
-
-Product | Payment Category | Consolidated Stage | Expected CT Reference | Expected Control | Unique Control Count | Unique Control IDs
-Agency Service | Customer to Customer | Initiation & Validation & Authorisation | CT1 | Validation of transaction details | 5 | CTL000041538, CTL000173470, CTL000173709, CTL000176675, CTL000181050
-Agency Service | Customer to Institution | Initiation & Validation & Authorisation | CT1 | Validation of transaction details | 7 | CTL000045174, CTL000079156, CTL000173470, CTL000173709, CTL000176651, CTL000176675, CTL021896
-Agency Service | Customer to Institution | Posting, Accounting & Detection | CT2 | Error Detection | 3 | CTL000041583, CTL000176636, CTL002056
-
-BUSINESS OBJECTIVE
-
-Generate a Python script, or a small set of Python scripts if cleaner, that performs the full end-to-end assessment.
-
-The scripts must:
-
-1. Load and validate the two Excel datasets.
-2. Preprocess the data before the main LLM reasoning step.
-3. Expand the comma-separated Unique Control IDs into one row per Product, Payment Category, Consolidated Stage, Expected CT Reference, Expected Control, and Control_ID.
-4. Join each expanded Control_ID to ctrl_details.xlsx.
-5. Create clean text payloads for embeddings and LLM reasoning.
-6. Use embeddings to identify candidate similar or related controls.
-7. Use LLM reasoning to classify each control within the correct assessment scope.
-8. Produce two separate output workbooks:
-   - Workbook 1: Within-Product Assessment
-   - Workbook 2: Cross-Product Control Objective Assessment
-9. Include checkpoints, logs, and robust error handling.
-10. Make the output auditable and defensible.
-
-ASSESSMENT SCOPE
-
-The dataset has been cut by both Control Objective Group and Product. The assessment must occur at two levels.
-
-Level 1: Within-Product Assessment
-
-For each Control Objective Group and Product combination, assess controls within the same Product and same Control Objective Group.
-
-Use the Product Cluster dataset as the source for:
-- Product
-- Payment Category
-- Consolidated Stage
-- Expected CT Reference
-- Expected Control
-- Unique Control IDs
-
-For this script, treat Expected CT Reference as the primary Control Objective Group identifier for product cluster assessment. Also include Expected Control and Control Objective text from control details in the LLM payload so the model can reason using both structured grouping and source-control text.
-
-Within each Product plus Payment Category plus Consolidated Stage plus Expected CT Reference group:
-- Compare each control against all other controls in that same group.
-- Assess for Redundant Controls.
-- Assess for Process-Split Fragmentation.
-- Assess for Common Control Opportunities.
-- Assign Retain or Unclear where appropriate.
-
-Level 2: Cross-Product Control Objective Assessment
-
-For each Control Objective Group, compare controls across all products within the same Expected CT Reference.
-
-Do not compare controls across different Expected CT Reference groups.
-
-For cross-product assessment:
-- Group by Expected CT Reference.
-- Include Expected Control as the expected gold control name.
-- Include Product, Payment Category, and Consolidated Stage as context for reasoning.
-- Compare controls across different products within the same Expected CT Reference group.
-- Assess for Redundant Controls.
-- Assess for Process-Split Fragmentation.
-- Assess for Common Control Opportunities.
-- Assign Retain or Unclear where appropriate.
-
-IMPORTANT: Do not compare controls across different Control Objective Groups / Expected CT References.
-
-CLASSIFICATION DEFINITIONS
-
-Use these definitions exactly.
-
-Redundant Control:
-A control that does not provide additional risk mitigation because its objective and outcome are already addressed by another control operating at the same or a more effective point in the process.
-
-Common Control Opportunity:
-A control may be fragmented where the same control objective and substantially similar control activities are performed separately across multiple products, systems, channels, processes, or business units. The controls operate independently but achieve the same risk management outcome. This may indicate an opportunity to standardise, centralise, or consolidate the controls into a single common control capability.
-
-Process-Split Fragmentation:
-A control may be fragmented where multiple controls form different stages of a single end-to-end control activity rather than operating as genuinely distinct controls. The control has been divided across process steps, systems, teams, or manual and automated activities, with each control performing only part of the overall control objective.
-
-Retain:
-A control should be retained if it provides distinct and necessary risk mitigation, contributes meaningful risk coverage, and is not considered redundant, fragmented, or a candidate for consolidation or standardisation.
-
-Unclear:
-Use Unclear where available information is insufficient to confidently classify the control as Redundant, Process-Split Fragmentation, Common Control Opportunity, or Retain.
-
-ASSESSMENT RULES
-
-Base all classifications solely on the information contained in the source data.
-
-Do not infer or assume control activities, risk coverage, process steps, dependencies, ownership, effectiveness, or relationships that are not explicitly described.
-
-Do not create fragmented, redundant, or common control relationships without sufficient supporting evidence.
-
-Where the available information is insufficient to confidently determine a relationship between controls, classify the outcome as Unclear and explain why.
-
-Do not assume that controls are redundant solely because they contain similar wording.
-
-Do not assume that controls are fragmented solely because they belong to the same Control Objective Group.
-
-Do not assume that controls are common controls solely because they operate within the same product, process, payment category, or payment stage.
-
-Look for explicit evidence of overlapping control objectives, control activities, inputs, outputs, monitoring approach, evidence approach, risk outcomes, or process coverage before assigning a rationalisation classification.
-
-Apply classifications consistently across all controls within the assessment scope.
-
-If a control is assessed as both fragmented and redundant, classify it as Redundant as the primary classification. In the rationale, clearly document that it also forms part of a fragmented control set but is considered redundant because it provides little or no incremental risk mitigation.
-
-OUTPUT 1: WITHIN-PRODUCT ASSESSMENT
-
-Create one output row for every control assessed. Do not aggregate multiple controls into a single output row.
-
-Workbook name:
-within_product_assessment.xlsx
-
-Required output fields:
-
-- Product
-- Payment Category
-- Payment Stage
-- Expected CT Reference
-- Control ID
-- Control Name
-- Control Objective
-- Control Rationalized Classification
-- Control Rationalized Classification ID
-- Redundant by CT ID
-- Fragmented Control ID Groups
-- Rationale
-- Confidence of control rationalization outcome
-
-Allowed values for Control Rationalized Classification:
-- Retain
-- Redundant
-- Process-Split Fragmentation
-- Common Control Opportunity
-- Unclear
-
-Allowed values for Confidence of control rationalization outcome:
-- High
-- Medium
-- Low
-
-Output mapping:
-- Product: from product_clusters.xlsx Product
-- Payment Category: from product_clusters.xlsx Payment Category
-- Payment Stage: from product_clusters.xlsx Consolidated Stage
-- Expected CT Reference: from product_clusters.xlsx Expected CT Reference
-- Control ID: from expanded Unique Control IDs
-- Control Name: from ctrl_details.xlsx CTRL_NAME
-- Control Objective: from ctrl_details.xlsx Control Objective
-
-OUTPUT 2: CROSS-PRODUCT CONTROL OBJECTIVE ASSESSMENT
-
-Create one output row for every control assessed. Do not aggregate multiple controls into a single output row.
-
-Workbook name:
-cross_product_control_objective_assessment.xlsx
-
-Required output fields:
-
-- Control ID
-- Control Name
-- Control Objective
-- Expected Gold Control
-- Control Rationalized Classification
-- Control Rationalized Classification ID
-- Redundant by CT ID
-- Fragmented Control ID Groups
-- Rationale
-- Confidence of control rationalization outcome
-
-Allowed values for Control Rationalized Classification:
-- Retain
-- Redundant
-- Process-Split Fragmentation
-- Common Control Opportunity
-- Unclear
-
-Allowed values for Confidence of control rationalization outcome:
-- High
-- Medium
-- Low
-
-Output mapping:
-- Control ID: from expanded Unique Control IDs
-- Control Name: from ctrl_details.xlsx CTRL_NAME
-- Control Objective: from ctrl_details.xlsx Control Objective
-- Expected Gold Control: from product_clusters.xlsx Expected Control, associated with Expected CT Reference
-
-GROUP ID RULES
-
-The Control Rationalized Classification ID must be a unique grouping identifier assigned to the control's primary rationalisation outcome.
-
-Use these prefixes exactly:
-
-- Redundant groups: R-1, R-2, R-3, etc.
-- Common Control Opportunity groups: CC-1, CC-2, CC-3, etc.
-- Process-Split Fragmentation groups: P-1, P-2, P-3, etc.
-- Retain: RETAIN
-- Unclear: UNCLEAR
-
-Group ID numbering must be deterministic and reproducible.
-
-Within each assessment output, assign group IDs in stable sorted order based on:
-1. Assessment scope
-2. Expected CT Reference
-3. Product, where applicable
-4. Sorted list of involved Control IDs
-
-For redundant controls:
-- Control Rationalized Classification must be Redundant.
-- Control Rationalized Classification ID must start with R-.
-- Redundant by CT ID must contain the Control ID or IDs that already address the same objective and outcome.
-- Fragmented Control ID Groups may be populated if the control is also part of a fragmentation group.
-- The rationale must explain why the control provides little or no incremental risk mitigation.
-
-For Process-Split Fragmentation:
-- Control Rationalized Classification must be Process-Split Fragmentation.
-- Control Rationalized Classification ID must start with P-.
-- Fragmented Control ID Groups must include the other Control IDs in the same process-split group.
-- Redundant by CT ID must be blank unless the primary classification is Redundant.
-
-For Common Control Opportunity:
-- Control Rationalized Classification must be Common Control Opportunity.
-- Control Rationalized Classification ID must start with CC-.
-- Fragmented Control ID Groups must include the other Control IDs in the same common-control opportunity group.
-- Redundant by CT ID must be blank unless the primary classification is Redundant.
-
-For Retain:
-- Control Rationalized Classification ID must be RETAIN.
-- Redundant by CT ID must be blank.
-- Fragmented Control ID Groups must be blank.
-- The rationale must explain what makes the control distinct or why there is no evidence of redundancy or fragmentation.
-
-For Unclear:
-- Control Rationalized Classification ID must be UNCLEAR.
-- Redundant by CT ID must be blank.
-- Fragmented Control ID Groups must be blank.
-- The rationale must explain what information is missing or why the relationship cannot be determined.
-
-PREPROCESSING REQUIREMENTS
-
-Generate preprocessing logic that performs the following:
-
-1. Read both Excel input files using pandas with openpyxl.
-2. Standardise column names by trimming whitespace but preserve original business column names in the final outputs.
-3. Validate required columns exist.
-4. Parse Unique Control IDs by splitting on commas, trimming whitespace, and removing blanks.
-5. Standardise Expected CT Reference values so that CT1 and CT 1 can be matched consistently, but preserve the original value in outputs where possible.
-6. Standardise ctrl_details.xlsx gold_control values similarly.
-7. Join expanded Product Cluster rows to ctrl_details.xlsx on Control_ID.
-8. Create a data quality report with:
-   - Input row counts
-   - Expanded control row counts
-   - Missing Control_ID values from ctrl_details
-   - Duplicate Control_IDs in ctrl_details
-   - Blank Control Description count
-   - Blank Control Objective count
-   - Blank CTRL_EVDNCD count
-   - Blank CTRL_MNTRD count
-   - Product cluster rows with no valid Control IDs
-9. Save the data quality report as:
-   data_quality_report.xlsx
-
-TEXT PAYLOAD REQUIREMENTS
-
-Create a clean control text field for embeddings using available fields from ctrl_details.xlsx.
-
-The text should include, where available:
-- Control ID
-- CTRL_NAME
-- Control Objective
-- Control Description
-- CTRL_NATRE
-- CTRL_FREQ
-- CTRL_TYP
-- CTRL_KEY_CONTRL
-- CTRL_CTGRY_1
-- CTRL_CTGRY_2
-- CTRL_EVDNCD
-- CTRL_MNTRD
-- CTRL_CATEGORY
-- CTRL_LOC_LIST
-- CTRL_FLDR_LVL_2(Division)
-- object_path_leaf
-- gold_control
-
-Do not include CTRL_OWNER in embeddings unless it is explicitly needed for assessing fragmentation by ownership. The default should be to exclude owner from embeddings and LLM reasoning to reduce unnecessary personal data exposure. The classification must not be based on owner name alone.
-
-Create a second LLM payload text that includes:
-- Product
-- Payment Category
-- Consolidated Stage
-- Expected CT Reference
-- Expected Control
-- Control ID
-- Control Name
-- Control Objective
-- Control Description
-- Control nature
-- Frequency
-- Type
-- Key control flag
-- Category 1
-- Category 2
-- Evidence
-- Monitoring
-- Control category
-- Location
-- Division
-- Business area leaf
-- Gold control
-
-EMBEDDING REQUIREMENTS
-
-Use embeddings to reduce the candidate comparison set before LLM reasoning.
-
-The script must be configurable for enterprise Azure OpenAI usage through environment variables. Do not hardcode secrets.
-
-Use environment variables such as:
-- AZURE_OPENAI_ENDPOINT
-- AZURE_OPENAI_API_KEY
-- AZURE_OPENAI_API_VERSION
-- AZURE_OPENAI_EMBEDDING_DEPLOYMENT
-- AZURE_OPENAI_CHAT_DEPLOYMENT
-
-If the organisation uses Entra ID authentication instead of API keys, structure the code so the authentication section is easy to replace. Do not assume a specific internal authentication gateway unless it is supplied by environment variables.
-
-Embedding logic:
-1. Generate embeddings for each unique Control_ID using the clean control text.
-2. Cache embeddings locally so reruns do not recompute embeddings unnecessarily.
-3. Save embeddings to:
-   control_embeddings.parquet
-4. For each assessment group, calculate pairwise cosine similarity among controls in scope.
-5. Candidate pairs should be selected using a configurable similarity threshold, default 0.78.
-6. Also include candidate pairs where exact or near-exact matches exist on important structured fields such as:
-   - Same Expected CT Reference
-   - Same or similar Control Objective
-   - Same or similar CTRL_NAME
-   - Same CTRL_CTGRY_1 and CTRL_CTGRY_2
-   - Same Control Description after normalisation
-7. Do not use embeddings as final classification. Embeddings only shortlist candidate relationships.
-8. If a group is small, for example 20 controls or fewer, send the full group to the LLM rather than only candidate pairs.
-9. If a group is large, chunk the group into manageable candidate sets based on embedding clusters and candidate pairs.
-
-LLM REASONING REQUIREMENTS
-
-The script must include a clear LLM system prompt and user prompt inside the code.
-
-The LLM must:
-- Assess only the controls provided in the payload.
-- Not use external knowledge.
-- Not infer missing control activity or risk coverage.
-- Return strict JSON only.
-- Create one assessment object per Control ID.
-- Classify every control in the provided scope.
-- Use the allowed classification values only.
-- Use the allowed confidence values only.
-- Provide short plain-English rationale.
-- Include redundant-by IDs and fragmented group IDs only where supported by evidence.
-- Prefer Unclear where evidence is insufficient.
-
-The LLM prompt inside the script must include the SME assessment instructions below:
-
-SME ASSESSMENT INSTRUCTIONS FOR LLM
-
-Role:
-You are an Operational Risk and Controls Analyst with expertise in risk management. Your role is to assess groups of controls to identify opportunities for consolidation and standardisation.
-
-Important dataset structure:
-The input dataset has been cut by both Control Objective Group and Product. This means the assessment must occur at two levels.
-
-Within the same Control Objective + Product group:
-Assess redundant controls and fragmented controls.
-
-Across products within the same Control Objective group:
-Assess redundant controls and fragmented controls.
-
-Do not compare controls across different Control Objective Groups.
-
-Definitions:
-Redundant Control:
-A control that does not provide additional risk mitigation because its objective and outcome are already addressed by another control operating at the same or a more effective point in the process.
-
-Common Control Opportunity:
-A control may be fragmented where the same control objective and substantially similar control activities are performed separately across multiple products, systems, channels, processes, or business units. The controls operate independently but achieve the same risk management outcome. This may indicate an opportunity to standardise, centralise, or consolidate the controls into a single common control capability.
-
-Process-Split Fragmentation:
-A control may be fragmented where multiple controls form different stages of a single end-to-end control activity rather than operating as genuinely distinct controls. The control has been divided across process steps, systems, teams, or manual and automated activities, with each control performing only part of the overall control objective.
-
-Retain:
-A control should be retained if it provides distinct and necessary risk mitigation, contributes meaningful risk coverage, and is not considered redundant, fragmented, or a candidate for consolidation or standardisation.
-
-Unclear:
-Assign Unclear where the control description lacks sufficient detail, the relationship between controls cannot be determined from available information, there is insufficient evidence to conclude any rationalisation outcome, or multiple interpretations are reasonably possible.
-
-Critical rules:
-- Base all classifications solely on the source data provided in the payload.
-- Do not infer or assume control activities, risk coverage, process steps, dependencies, ownership, effectiveness, or relationships that are not explicitly described.
-- Do not force a rationalisation outcome.
-- Do not assume redundancy solely because wording is similar.
-- Do not assume fragmentation solely because controls belong to the same Control Objective Group.
-- Do not assume common control opportunity solely because controls operate within the same product, process, or payment stage.
-- Look for evidence of overlapping control objectives, control activities, inputs, outputs, monitoring, evidence, or risk outcomes before assigning Redundant, Process-Split Fragmentation, or Common Control Opportunity.
-- If sufficient evidence does not exist, classify as Unclear.
-- If a control appears both fragmented and redundant, classify it as Redundant as the primary classification and explain the fragmentation aspect in the rationale.
-
-JSON OUTPUT SCHEMA FROM LLM
-
-The LLM must return JSON in this exact structure:
-
-{
-  "scope_id": "string",
-  "scope_type": "within_product or cross_product",
-  "assessments": [
-    {
-      "control_id": "string",
-      "classification": "Retain | Redundant | Process-Split Fragmentation | Common Control Opportunity | Unclear",
-      "classification_group_key": "temporary logical grouping key before final deterministic ID assignment",
-      "redundant_by_control_ids": ["string"],
-      "fragmented_control_id_group": ["string"],
-      "rationale": "brief plain English explanation based only on source data",
-      "confidence": "High | Medium | Low"
-    }
-  ]
-}
-
-The model must not return Markdown. The model must not add commentary outside JSON.
-
-POST-PROCESSING REQUIREMENTS
-
-After LLM responses are received:
-1. Validate JSON.
-2. Validate every Control ID in the scope has one assessment row.
-3. Validate every returned Control ID exists in the input scope.
-4. Validate allowed classification values only.
-5. Validate confidence values only.
-6. If JSON parsing fails, retry with a repair prompt.
-7. If a control is missing after retry, classify it as Unclear with rationale "No valid LLM assessment was returned for this control."
-8. Convert temporary classification_group_key values into deterministic final IDs:
-   - R-1, R-2, etc.
-   - CC-1, CC-2, etc.
-   - P-1, P-2, etc.
-9. Ensure Retain uses RETAIN.
-10. Ensure Unclear uses UNCLEAR.
-11. Ensure Redundant by CT ID and Fragmented Control ID Groups are semicolon-separated strings in Excel.
-12. Ensure one row per assessed control.
-13. Save raw LLM JSON responses for audit.
-
-AUDIT AND CHECKPOINT REQUIREMENTS
-
-The scripts must create an output folder, for example:
-
-C:\Users\M061400\ai-test\big_table\duplicates\product\output
-
-Inside the output folder, create:
-
-- data_quality_report.xlsx
-- within_product_assessment.xlsx
-- cross_product_control_objective_assessment.xlsx
-- expanded_product_control_mapping.parquet
-- control_embeddings.parquet
-- candidate_pairs_within_product.parquet
-- candidate_pairs_cross_product.parquet
-- llm_raw_responses_within_product.jsonl
-- llm_raw_responses_cross_product.jsonl
-- processing_log.txt
-- run_config.json
-
-The script must be restartable. If embeddings or intermediate files already exist, the script should reuse them unless a force refresh flag is set.
-
-SCRIPT STRUCTURE
-
-Generate either one complete script or multiple scripts. Prefer one complete script unless it becomes too large.
-
-If generating one script, name it:
-run_control_rationalisation.py
-
-If generating multiple scripts, use:
+"""
 01_preprocess_control_data.py
-02_generate_embeddings_and_candidates.py
-03_run_llm_assessment.py
-04_postprocess_outputs.py
+─────────────────────────────────────────────────────────────────────────────
+Control Rationalisation — Step 1 of 4: Data Preprocessing
 
-The generated script must be complete and ready to run. Do not provide fragments.
+Loads, validates, normalises, and enriches the two input files.
+Produces a single expanded Parquet file (one row per product + CT + control)
+that all downstream scripts read from.
 
-Use clear functions, for example:
-- load_inputs()
-- validate_columns()
-- normalise_ct_reference()
-- expand_product_clusters()
-- join_control_details()
-- build_control_text()
-- create_data_quality_report()
-- get_embedding_client()
-- generate_or_load_embeddings()
-- build_candidate_pairs()
-- build_within_product_scopes()
-- build_cross_product_scopes()
-- call_llm_with_retries()
-- validate_llm_json()
-- assign_deterministic_group_ids()
-- write_outputs()
-- main()
+Outputs (all written to OUTPUT_DIR):
+  expanded_product_control_mapping.parquet  — main expanded dataset
+  data_quality_report.xlsx                  — data quality metrics
+  processing_log.txt                        — appended by all scripts
+  run_config.json                           — config snapshot for audit
 
-CONFIGURATION REQUIREMENTS
+Run:
+  python 01_preprocess_control_data.py
+  python 01_preprocess_control_data.py --force   # overwrite existing output
+"""
 
-At the top of the script, include a configuration section with:
-- Input file paths
-- Output folder path
-- Similarity threshold
-- Max controls per LLM payload
-- LLM temperature, default 0
-- Retry count
-- Force refresh embeddings flag
-- Whether to include CTRL_OWNER in payload, default False
-- Whether to run within-product assessment, default True
-- Whether to run cross-product assessment, default True
+import argparse
+import json
+import logging
+import re
+import sys
+from datetime import datetime
+from pathlib import Path
 
-QUALITY CONTROLS
+import pandas as pd
 
-The script must include defensive checks:
-- Required input files exist
-- Required columns exist
-- Unique Control IDs are parsed correctly
-- Joined control detail coverage is reported
-- Empty groups are skipped and logged
-- Groups with only one control are classified as Retain or Unclear depending on available detail
-- Duplicate rows are handled deterministically
-- Output row counts are reconciled back to expanded input scope
-- LLM token payloads are kept manageable
-- Long text fields are truncated safely only if required, with truncation logged
-- No fabricated Control IDs are allowed
+# ─────────────────────────────────────────────────────────────────────────────
+#  CONFIGURATION — update paths here if they change
+# ─────────────────────────────────────────────────────────────────────────────
 
-IMPORTANT BUSINESS LOGIC
+FILE_CTRL_DETAILS    = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\raw\ctrl_details.xlsx")
+FILE_PRODUCT_CLUSTERS= Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\raw\product_clusters.xlsx")
+OUTPUT_DIR           = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
 
-For within-product assessment:
-- Each Product plus Payment Category plus Consolidated Stage plus Expected CT Reference group is assessed independently.
-- Do not compare controls outside that group.
+# Similarity threshold used in Script 2 (saved to run_config.json)
+SIMILARITY_THRESHOLD        = 0.78
+MAX_CONTROLS_PER_LLM_CALL   = 20   # groups larger than this are chunked in Script 2
+LLM_TEMPERATURE             = 0
+RETRY_COUNT                 = 3
+FORCE_REFRESH_EMBEDDINGS    = False
+INCLUDE_CTRL_OWNER          = False   # exclude owner from embedding / LLM payloads
+RUN_WITHIN_PRODUCT          = True
+RUN_CROSS_PRODUCT           = True
 
-For cross-product assessment:
-- Each Expected CT Reference group is assessed independently across products.
-- Do not compare controls across different Expected CT References.
-- The likely common-control opportunities are expected to appear where similar controls operate separately across products but achieve the same risk outcome.
-- Process-split fragmentation may occur when multiple controls represent different stages of one end-to-end activity.
+# ─────────────────────────────────────────────────────────────────────────────
+#  REQUIRED COLUMNS
+# ─────────────────────────────────────────────────────────────────────────────
 
-For both outputs:
-- Create one row for every control assessed.
-- Do not aggregate controls into one row.
-- Do not force classification.
-- Use Unclear where evidence is insufficient.
-- Rationale must be concise and refer to source-data evidence such as objective, description, monitoring, evidence, frequency, type, payment stage, or expected control.
-- Do not classify based on owner name alone.
+CTRL_REQUIRED_COLS = [
+    "Control_ID", "CTRL_NAME",
+]
 
-EXPECTED FINAL RESPONSE FROM YOU
+CTRL_OPTIONAL_COLS = [
+    "CTRL_NATRE", "CTRL_STUS", "CTRL_OWNER", "CTRL_FREQ", "CTRL_KEY_CONTRL",
+    "Control Objective", "CTRL_TYP", "CTRL_ASSESS_RTNG",
+    "CTRL_CTGRY_1", "CTRL_CTGRY_2", "CTRL_OE_RTNG", "CTRL_DE_RTNG",
+    "CTRL_LOC_LIST", "CTRL_EVDNCD", "CTRL_MNTRD", "CTRL_CATEGORY",
+    "Control Description", "CTRL_FLDR", "object_path_leaf",
+    "CTRL_FLDR_LVL_2(Division)", "gold_control",
+]
 
-Return the full Python script or scripts in properly formatted code blocks.
+CLUSTER_REQUIRED_COLS = [
+    "Product", "Payment Category", "Consolidated Stage",
+    "Expected CT Reference", "Expected Control", "Unique Control IDs",
+]
 
-Also provide:
-1. A short explanation of how the solution works.
-2. Commands to install required Python packages.
-3. Commands to run the script from PowerShell.
-4. A list of expected output files.
-5. Key assumptions made by the script.
-6. Any places where the user must update environment variables or deployment names.
+# ─────────────────────────────────────────────────────────────────────────────
+#  LOGGING
+# ─────────────────────────────────────────────────────────────────────────────
 
-Do not ask follow-up questions. Make reasonable implementation choices, but clearly mark them as configurable assumptions in the script.
+def setup_logging() -> logging.Logger:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    log_path = OUTPUT_DIR / "processing_log.txt"
+    logger = logging.getLogger("ctrl_rat")
+    logger.setLevel(logging.DEBUG)
+    # File handler — append so all four scripts share one log
+    fh = logging.FileHandler(log_path, encoding="utf-8")
+    fh.setLevel(logging.DEBUG)
+    # Console handler
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(logging.INFO)
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s",
+                            datefmt="%Y-%m-%d %H:%M:%S")
+    fh.setFormatter(fmt)
+    ch.setFormatter(fmt)
+    if not logger.handlers:
+        logger.addHandler(fh)
+        logger.addHandler(ch)
+    return logger
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def safe_str(val, default: str = "") -> str:
+    if pd.isna(val):
+        return default
+    s = str(val).replace("\t", " ").replace("\r", " ").replace("\n", " ")
+    return re.sub(r" {2,}", " ", s).strip()
+
+def is_blank(val) -> bool:
+    return safe_str(val) == ""
+
+def normalise_ct_reference(val) -> str | None:
+    """
+    Normalise CT reference to canonical form: CT1, CT2, ... CT28.
+    Handles: 'CT1', 'CT 1', 'CT-1', 'ct1', ' CT 1 ', 'CT01'.
+    Returns None for unrecognisable values.
+    """
+    if pd.isna(val) or safe_str(val) == "":
+        return None
+    s = safe_str(val).upper()
+    m = re.match(r'^CT\s*[-]?\s*0*(\d+)$', s)
+    if m:
+        n = int(m.group(1))
+        return f"CT{n}" if 1 <= n <= 28 else None
+    return None
+
+def clean_cols(df: pd.DataFrame) -> pd.DataFrame:
+    """Strip whitespace from column names only. Preserve original names."""
+    df.columns = df.columns.str.strip()
+    return df
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  LOAD AND VALIDATE
+# ─────────────────────────────────────────────────────────────────────────────
+
+def load_inputs(log: logging.Logger) -> tuple[pd.DataFrame, pd.DataFrame]:
+    for f in [FILE_CTRL_DETAILS, FILE_PRODUCT_CLUSTERS]:
+        if not f.exists():
+            log.error(f"Input file not found: {f}")
+            sys.exit(1)
+
+    log.info(f"Loading ctrl_details: {FILE_CTRL_DETAILS.name}")
+    ctrl = clean_cols(pd.read_excel(FILE_CTRL_DETAILS, dtype=str, engine="openpyxl"))
+    log.info(f"  Rows: {len(ctrl):,} | Columns: {len(ctrl.columns)}")
+
+    log.info(f"Loading product_clusters: {FILE_PRODUCT_CLUSTERS.name}")
+    clusters = clean_cols(pd.read_excel(FILE_PRODUCT_CLUSTERS, dtype=str, engine="openpyxl"))
+    log.info(f"  Rows: {len(clusters):,} | Columns: {len(clusters.columns)}")
+
+    return ctrl, clusters
+
+def validate_columns(ctrl: pd.DataFrame, clusters: pd.DataFrame,
+                     log: logging.Logger) -> None:
+    missing_ctrl = [c for c in CTRL_REQUIRED_COLS if c not in ctrl.columns]
+    missing_clus = [c for c in CLUSTER_REQUIRED_COLS if c not in clusters.columns]
+    if missing_ctrl:
+        log.error(f"ctrl_details missing required columns: {missing_ctrl}")
+        sys.exit(1)
+    if missing_clus:
+        log.error(f"product_clusters missing required columns: {missing_clus}")
+        sys.exit(1)
+
+    optional_missing = [c for c in CTRL_OPTIONAL_COLS if c not in ctrl.columns]
+    if optional_missing:
+        log.warning(f"ctrl_details optional columns not found (will be blank): "
+                    f"{optional_missing}")
+    log.info("Column validation passed.")
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  NORMALISE
+# ─────────────────────────────────────────────────────────────────────────────
+
+def normalise_ctrl_details(ctrl: pd.DataFrame, log: logging.Logger) -> pd.DataFrame:
+    ctrl["Control_ID"] = ctrl["Control_ID"].apply(safe_str)
+    # Normalise gold_control to canonical CT form
+    if "gold_control" in ctrl.columns:
+        ctrl["gold_control_norm"] = ctrl["gold_control"].apply(normalise_ct_reference)
+    else:
+        ctrl["gold_control_norm"] = None
+    # Normalise all text fields
+    for col in ctrl.columns:
+        if col not in ["Control_ID", "gold_control_norm"]:
+            ctrl[col] = ctrl[col].apply(safe_str)
+    # Dedup on Control_ID
+    dups = ctrl[ctrl["Control_ID"].duplicated(keep=False)]["Control_ID"].unique()
+    if len(dups):
+        log.warning(f"{len(dups)} duplicate Control_ID(s) in ctrl_details: "
+                    f"{list(dups)[:5]}")
+    ctrl = ctrl.drop_duplicates(subset=["Control_ID"], keep="first")
+    log.info(f"ctrl_details after dedup: {len(ctrl):,} unique controls")
+    return ctrl
+
+def normalise_clusters(clusters: pd.DataFrame, log: logging.Logger) -> pd.DataFrame:
+    for col in clusters.columns:
+        clusters[col] = clusters[col].apply(safe_str)
+    clusters["ct_ref_norm"] = clusters["Expected CT Reference"].apply(
+        normalise_ct_reference)
+    n_bad_ct = clusters["ct_ref_norm"].isna().sum()
+    if n_bad_ct:
+        log.warning(f"{n_bad_ct} cluster rows with unrecognisable CT reference — "
+                    f"they will be excluded from assessment.")
+    return clusters
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  EXPAND PRODUCT CLUSTERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def expand_product_clusters(clusters: pd.DataFrame,
+                            log: logging.Logger) -> pd.DataFrame:
+    """
+    Expand comma-separated Unique Control IDs into one row per
+    Product + Payment Category + Consolidated Stage + CT Reference + Control_ID.
+    """
+    log.info("Expanding product cluster Control IDs...")
+    rows = []
+    n_no_ids = 0
+
+    for _, row in clusters.iterrows():
+        ct_norm = row.get("ct_ref_norm", None)
+        if not ct_norm:
+            continue   # already warned above
+
+        raw_ids = safe_str(row.get("Unique Control IDs", ""))
+        ctrl_ids = [c.strip() for c in raw_ids.split(",") if c.strip()]
+
+        if not ctrl_ids:
+            n_no_ids += 1
+            continue
+
+        for ctrl_id in ctrl_ids:
+            rows.append({
+                "Product":              row["Product"],
+                "Payment Category":     row["Payment Category"],
+                "Consolidated Stage":   row["Consolidated Stage"],
+                "Expected CT Reference":row["Expected CT Reference"],
+                "ct_ref_norm":          ct_norm,
+                "Expected Control":     row["Expected Control"],
+                "Unique Control Count": row.get("Unique Control Count", ""),
+                "Control_ID":           ctrl_id,
+            })
+
+    if n_no_ids:
+        log.warning(f"{n_no_ids} cluster rows had no valid Control IDs — skipped.")
+
+    expanded = pd.DataFrame(rows)
+    log.info(f"Expanded rows: {len(expanded):,} "
+             f"| Unique controls: {expanded['Control_ID'].nunique():,}")
+    return expanded
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  JOIN CONTROL DETAILS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def join_control_details(expanded: pd.DataFrame, ctrl: pd.DataFrame,
+                         log: logging.Logger) -> pd.DataFrame:
+    log.info("Joining control details onto expanded product cluster rows...")
+    n_before = len(expanded)
+
+    joined = expanded.merge(ctrl, on="Control_ID", how="left")
+
+    matched = joined["CTRL_NAME"].notna().sum()
+    unmatched_ids = joined[joined["CTRL_NAME"].isna()]["Control_ID"].unique()
+    n_unmatched = len(unmatched_ids)
+
+    log.info(f"  Expanded rows        : {n_before:,}")
+    log.info(f"  Matched to ctrl_details: {matched:,}")
+    log.info(f"  Unmatched Control_IDs  : {n_unmatched:,}")
+    if n_unmatched > 0:
+        log.warning(f"  Unmatched IDs (first 10): {list(unmatched_ids[:10])}")
+
+    return joined
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  BUILD EMBEDDING TEXT
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_embedding_text(row: pd.Series) -> str:
+    """
+    Clean semantic text for embedding generation.
+    Excludes CTRL_OWNER by default (configurable via INCLUDE_CTRL_OWNER).
+    Fields included per specification.
+    """
+    def f(field: str, label: str) -> str:
+        val = safe_str(row.get(field, ""))
+        return f"{label}:\n{val}" if val else ""
+
+    parts = [
+        f("Control_ID",              "Control ID"),
+        f("CTRL_NAME",               "Control Name"),
+        f("Control Objective",       "Control Objective"),
+        f("Control Description",     "Control Description"),
+        f("CTRL_NATRE",              "Control Nature"),
+        f("CTRL_FREQ",               "Frequency"),
+        f("CTRL_TYP",                "Control Type"),
+        f("CTRL_KEY_CONTRL",         "Key Control"),
+        f("CTRL_CTGRY_1",            "Category 1"),
+        f("CTRL_CTGRY_2",            "Category 2"),
+        f("CTRL_EVDNCD",             "Evidence"),
+        f("CTRL_MNTRD",              "Monitoring"),
+        f("CTRL_CATEGORY",           "Control Category"),
+        f("CTRL_LOC_LIST",           "Location"),
+        f("CTRL_FLDR_LVL_2(Division)","Division"),
+        f("object_path_leaf",        "Business Area"),
+        f("gold_control",            "Gold Control"),
+    ]
+    if INCLUDE_CTRL_OWNER:
+        parts.append(f("CTRL_OWNER", "Control Owner"))
+
+    return "\n\n".join(p for p in parts if p)
+
+def build_llm_payload_text(row: pd.Series) -> str:
+    """
+    Richer text for LLM reasoning — includes product cluster context
+    on top of the embedding fields.
+    """
+    def f(field: str, label: str) -> str:
+        val = safe_str(row.get(field, ""))
+        return f"{label}: {val}" if val else ""
+
+    lines = [
+        "=== PRODUCT CONTEXT ===",
+        f("Product",              "Product"),
+        f("Payment Category",     "Payment Category"),
+        f("Consolidated Stage",   "Payment Stage"),
+        f("Expected CT Reference","Expected CT Reference"),
+        f("Expected Control",     "Expected Control"),
+        "",
+        "=== CONTROL DETAILS ===",
+        f("Control_ID",           "Control ID"),
+        f("CTRL_NAME",            "Control Name"),
+        f("Control Objective",    "Control Objective"),
+        f("Control Description",  "Control Description"),
+        f("CTRL_NATRE",           "Control Nature"),
+        f("CTRL_FREQ",            "Frequency"),
+        f("CTRL_TYP",             "Control Type"),
+        f("CTRL_KEY_CONTRL",      "Key Control"),
+        f("CTRL_CTGRY_1",         "Category 1"),
+        f("CTRL_CTGRY_2",         "Category 2"),
+        f("CTRL_EVDNCD",          "Evidence"),
+        f("CTRL_MNTRD",           "Monitoring"),
+        f("CTRL_CATEGORY",        "Control Category"),
+        f("CTRL_LOC_LIST",        "Location"),
+        f("CTRL_FLDR_LVL_2(Division)", "Division"),
+        f("object_path_leaf",     "Business Area"),
+        f("gold_control",         "Gold Control"),
+    ]
+    if INCLUDE_CTRL_OWNER:
+        lines.append(f("CTRL_OWNER", "Control Owner"))
+
+    return "\n".join(line for line in lines if line != "" or line == "")
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  DATA QUALITY REPORT
+# ─────────────────────────────────────────────────────────────────────────────
+
+def create_data_quality_report(ctrl_raw: pd.DataFrame, clusters_raw: pd.DataFrame,
+                               expanded: pd.DataFrame, joined: pd.DataFrame,
+                               log: logging.Logger) -> pd.DataFrame:
+    log.info("Building data quality report...")
+
+    def col_blank(df, col):
+        return int(df[col].apply(is_blank).sum()) if col in df.columns else "n/a"
+
+    cluster_no_ids = 0
+    for _, row in clusters_raw.iterrows():
+        raw_ids = safe_str(row.get("Unique Control IDs", ""))
+        ids = [c.strip() for c in raw_ids.split(",") if c.strip()]
+        if not ids:
+            cluster_no_ids += 1
+
+    unmatched_ids = joined[joined["CTRL_NAME"].apply(is_blank)]["Control_ID"].unique()
+
+    rows = [
+        ("── INPUT COUNTS ───────────────────────────────────────", ""),
+        ("ctrl_details input rows",          len(ctrl_raw)),
+        ("ctrl_details unique Control_IDs",  ctrl_raw["Control_ID"].nunique()),
+        ("product_clusters input rows",      len(clusters_raw)),
+        ("── AFTER EXPANSION ────────────────────────────────────", ""),
+        ("Expanded cluster rows (one per control)", len(expanded)),
+        ("Unique Control_IDs in expanded set",      expanded["Control_ID"].nunique()),
+        ("── JOIN RESULTS ───────────────────────────────────────", ""),
+        ("Expanded rows matched to ctrl_details",
+         int(joined["CTRL_NAME"].apply(lambda x: not is_blank(x)).sum())),
+        ("Expanded rows unmatched (Control_ID not in ctrl_details)",
+         int(joined["CTRL_NAME"].apply(is_blank).sum())),
+        ("Unmatched unique Control_IDs",     len(unmatched_ids)),
+        ("── DATA QUALITY ───────────────────────────────────────", ""),
+        ("Duplicate Control_IDs in ctrl_details",
+         int(ctrl_raw["Control_ID"].duplicated().sum())),
+        ("Blank Control Description in ctrl_details",
+         col_blank(ctrl_raw, "Control Description")),
+        ("Blank Control Objective in ctrl_details",
+         col_blank(ctrl_raw, "Control Objective")),
+        ("Blank CTRL_EVDNCD in ctrl_details",
+         col_blank(ctrl_raw, "CTRL_EVDNCD")),
+        ("Blank CTRL_MNTRD in ctrl_details",
+         col_blank(ctrl_raw, "CTRL_MNTRD")),
+        ("Product cluster rows with no valid Control IDs", cluster_no_ids),
+        ("── SCOPE COUNTS ────────────────────────────────────────", ""),
+        ("Unique (Product + CT ref) groups for within-product assessment",
+         joined.groupby(["Product","ct_ref_norm"]).ngroups),
+        ("Unique CT ref groups for cross-product assessment",
+         joined["ct_ref_norm"].nunique()),
+    ]
+
+    dq_df = pd.DataFrame(rows, columns=["Metric", "Value"])
+
+    # Unmatched IDs detail sheet
+    unmatched_df = pd.DataFrame({"Unmatched_Control_ID": unmatched_ids})
+    return dq_df, unmatched_df
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  MAIN
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--force", action="store_true",
+                        help="Overwrite existing preprocessed output.")
+    args = parser.parse_args()
+
+    log = setup_logging()
+    log.info("=" * 70)
+    log.info("  Control Rationalisation — Step 1: Preprocessing")
+    log.info(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    log.info("=" * 70)
+
+    output_parquet = OUTPUT_DIR / "expanded_product_control_mapping.parquet"
+    if output_parquet.exists() and not args.force:
+        log.info(f"Preprocessed output already exists: {output_parquet.name}")
+        log.info("Use --force to regenerate. Exiting Step 1.")
+        return
+
+    # ── Load and validate ──────────────────────────────────────────────────
+    ctrl_raw, clusters_raw = load_inputs(log)
+    validate_columns(ctrl_raw, clusters_raw, log)
+
+    # ── Normalise ──────────────────────────────────────────────────────────
+    ctrl     = normalise_ctrl_details(ctrl_raw.copy(), log)
+    clusters = normalise_clusters(clusters_raw.copy(), log)
+
+    # ── Expand and join ────────────────────────────────────────────────────
+    expanded = expand_product_clusters(clusters, log)
+    joined   = join_control_details(expanded, ctrl, log)
+
+    # ── Build text payloads ────────────────────────────────────────────────
+    log.info("Building embedding text and LLM payload text...")
+    joined["embedding_text"] = joined.apply(build_embedding_text, axis=1)
+    joined["llm_payload_text"] = joined.apply(build_llm_payload_text, axis=1)
+
+    avg_emb_len = joined["embedding_text"].str.len().mean()
+    avg_llm_len = joined["llm_payload_text"].str.len().mean()
+    log.info(f"  Avg embedding text length : {avg_emb_len:.0f} chars")
+    log.info(f"  Avg LLM payload length    : {avg_llm_len:.0f} chars")
+
+    # ── Data quality report ────────────────────────────────────────────────
+    dq_df, unmatched_df = create_data_quality_report(
+        ctrl_raw, clusters_raw, expanded, joined, log)
+
+    dq_path = OUTPUT_DIR / "data_quality_report.xlsx"
+    with pd.ExcelWriter(dq_path, engine="openpyxl") as w:
+        dq_df.to_excel(w, index=False, sheet_name="summary")
+        if not unmatched_df.empty:
+            unmatched_df.to_excel(w, index=False, sheet_name="unmatched_control_ids")
+    log.info(f"Data quality report: {dq_path.name}")
+    for _, row in dq_df.iterrows():
+        if row["Metric"].startswith("──"):
+            continue
+        log.info(f"  {row['Metric']}: {row['Value']}")
+
+    # ── Save expanded dataset ──────────────────────────────────────────────
+    joined.to_parquet(output_parquet, index=False, engine="pyarrow")
+    log.info(f"Expanded dataset saved: {output_parquet.name} "
+             f"({len(joined):,} rows, {len(joined.columns)} cols)")
+
+    # ── Save run config ────────────────────────────────────────────────────
+    config = {
+        "script": "01_preprocess_control_data.py",
+        "run_at": datetime.now().isoformat(),
+        "file_ctrl_details":    str(FILE_CTRL_DETAILS),
+        "file_product_clusters":str(FILE_PRODUCT_CLUSTERS),
+        "output_dir":           str(OUTPUT_DIR),
+        "similarity_threshold":      SIMILARITY_THRESHOLD,
+        "max_controls_per_llm_call": MAX_CONTROLS_PER_LLM_CALL,
+        "llm_temperature":           LLM_TEMPERATURE,
+        "retry_count":               RETRY_COUNT,
+        "force_refresh_embeddings":  FORCE_REFRESH_EMBEDDINGS,
+        "include_ctrl_owner":        INCLUDE_CTRL_OWNER,
+        "run_within_product":        RUN_WITHIN_PRODUCT,
+        "run_cross_product":         RUN_CROSS_PRODUCT,
+        "expanded_rows":             len(joined),
+        "unique_controls":           int(joined["Control_ID"].nunique()),
+    }
+    config_path = OUTPUT_DIR / "run_config.json"
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
+    log.info(f"Run config saved: {config_path.name}")
+
+    log.info("=" * 70)
+    log.info("  Step 1 complete. Run 02_generate_embeddings_and_candidates.py next.")
+    log.info("=" * 70)
+
+
+if __name__ == "__main__":
+    main()
