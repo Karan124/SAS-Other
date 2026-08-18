@@ -1,253 +1,75 @@
 """
-03_run_llm_assessment.py
+04_postprocess_outputs.py
 ─────────────────────────────────────────────────────────────────────────────
-Control Rationalisation — Step 3 of 4: LLM Assessment
+Control Rationalisation — Step 4 of 4: Post-processing and Output Generation
 Dimension 1: Product-level cluster assessment
 
-A fresh AzureOpenAI client is created on every retry to avoid stale proxy
-connections after extended runs.
+Purpose:
+  Reads all checkpoint JSONL files from Script 3 parallel runs.
+  Merges and deduplicates every assessment.
+  Where the same control was assessed in multiple sub-batches, keeps the
+  most substantive finding using this priority:
+    Redundant > Process-Split Fragmentation > Common Control Opportunity
+    > Unclear > Retain
+  Identifies any controls in the scope that received no assessment.
+  Produces two output workbooks for SME review.
 
-Run options:
-  python 03_run_llm_assessment.py                           # resume from checkpoint
-  python 03_run_llm_assessment.py --force                   # clear all, restart
-  python 03_run_llm_assessment.py --sample                  # 2 products only (fast)
-  python 03_run_llm_assessment.py --wp-range 0 107 --suffix _p1
-  python 03_run_llm_assessment.py --wp-range 107 214 --suffix _p2
-  python 03_run_llm_assessment.py --wp-range 214 321 --suffix _p3
-  python 03_run_llm_assessment.py --wp-range 321 428 --suffix _p4
+Outputs:
+  within_product_assessment.xlsx  — main SME output, one row per control
+  assessment_summary.xlsx         — statistics and coverage report
+
+Run:
+  python 04_postprocess_outputs.py
+  python 04_postprocess_outputs.py --suffix _sample   # sample run only
 """
 
 import argparse
 import json
 import logging
-import random
-import re
 import sys
-import time
 from datetime import datetime
 from pathlib import Path
 
-import httpx
 import pandas as pd
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from openai import AzureOpenAI
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 
-OUTPUT_DIR     = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
-AZURE_ENDPOINT = "https://ai.eng.azure.srv.westpac.com.au"
-API_VERSION    = "2024-10-21"
-LLM_MODEL      = "gpt-5.4"
-PROXY_URL      = "http://127.0.0.1:9000"
-CA_BUNDLE      = r"C:\Users\m061400\ai-test\cacert.pem"
+OUTPUT_DIR   = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
+EXPANDED     = OUTPUT_DIR / "expanded_product_control_mapping.parquet"
+OUTPUT_WB1   = OUTPUT_DIR / "within_product_assessment.xlsx"
+OUTPUT_WB2   = OUTPUT_DIR / "assessment_summary.xlsx"
 
-SUB_BATCH_SIZE        = 5
-RETRY_COUNT           = 5
-RETRY_BASE_SECS       = 5
-CONNECTION_SLEEP_SECS = 90
-SLEEP_BETWEEN         = 1.0
-MAX_COMPLETION_TOKENS = 16000
-HTTP_TIMEOUT          = 180.0
-
-INPUT_PRICE_PER_M  = 1.75
-OUTPUT_PRICE_PER_M = 14.00
-AUD_USD_RATE       = 0.65
-
-# Sample: only these 2 products for fast validation
-SAMPLE_PRODUCTS = [
-    "Agency Service",
-    "Commercial Hire Purchase",
-]
-
-EXPANDED_PARQUET = OUTPUT_DIR / "expanded_product_control_mapping.parquet"
-SCOPE_WP_PARQUET = OUTPUT_DIR / "scope_summary_within_product.parquet"
-CAND_WP_PARQUET  = OUTPUT_DIR / "candidate_pairs_within_product.parquet"
-RUN_CONFIG       = OUTPUT_DIR / "run_config.json"
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  CLIENT — fresh on every retry
-# ─────────────────────────────────────────────────────────────────────────────
-
-def make_client():
-    token_provider = get_bearer_token_provider(
-        DefaultAzureCredential(),
-        "https://cognitiveservices.azure.com/.default"
-    )
-    return AzureOpenAI(
-        azure_endpoint=AZURE_ENDPOINT,
-        api_version=API_VERSION,
-        azure_ad_token_provider=token_provider,
-        http_client=httpx.Client(
-            proxy=PROXY_URL,
-            verify=CA_BUNDLE,
-            timeout=httpx.Timeout(HTTP_TIMEOUT, connect=30.0),
-            limits=httpx.Limits(max_keepalive_connections=0, max_connections=1),
-        ),
-    )
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  PROMPT
-# ─────────────────────────────────────────────────────────────────────────────
-
-SYSTEM_PROMPT = """
-You are an Operational Risk and Controls Analyst with expertise in risk
-management. Your role is to assess groups of controls to identify
-opportunities for consolidation and standardisation.
-Return valid JSON only. No markdown. No text outside the JSON object.
-""".strip()
-
-INSTRUCTIONS = """
-DEFINITIONS
-
-Redundant Control
-  A control that does not provide additional risk mitigation because its
-  objective and outcome are already addressed by another control operating
-  at the same or a more effective point in the process.
-
-Common Control Opportunity (Fragmentation)
-  The same control objective and substantially similar activities are
-  performed separately across multiple systems, channels, processes, or
-  business units. The controls operate independently but achieve the same
-  risk management outcome. This may indicate an opportunity to standardise
-  or consolidate into a single control capability.
-
-Process-Split Fragmentation
-  Multiple controls form different stages of a single end-to-end control
-  activity rather than operating as genuinely distinct controls. Each
-  performs only part of the overall control objective.
-
-Retain
-  The control provides distinct and necessary risk mitigation and is not
-  redundant, fragmented, or a consolidation candidate.
-
-Unclear
-  Insufficient information to confidently classify. Assign where the
-  description lacks detail, relationships cannot be determined, or multiple
-  interpretations are possible.
-
-DUAL CLASSIFICATION RULE
-  Where a control is BOTH Fragmented AND Redundant:
-  - Primary classification: Redundant
-  - classification_group_key: the Redundant group key (R-x)
-  - fragmented_group_id: the Fragmented group key (F-x)
-  - dual_classified: true
-
-GROUPING RULES — CRITICAL
-
-  Step 1: Compare every pair of controls. For each pair determine:
-    - Same specific control activity?
-    - Same trigger event or input?
-    - Same process step or system?
-    - Same expected outcome or risk mitigation purpose?
-    If YES to most → DIRECTLY RELATED.
-    If NO → INDEPENDENT. Do NOT group together.
-
-  Step 2: Form groups from directly related pairs only.
-    Do NOT use transitivity: if A relates to B and B relates to C but A
-    and C perform different activities → A-B and C are separate groups.
-    Sharing a product does NOT make controls directly related.
-
-  Step 3: Assign a separate group ID to each independent group.
-    R-1 and R-2 are always separate findings.
-    CC-1 and CC-2 are always separate findings.
-    P-1 and P-2 are always separate findings.
-    Never merge independent groups under one ID.
-
-GROUP ID FORMAT
-  Redundant groups             : R-1, R-2, R-3 ...
-  Common Control Opportunity   : CC-1, CC-2, CC-3 ...
-  Process-Split Fragmentation  : P-1, P-2, P-3 ...
-  Dual (supplementary)         : F-1, F-2, F-3 ...
-  Retain / Unclear             : use the control own Control_ID as key
-
-ASSESSMENT RULES
-  Base classifications solely on information in the source data.
-  Do not infer activities, dependencies, or relationships not described.
-  Do not create relationships without sufficient supporting evidence.
-  Look beyond wording differences — focus on underlying objective,
-  activity, and risk outcome.
-  Do NOT classify as Redundant/Fragmented/CCO without clear evidence.
-  If insufficient evidence → Unclear.
-  Apply classifications consistently across all controls in scope.
-
-CONFIDENCE
-  High   : Strong evidence
-  Medium : Some evidence, minor assumptions required
-  Low    : Limited evidence — treat as indicative only
-
-OUTPUT RULES
-  One assessment per control. No aggregation.
-  Every control in the input must appear in assessments exactly once.
-  Do not invent Control_IDs.
-""".strip()
-
-RESPONSE_FORMAT = """
-Return this JSON only. No markdown.
-
-{
-  "scope_id": "<scope_id>",
-  "batch_key": "<batch_key>",
-  "assessments": [
-    {
-      "control_id": "<Control_ID>",
-      "control_name": "<CTRL_NAME>",
-      "control_objective": "<Control Objective>",
-      "classification": "<Retain|Redundant|Process-Split Fragmentation|Common Control Opportunity|Unclear>",
-      "classification_group_key": "<R-1|P-1|CC-1|control_id>",
-      "fragmented_group_id": "<F-1 or P-1 if fragmented; empty string otherwise>",
-      "dual_classified": false,
-      "redundant_by_control_ids": [],
-      "fragmented_control_id_group": [],
-      "rationale": "<plain English citing specific evidence>",
-      "confidence": "<High|Medium|Low>"
-    }
-  ]
+# Classification priority — higher index = more substantive finding
+CLASSIFICATION_PRIORITY = {
+    "Redundant":                    5,
+    "Process-Split Fragmentation":  4,
+    "Common Control Opportunity":   3,
+    "Unclear":                      2,
+    "Retain":                       1,
+    "":                             0,
 }
-""".strip()
 
-
-def build_prompt(scope_id, batch_key, product, n_total, sub_ctrls):
-    n = len(sub_ctrls)
-    note = (f"\nNOTE: Sub-batch of {n} from {n_total} controls in this product scope."
-            f" Assess within this sub-batch only."
-            if n < n_total else "")
-    lines = [
-        f"PRODUCT: {product}",
-        f"SCOPE ID: {scope_id}",
-        note, "",
-        f"CONTROLS TO ASSESS ({n}):", "",
-    ]
-    for _, row in sub_ctrls.iterrows():
-        lines.append("─" * 60)
-        lines.append(str(row.get("llm_payload_text", "") or
-                         f"Control ID: {row['Control_ID']}"))
-        lines.append("")
-    lines += [
-        "─" * 60, "",
-        "TASK",
-        "Compare every control against all others in this group.",
-        "Identify Redundant Controls, Process-Split Fragmentation,",
-        "and Common Control Opportunities.",
-        "Multiple independent rationalisation groups are allowed.",
-        "Do NOT force all controls into a single group.",
-        "", INSTRUCTIONS, "", RESPONSE_FORMAT,
-        f'\nUse scope_id: "{scope_id}" and batch_key: "{batch_key}".',
-    ]
-    return "\n".join(lines)
+ALL_CHECKPOINT_FILES = [
+    "llm_checkpoint_within_product.jsonl",
+    "llm_checkpoint_within_product_sample.jsonl",
+    "llm_checkpoint_within_product_p1.jsonl",
+    "llm_checkpoint_within_product_p2.jsonl",
+    "llm_checkpoint_within_product_p3.jsonl",
+    "llm_checkpoint_within_product_p4.jsonl",
+]
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  LOGGING
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_logger(suffix=""):
-    name = f"ctrl_rat{suffix}"
-    logger = logging.getLogger(name)
+def setup_logging():
+    logger = logging.getLogger("ctrl_rat_post")
     if logger.handlers:
         return logger
-    fh = logging.FileHandler(
-        OUTPUT_DIR / f"processing_log{suffix}.txt", encoding="utf-8")
+    fh = logging.FileHandler(OUTPUT_DIR / "processing_log.txt",
+                             encoding="utf-8")
     ch = logging.StreamHandler(sys.stdout)
     fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s",
                             datefmt="%Y-%m-%d %H:%M:%S")
@@ -258,229 +80,258 @@ def get_logger(suffix=""):
     return logger
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  CHECKPOINT
+#  LOAD CHECKPOINTS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def load_checkpoint(path):
-    done = set()
-    if not path.exists():
-        return done
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                key = json.loads(line).get("batch_key", "")
-                if key:
-                    done.add(key)
-            except json.JSONDecodeError:
-                continue
-    return done
+def load_checkpoints(checkpoint_files, log):
+    """
+    Read all checkpoint files and return a flat list of assessment records.
+    Each record contains scope_id, product, and the full assessment dict.
+    """
+    records = []
+    n_files = n_errors = n_skipped = 0
 
+    for fname in checkpoint_files:
+        path = OUTPUT_DIR / fname
+        if not path.exists():
+            continue
+        n_files += 1
+        log.info(f"  Reading: {fname}")
 
-def write_checkpoint(rec, path):
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(rec, ensure_ascii=True) + "\n")
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    n_errors += 1
+                    continue
+
+                if rec.get("skipped"):
+                    n_skipped += 1
+                    continue
+                if rec.get("error"):
+                    n_errors += 1
+                    continue
+
+                scope_id  = rec.get("scope_id", "")
+                batch_key = rec.get("batch_key", "")
+                product   = rec.get("product", "")
+                if not product:
+                    parts   = scope_id.split("|")
+                    product = parts[1] if len(parts) >= 2 else ""
+
+                for a in rec.get("assessments", []):
+                    ctrl_id = a.get("control_id", "")
+                    if not ctrl_id:
+                        continue
+                    records.append({
+                        "scope_id":  scope_id,
+                        "product":   product,
+                        "batch_key": batch_key,
+                        "source":    fname,
+                        **a,
+                    })
+
+    log.info(f"  Files read: {n_files} | "
+             f"Errors/skipped: {n_errors}/{n_skipped} | "
+             f"Raw assessment rows: {len(records):,}")
+    return records
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  LLM CALL
+#  DEDUPLICATE
 # ─────────────────────────────────────────────────────────────────────────────
 
-def parse_response(text):
-    text = re.sub(r'^```(?:json)?\s*', '', (text or "").strip())
-    text = re.sub(r'\s*```$', '', text).strip()
-    if not text:
-        raise ValueError("Empty response")
-    try:
-        result = json.loads(text)
-    except json.JSONDecodeError:
-        m = re.search(r'\{.*\}', text, re.DOTALL)
-        if m:
-            result = json.loads(m.group(0))
+def deduplicate(records, log):
+    """
+    Where the same control appears in multiple sub-batches, keep the most
+    substantive classification using CLASSIFICATION_PRIORITY.
+    Deduplication key: (scope_id, control_id).
+    """
+    best: dict[tuple, dict] = {}
+
+    for rec in records:
+        key  = (rec["scope_id"], rec.get("control_id", ""))
+        clf  = rec.get("classification", "")
+        pri  = CLASSIFICATION_PRIORITY.get(clf, 0)
+
+        if key not in best:
+            best[key] = rec
         else:
-            raise
-    if "assessments" not in result:
-        raise ValueError("Missing 'assessments' key")
-    return result
+            existing_pri = CLASSIFICATION_PRIORITY.get(
+                best[key].get("classification", ""), 0)
+            if pri > existing_pri:
+                best[key] = rec
+            elif pri == existing_pri and clf not in ("Retain", ""):
+                # Same priority — keep the one with higher confidence
+                conf_rank = {"High": 3, "Medium": 2, "Low": 1, "": 0}
+                if (conf_rank.get(rec.get("confidence",""), 0) >
+                        conf_rank.get(best[key].get("confidence",""), 0)):
+                    best[key] = rec
 
-
-def call_llm(prompt, batch_key, log):
-    usage = {"input_tokens": 0, "output_tokens": 0}
-    for attempt in range(1, RETRY_COUNT + 1):
-        try:
-            client  = make_client()
-            resp    = client.chat.completions.create(
-                model=LLM_MODEL,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user",   "content": prompt},
-                ],
-                reasoning_effort="low",
-                max_completion_tokens=MAX_COMPLETION_TOKENS,
-            )
-            text = resp.choices[0].message.content or ""
-            u    = getattr(resp, "usage", None)
-            if u:
-                usage["input_tokens"]  = getattr(u, "prompt_tokens", 0)
-                usage["output_tokens"] = getattr(u, "completion_tokens", 0)
-            return parse_response(text), usage
-        except Exception as exc:
-            is_conn = any(w in str(exc).lower()
-                          for w in ["connection","timed out","timeout","proxy"])
-            if attempt < RETRY_COUNT:
-                wait = CONNECTION_SLEEP_SECS if is_conn else min(
-                    RETRY_BASE_SECS * 2**(attempt-1) + random.uniform(0,2), 60)
-                log.warning(f"  Attempt {attempt} [{batch_key}]: {exc}. "
-                            f"Wait {wait:.0f}s...")
-                time.sleep(wait)
-            else:
-                log.error(f"  All retries failed [{batch_key}]: {exc}")
-                return None, usage
+    deduped = list(best.values())
+    n_deduped = len(records) - len(deduped)
+    if n_deduped:
+        log.info(f"  Deduplicated {n_deduped:,} duplicate assessment rows")
+    log.info(f"  Final unique assessments: {len(deduped):,}")
+    return deduped
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  SCOPE DATA HELPERS
+#  COVERAGE CHECK
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_scope_controls(scope_id, pairs_df, expanded_df):
+def check_coverage(deduped, expanded_df, log):
     """
-    Return ALL controls in this scope from the expanded parquet.
-    This is the source of truth — not the pairs table.
-    Controls with no similar pairs (below threshold) are included here;
-    get_batch_controls assigns them to batch 0 as orphans.
+    Compare assessed controls against all controls in the expanded parquet.
+    Return a DataFrame flagging any controls with no assessment.
     """
-    return (expanded_df[expanded_df["scope_id"] == scope_id]
-            .drop_duplicates(subset=["Control_ID"])
-            .reset_index(drop=True))
+    assessed = {(r["scope_id"], r.get("control_id","")) for r in deduped}
 
+    missing_rows = []
+    for _, row in expanded_df.iterrows():
+        key = (row["scope_id"], row["Control_ID"])
+        if key not in assessed:
+            missing_rows.append({
+                "scope_id":   row["scope_id"],
+                "Product":    row["Product"],
+                "Control_ID": row["Control_ID"],
+                "CTRL_NAME":  row.get("CTRL_NAME", ""),
+                "issue":      "No assessment in any checkpoint",
+            })
 
-def get_batch_controls(scope_id, batch_id, send_all, pairs_df, expanded_df):
+    if missing_rows:
+        log.warning(f"  {len(missing_rows):,} controls with no assessment found")
+    else:
+        log.info("  Coverage check: all controls have at least one assessment ✓")
+
+    return pd.DataFrame(missing_rows)
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  BUILD OUTPUT DATAFRAME
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_output_df(deduped, expanded_df, log):
     """
-    Return controls for a specific batch.
-    Script 2 now saves ALL pairs (not just above-threshold), so every
-    control appears in pairs_df. Any control still missing (orphan) is
-    added to batch 0 as a safety net.
+    Build the main output DataFrame: one row per control with all
+    assessment fields, enriched with control details from the parquet.
     """
-    all_in_scope = (expanded_df[expanded_df["scope_id"] == scope_id]
-                    .drop_duplicates(subset=["Control_ID"]))
-
-    if send_all:
-        return all_in_scope.reset_index(drop=True)
-
-    sp = pairs_df[pairs_df["scope_id"] == scope_id]
-
-    # Controls assigned to this batch (control_id_a is the primary key)
-    batch_ids = set(
-        sp[sp["batch_id"].astype(int) == batch_id]["control_id_a"].dropna()
+    # Build ctrl_lookup from expanded parquet
+    ctrl_lookup = (
+        expanded_df
+        .drop_duplicates(subset=["Control_ID"], keep="first")
+        .set_index("Control_ID")
+        .to_dict("index")
     )
 
-    # Safety net: any control in scope but not in any pair → add to batch 0
-    if batch_id == 0:
-        paired_ids = set(sp["control_id_a"].dropna())
-        all_ctrl_ids = set(all_in_scope["Control_ID"])
-        orphan_ids = all_ctrl_ids - paired_ids
-        batch_ids = batch_ids | orphan_ids
+    rows = []
+    for rec in deduped:
+        ctrl_id = rec.get("control_id", "")
+        ctx     = ctrl_lookup.get(ctrl_id, {})
+        product = rec.get("product", "") or ctx.get("Product", "")
 
-    return (all_in_scope[all_in_scope["Control_ID"].isin(batch_ids)]
-            .reset_index(drop=True))
+        rows.append({
+            "Product":                     product,
+            "Control ID":                  ctrl_id,
+            "Control Name":                (rec.get("control_name","")
+                                            or ctx.get("CTRL_NAME","")),
+            "Control Objective":           (rec.get("control_objective","")
+                                            or ctx.get("Control Objective","")),
+            "Classification":              rec.get("classification",""),
+            "Classification Group Key":    rec.get("classification_group_key",""),
+            "Fragmented Group ID":         rec.get("fragmented_group_id",""),
+            "Dual Classified":             rec.get("dual_classified", False),
+            "Redundant By Control IDs":    "; ".join(
+                                           rec.get("redundant_by_control_ids") or []),
+            "Fragmented Control ID Group": "; ".join(
+                                           rec.get("fragmented_control_id_group") or []),
+            "Rationale":                   rec.get("rationale",""),
+            "Confidence":                  rec.get("confidence",""),
+            "Scope ID":                    rec.get("scope_id",""),
+            "Source Batch":                rec.get("batch_key",""),
+            "Source File":                 rec.get("source",""),
+        })
+
+    df = pd.DataFrame(rows)
+    df = df.sort_values(
+        ["Product","Classification","Classification Group Key","Control ID"]
+    ).reset_index(drop=True)
+    log.info(f"  Output rows: {len(df):,}")
+    return df
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  PROCESSING LOOP
+#  BUILD SUMMARY
 # ─────────────────────────────────────────────────────────────────────────────
 
-def process_scopes(scope_df, pairs_df, expanded_df, ck_path, done_keys, log):
-    total_in = total_out = 0
-    n_proc = n_skip = n_err = 0
-    n_total = len(scope_df)
-    t0 = time.time()
+def build_summary(df, coverage_df, log):
+    clf = df["Classification"].value_counts()
 
-    for row_num, sr in enumerate(scope_df.itertuples(index=False), 1):
-        scope_id    = sr.scope_id
-        product     = getattr(sr, "Product", "")
-        send_all    = bool(getattr(sr, "send_all", True))
-        n_controls  = int(getattr(sr, "n_controls", 0))
-        n_batches   = int(getattr(sr, "n_batches", 1))
-        skip_reason = getattr(sr, "skip_reason", "")
+    summary_rows = [
+        ("── RUN SUMMARY ─────────────────────────────────────────────", ""),
+        ("Total controls assessed",              len(df)),
+        ("Products covered",                     df["Product"].nunique()),
+        ("Controls with no assessment (gaps)",   len(coverage_df)),
+        ("── CLASSIFICATIONS ─────────────────────────────────────────", ""),
+        ("Redundant",
+         int(clf.get("Redundant", 0))),
+        ("Process-Split Fragmentation",
+         int(clf.get("Process-Split Fragmentation", 0))),
+        ("Common Control Opportunity",
+         int(clf.get("Common Control Opportunity", 0))),
+        ("Retain",
+         int(clf.get("Retain", 0))),
+        ("Unclear",
+         int(clf.get("Unclear", 0))),
+        ("── FINDINGS TOTAL ───────────────────────────────────────────", ""),
+        ("Controls with a finding (R+PSF+CCO)",
+         int(df["Classification"].isin([
+             "Redundant","Process-Split Fragmentation",
+             "Common Control Opportunity"]).sum())),
+    ]
+    summary_df = pd.DataFrame(summary_rows, columns=["Metric","Value"])
 
-        # Skip single-control scopes
-        if skip_reason == "single_control" or n_controls < 2:
-            bk = f"{scope_id}::0::0"
-            if bk not in done_keys:
-                write_checkpoint({"batch_key": bk, "scope_id": scope_id,
-                                  "skipped": True, "skip_reason": "single_control",
-                                  "assessments": []}, ck_path)
-                done_keys.add(bk)
-            n_skip += 1
-            continue
+    # Per-product breakdown
+    by_product = (
+        df.groupby("Product")
+        .agg(
+            total              =("Control ID",     "count"),
+            redundant          =("Classification",
+                                 lambda x: (x=="Redundant").sum()),
+            process_split      =("Classification",
+                                 lambda x: (x=="Process-Split Fragmentation").sum()),
+            common_ctrl_opp    =("Classification",
+                                 lambda x: (x=="Common Control Opportunity").sum()),
+            retain             =("Classification",
+                                 lambda x: (x=="Retain").sum()),
+            unclear            =("Classification",
+                                 lambda x: (x=="Unclear").sum()),
+        )
+        .reset_index()
+        .sort_values("total", ascending=False)
+    )
 
-        # Progress
-        elapsed = time.time() - t0
-        pct     = row_num / n_total * 100
-        eta_s   = (elapsed / row_num) * (n_total - row_num) if row_num > 1 else 0
-        eta_str = (f"{int(eta_s//3600)}h {int((eta_s%3600)//60)}m"
-                   if eta_s > 60 else f"{int(eta_s)}s")
-        cost    = ((total_in/1e6*INPUT_PRICE_PER_M +
-                    total_out/1e6*OUTPUT_PRICE_PER_M) / AUD_USD_RATE)
-        print(f"\r  [{pct:5.1f}%] {scope_id[:55]:<55} "
-              f"ETA {eta_str}  A${cost:.2f}", end="")
+    # Grouped findings: all controls sharing a group key within a scope
+    findings = df[df["Classification"].isin([
+        "Redundant","Process-Split Fragmentation","Common Control Opportunity"
+    ])].copy()
 
-        all_scope_ctrls = get_scope_controls(scope_id, pairs_df, expanded_df)
-        n_scope         = len(all_scope_ctrls)
-        if n_scope == 0:
-            continue
+    groups = pd.DataFrame()
+    if not findings.empty:
+        groups = (
+            findings.groupby(["Product","Classification","Classification Group Key"])
+            .agg(
+                controls_in_group = ("Control ID", "count"),
+                control_ids       = ("Control ID",
+                                     lambda x: "; ".join(x.tolist())),
+                confidence        = ("Confidence", "first"),
+                rationale         = ("Rationale",  "first"),
+            )
+            .reset_index()
+            .sort_values(["Product","Classification","Classification Group Key"])
+        )
 
-        for batch_id in (range(n_batches) if not send_all else [0]):
-            batch = get_batch_controls(
-                scope_id, batch_id, send_all, pairs_df, expanded_df)
-            if len(batch) == 0:
-                continue
-
-            n_sub = max(1, (len(batch) + SUB_BATCH_SIZE - 1) // SUB_BATCH_SIZE)
-            for sub_idx in range(n_sub):
-                sub = batch.iloc[
-                    sub_idx*SUB_BATCH_SIZE:(sub_idx+1)*SUB_BATCH_SIZE
-                ].reset_index(drop=True)
-                if len(sub) == 0:
-                    continue
-
-                bk = f"{scope_id}::{batch_id}::{sub_idx}"
-                if bk in done_keys:
-                    n_skip += 1
-                    continue
-
-                prompt = build_prompt(scope_id, bk, product, n_scope, sub)
-                result, usage = call_llm(prompt, bk, log)
-                total_in  += usage.get("input_tokens", 0)
-                total_out += usage.get("output_tokens", 0)
-
-                if result is None:
-                    n_err += 1
-                    write_checkpoint({
-                        "batch_key": bk, "scope_id": scope_id,
-                        "error": True, "assessments": [],
-                        "control_ids_in_batch": sub["Control_ID"].tolist(),
-                    }, ck_path)
-                else:
-                    result.update({
-                        "batch_key":   bk,
-                        "product":     product,
-                        "input_tokens":  usage.get("input_tokens", 0),
-                        "output_tokens": usage.get("output_tokens", 0),
-                        "error": False,
-                        "control_ids_in_batch": sub["Control_ID"].tolist(),
-                    })
-                    write_checkpoint(result, ck_path)
-                    n_proc += 1
-
-                done_keys.add(bk)
-                time.sleep(SLEEP_BETWEEN)
-
-    print()
-    cost = ((total_in/1e6*INPUT_PRICE_PER_M +
-             total_out/1e6*OUTPUT_PRICE_PER_M) / AUD_USD_RATE)
-    log.info(f"  Processed: {n_proc:,} | Skipped: {n_skip:,} | "
-             f"Errors: {n_err:,} | Cost: A${cost:.2f}")
-    return cost
+    return summary_df, by_product, groups
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  MAIN
@@ -488,83 +339,103 @@ def process_scopes(scope_df, pairs_df, expanded_df, ck_path, done_keys, log):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--force",    action="store_true",
-                        help="Clear checkpoint and restart.")
-    parser.add_argument("--sample",   action="store_true",
-                        help=f"Run sample only: {SAMPLE_PRODUCTS}")
-    parser.add_argument("--wp-range", nargs=2, type=int,
-                        metavar=("START","END"),
-                        help="Process scope rows [START:END] only.")
-    parser.add_argument("--suffix",   default="",
-                        help="Checkpoint/log file suffix for parallel runs.")
+    parser.add_argument("--suffix", default="",
+                        help="Only process checkpoint with this suffix. "
+                             "e.g. --suffix _sample")
     args = parser.parse_args()
 
-    log = get_logger(args.suffix)
+    log = setup_logging()
     log.info("=" * 70)
-    log.info("  Control Rationalisation — Step 3: LLM Assessment")
-    log.info(f"  Model          : {LLM_MODEL} (low reasoning)")
-    log.info(f"  Sub-batch size : {SUB_BATCH_SIZE} controls per call")
-    log.info(f"  Suffix         : '{args.suffix}'")
-    log.info(f"  Sample mode    : {args.sample}"
-             + (f" → {SAMPLE_PRODUCTS}" if args.sample else ""))
-    log.info(f"  Started        : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    log.info("  Control Rationalisation — Step 4: Post-processing")
+    log.info("  Dimension 1: Product-level cluster assessment")
+    log.info(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     log.info("=" * 70)
 
-    for f in [EXPANDED_PARQUET, SCOPE_WP_PARQUET, CAND_WP_PARQUET, RUN_CONFIG]:
-        if not f.exists():
-            log.error(f"Required input not found: {f.name}. Run Scripts 1 and 2.")
-            sys.exit(1)
-
-    ck_path = OUTPUT_DIR / f"llm_checkpoint_within_product{args.suffix}.jsonl"
-
-    if args.force:
-        if ck_path.exists():
-            ck_path.unlink()
-            log.info(f"Checkpoint cleared: {ck_path.name}")
-
-    log.info("Loading data...")
-    expanded = pd.read_parquet(EXPANDED_PARQUET, engine="pyarrow")
-    scope_df = pd.read_parquet(SCOPE_WP_PARQUET, engine="pyarrow")
-    pairs_df = pd.read_parquet(CAND_WP_PARQUET,  engine="pyarrow")
-    log.info(f"  Scopes: {len(scope_df):,} | Pairs: {len(pairs_df):,} | "
-             f"Expanded rows: {len(expanded):,}")
-
-    # Apply filters
-    if args.sample:
-        scope_df = scope_df[
-            scope_df["Product"].isin(SAMPLE_PRODUCTS)
-        ].reset_index(drop=True)
-        log.info(f"  Sample: {len(scope_df):,} scopes for "
-                 f"{scope_df['Product'].unique().tolist()}")
-    elif args.wp_range:
-        s, e = args.wp_range
-        scope_df = scope_df.iloc[s:e].reset_index(drop=True)
-        log.info(f"  Range [{s}:{e}]: {len(scope_df):,} scopes")
-
-    log.info("Verifying connectivity...")
-    try:
-        make_client()
-        log.info("  OK.")
-    except Exception as e:
-        log.error(f"  Failed: {e}")
+    if not EXPANDED.exists():
+        log.error("expanded_product_control_mapping.parquet not found. "
+                  "Run Scripts 1 and 2 first.")
         sys.exit(1)
 
-    done_keys = load_checkpoint(ck_path)
-    log.info(f"  Done keys in checkpoint: {len(done_keys):,}")
+    # Determine which checkpoint files to read
+    if args.suffix:
+        checkpoint_files = [f"llm_checkpoint_within_product{args.suffix}.jsonl"]
+        log.info(f"Suffix filter: {checkpoint_files[0]}")
+        output_wb1 = OUTPUT_DIR / f"within_product_assessment{args.suffix}.xlsx"
+        output_wb2 = OUTPUT_DIR / f"assessment_summary{args.suffix}.xlsx"
+    else:
+        checkpoint_files = ALL_CHECKPOINT_FILES
+        output_wb1 = OUTPUT_WB1
+        output_wb2 = OUTPUT_WB2
 
-    cost = process_scopes(
-        scope_df, pairs_df, expanded, ck_path, done_keys, log)
+    # Load expanded parquet
+    log.info("Loading expanded dataset...")
+    expanded_df = pd.read_parquet(EXPANDED, engine="pyarrow")
+    log.info(f"  {len(expanded_df):,} rows | "
+             f"{expanded_df['scope_id'].nunique():,} scopes | "
+             f"{expanded_df['Control_ID'].nunique():,} unique controls")
 
-    with open(RUN_CONFIG) as f:
-        config = json.load(f)
-    config[f"step3{args.suffix}_completed_at"]   = datetime.now().isoformat()
-    config[f"step3{args.suffix}_total_cost_aud"] = round(cost, 2)
-    with open(RUN_CONFIG, "w") as f:
-        json.dump(config, f, indent=2)
+    # Load and merge checkpoints
+    log.info("\nLoading checkpoint files...")
+    raw_records = load_checkpoints(checkpoint_files, log)
 
+    if not raw_records:
+        log.error("No assessment records found. Run Script 3 first.")
+        sys.exit(1)
+
+    # Deduplicate
+    log.info("\nDeduplicating assessments...")
+    deduped = deduplicate(raw_records, log)
+
+    # Coverage check
+    log.info("\nChecking coverage...")
+    coverage_df = check_coverage(deduped, expanded_df, log)
+
+    # Build output
+    log.info("\nBuilding output...")
+    df          = build_output_df(deduped, expanded_df, log)
+    summary_df, by_product_df, groups_df = build_summary(df, coverage_df, log)
+
+    findings_df = df[df["Classification"].isin([
+        "Redundant","Process-Split Fragmentation","Common Control Opportunity"
+    ])].copy()
+
+    # ── Workbook 1: Main assessment output ───────────────────────────────────
+    log.info(f"\nWriting: {output_wb1.name}")
+    with pd.ExcelWriter(output_wb1, engine="openpyxl") as w:
+        df.to_excel(           w, index=False, sheet_name="all_assessments")
+        findings_df.to_excel(  w, index=False, sheet_name="findings_only")
+        if not groups_df.empty:
+            groups_df.to_excel(w, index=False, sheet_name="finding_groups")
+        if not coverage_df.empty:
+            coverage_df.to_excel(w, index=False, sheet_name="coverage_gaps")
+
+    # ── Workbook 2: Summary statistics ───────────────────────────────────────
+    log.info(f"Writing: {output_wb2.name}")
+    with pd.ExcelWriter(output_wb2, engine="openpyxl") as w:
+        summary_df.to_excel(   w, index=False, sheet_name="summary")
+        by_product_df.to_excel(w, index=False, sheet_name="by_product")
+
+    # Print summary to console
+    log.info("\n" + "=" * 70)
+    log.info("  RESULTS SUMMARY")
     log.info("=" * 70)
-    log.info(f"  Step 3 complete. Cost: A${cost:.2f}")
-    log.info("  Run 04_postprocess_outputs.py next.")
+    for _, r in summary_df.iterrows():
+        if not str(r["Metric"]).startswith("──"):
+            log.info(f"  {r['Metric']}: {r['Value']}")
+
+    log.info("\n  Output files:")
+    log.info(f"    {output_wb1.name}")
+    log.info(f"      - all_assessments  : {len(df):,} controls")
+    log.info(f"      - findings_only    : {len(findings_df):,} controls")
+    if not groups_df.empty:
+        log.info(f"      - finding_groups   : {len(groups_df):,} groups")
+    if not coverage_df.empty:
+        log.info(f"      - coverage_gaps    : {len(coverage_df):,} controls")
+    log.info(f"    {output_wb2.name}")
+    log.info(f"      - summary")
+    log.info(f"      - by_product       : {by_product_df['Product'].nunique():,} products")
+    log.info("=" * 70)
+    log.info("  Step 4 complete.")
     log.info("=" * 70)
 
 if __name__ == "__main__":
