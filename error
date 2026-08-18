@@ -1,6 +1,437 @@
-Product	Unique Control IDs
-Agency Service	CTL000041538, CTL000173470, CTL000173709, CTL000176675, CTL000181050
-Agency Service	CTL000045174, CTL000079156, CTL000173470, CTL000173709, CTL000176651, CTL000176675, CTL021896
-Agency Service	CTL000041583, CTL000176636, CTL002056
-Agency Service	CTL000041538, CTL000052882, CTL000053254, CTL000108886, CTL000140998, CTL000173470, CTL000173709, CTL000176651, CTL000176675, CTL011401, CTL011408, CTL023775
-Agency Service	CTL000041583, CTL000041584, CTL000120390
+"""
+01_preprocess_control_data.py
+─────────────────────────────────────────────────────────────────────────────
+Control Rationalisation — Step 1 of 4: Data Preprocessing
+Dimension 1: Controls data cut by product
+
+Scope definition (simplified):
+  Each ROW in product_clusters.xlsx = one cluster = one scope.
+  Scope key: WP|{Product}|{row_index:04d}
+
+  Only two fields are read from product_clusters.xlsx:
+    - Product
+    - Unique Control IDs
+
+  CT Reference, Payment Category, Consolidated Stage, and Expected Control
+  are NOT used in Dimension 1. They belong to Dimension 2.
+
+Outputs:
+  expanded_product_control_mapping.parquet
+  data_quality_report.xlsx
+  processing_log.txt
+  run_config.json
+
+Run:
+  python 01_preprocess_control_data.py
+  python 01_preprocess_control_data.py --force
+"""
+
+import argparse
+import json
+import logging
+import re
+import sys
+from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  CONFIG
+# ─────────────────────────────────────────────────────────────────────────────
+
+FILE_CTRL_DETAILS     = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\raw\ctrl_details.xlsx")
+FILE_PRODUCT_CLUSTERS = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\raw\product_clusters.xlsx")
+OUTPUT_DIR            = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
+
+SIMILARITY_THRESHOLD      = 0.58
+MAX_CONTROLS_PER_LLM_CALL = 20
+LLM_TEMPERATURE           = 0
+RETRY_COUNT               = 5
+FORCE_REFRESH_EMBEDDINGS  = False
+INCLUDE_CTRL_OWNER        = False
+RUN_WITHIN_PRODUCT        = True
+
+CTRL_REQUIRED_COLS = ["Control_ID", "CTRL_NAME"]
+
+CTRL_OPTIONAL_COLS = [
+    "CTRL_NATRE", "CTRL_STUS", "CTRL_OWNER", "CTRL_FREQ", "CTRL_KEY_CONTRL",
+    "Control Objective", "CTRL_TYP", "CTRL_ASSESS_RTNG",
+    "CTRL_CTGRY_1", "CTRL_CTGRY_2", "CTRL_OE_RTNG", "CTRL_DE_RTNG",
+    "CTRL_LOC_LIST", "CTRL_EVDNCD", "CTRL_MNTRD", "CTRL_CATEGORY",
+    "Control_Description", "CTRL_FLDR", "object_path_leaf",
+    "CTRL_FLDR_LVL_2(Division)", "gold_control",
+]
+
+# Only these two fields are required from product_clusters.xlsx
+CLUSTER_REQUIRED_COLS = ["Product", "Unique Control IDs"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  LOGGING
+# ─────────────────────────────────────────────────────────────────────────────
+
+def setup_logging() -> logging.Logger:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    logger = logging.getLogger("ctrl_rat")
+    if logger.handlers:
+        return logger
+    fh = logging.FileHandler(OUTPUT_DIR / "processing_log.txt", encoding="utf-8")
+    fh.setLevel(logging.DEBUG)
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(logging.INFO)
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s",
+                            datefmt="%Y-%m-%d %H:%M:%S")
+    fh.setFormatter(fmt)
+    ch.setFormatter(fmt)
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+    logger.setLevel(logging.DEBUG)
+    return logger
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def safe_str(val, default=""):
+    if pd.isna(val):
+        return default
+    s = str(val).replace("\t", " ").replace("\r", " ").replace("\n", " ")
+    return re.sub(r" {2,}", " ", s).strip()
+
+def is_blank(val):
+    return safe_str(val) == ""
+
+def clean_cols(df):
+    df.columns = df.columns.str.strip()
+    return df
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  LOAD AND VALIDATE
+# ─────────────────────────────────────────────────────────────────────────────
+
+def load_inputs(log):
+    for f in [FILE_CTRL_DETAILS, FILE_PRODUCT_CLUSTERS]:
+        if not f.exists():
+            log.error(f"Input file not found: {f}")
+            sys.exit(1)
+
+    log.info(f"Loading ctrl_details: {FILE_CTRL_DETAILS.name}")
+    ctrl = clean_cols(pd.read_excel(FILE_CTRL_DETAILS, dtype=str, engine="openpyxl"))
+    log.info(f"  Rows: {len(ctrl):,}")
+
+    log.info(f"Loading product_clusters: {FILE_PRODUCT_CLUSTERS.name}")
+    clusters = clean_cols(pd.read_excel(FILE_PRODUCT_CLUSTERS, dtype=str,
+                                        engine="openpyxl"))
+    log.info(f"  Rows: {len(clusters):,} | Columns: {list(clusters.columns)}")
+    return ctrl, clusters
+
+
+def validate_columns(ctrl, clusters, log):
+    missing_ctrl = [c for c in CTRL_REQUIRED_COLS if c not in ctrl.columns]
+    missing_clus = [c for c in CLUSTER_REQUIRED_COLS if c not in clusters.columns]
+    if missing_ctrl:
+        log.error(f"ctrl_details missing required columns: {missing_ctrl}")
+        sys.exit(1)
+    if missing_clus:
+        log.error(f"product_clusters missing required columns: {missing_clus}")
+        log.error(f"  Available columns: {list(clusters.columns)}")
+        sys.exit(1)
+    missing_opt = [c for c in CTRL_OPTIONAL_COLS if c not in ctrl.columns]
+    if missing_opt:
+        log.warning(f"Optional columns not found (will be blank): {missing_opt}")
+    log.info("Column validation passed.")
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  NORMALISE
+# ─────────────────────────────────────────────────────────────────────────────
+
+def normalise_ctrl_details(ctrl, log):
+    ctrl["Control_ID"] = ctrl["Control_ID"].apply(safe_str)
+    for col in ctrl.columns:
+        ctrl[col] = ctrl[col].apply(safe_str)
+    dups = ctrl[ctrl["Control_ID"].duplicated(keep=False)]["Control_ID"].unique()
+    if len(dups):
+        log.warning(f"{len(dups)} duplicate Control_ID(s): {list(dups)[:5]}")
+    ctrl = ctrl.drop_duplicates(subset=["Control_ID"], keep="first")
+    log.info(f"ctrl_details: {len(ctrl):,} unique controls after dedup")
+    return ctrl
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  EXPAND CLUSTERS
+#
+#  Each ROW in product_clusters.xlsx = one cluster = one scope.
+#  Scope key: WP|{Product}|{row_index:04d}
+#  Only Product and Unique Control IDs are used.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def expand_product_clusters(clusters, log):
+    """
+    Group ALL rows by Product into one cluster per product.
+    All Control IDs across all rows for the same product are merged and
+    deduplicated into a single scope: WP|{Product}.
+
+    Scripts 2 and 3 then use embeddings to find natural sub-clusters within
+    each product's control pool and send each sub-cluster to the LLM.
+
+    Example: Agency Service has 5 rows in product_clusters.xlsx.
+    All unique Control IDs across those 5 rows are merged into one scope:
+    WP|Agency Service → [CTL000041538, CTL000041583, ..., CTL023775]
+    """
+    log.info("Grouping Control IDs by Product (one scope per product)...")
+
+    # Collect all Control IDs per product, deduplicating across rows
+    product_controls: dict[str, set] = {}
+    n_no_prod = n_no_ids = 0
+
+    for _, row in clusters.iterrows():
+        product = safe_str(row.get("Product", ""))
+        if not product:
+            n_no_prod += 1
+            continue
+
+        raw_ids  = safe_str(row.get("Unique Control IDs", ""))
+        ctrl_ids = [c.strip() for c in raw_ids.split(",") if c.strip()]
+
+        if not ctrl_ids:
+            n_no_ids += 1
+            continue
+
+        if product not in product_controls:
+            product_controls[product] = set()
+        product_controls[product].update(ctrl_ids)
+
+    if n_no_prod:
+        log.warning(f"  {n_no_prod} rows with no Product — skipped")
+    if n_no_ids:
+        log.warning(f"  {n_no_ids} rows with no Control IDs — skipped")
+
+    # Build expanded table — one row per unique Control_ID per product
+    rows = []
+    for product in sorted(product_controls):
+        scope_id = f"WP|{product}"
+        for ctrl_id in sorted(product_controls[product]):
+            rows.append({
+                "scope_id":  scope_id,
+                "Product":   product,
+                "Control_ID": ctrl_id,
+            })
+
+    expanded = pd.DataFrame(rows)
+    log.info(f"  Products (scopes)   : {len(product_controls):,}")
+    log.info(f"  Total control rows  : {len(expanded):,}")
+    log.info(f"  Unique Control IDs  : {expanded['Control_ID'].nunique():,}")
+
+    # Log per-product control counts
+    counts = expanded.groupby("Product")["Control_ID"].count().sort_values(ascending=False)
+    log.info("  Controls per product (top 10):")
+    for prod, n in counts.head(10).items():
+        log.info(f"    {prod}: {n}")
+
+    return expanded
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  JOIN CONTROL DETAILS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def join_control_details(expanded, ctrl, log):
+    log.info("Joining control details...")
+    joined = expanded.merge(ctrl, on="Control_ID", how="left")
+    matched   = joined["CTRL_NAME"].apply(lambda x: not is_blank(x)).sum()
+    unmatched = joined[joined["CTRL_NAME"].apply(is_blank)]["Control_ID"].unique()
+    log.info(f"  Matched   : {matched:,}")
+    log.info(f"  Unmatched : {len(unmatched):,}")
+    if len(unmatched) > 0:
+        log.warning(f"  Unmatched IDs (first 10): {list(unmatched[:10])}")
+    return joined
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  BUILD TEXT PAYLOADS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_embedding_text(row):
+    """Semantic text for embedding. Product-only context (no CT/stage)."""
+    def f(field, label):
+        val = safe_str(row.get(field, ""))
+        return f"{label}:\n{val}" if val else ""
+
+    parts = [
+        f("Control_ID",               "Control ID"),
+        f("CTRL_NAME",                "Control Name"),
+        f("Control Objective",        "Control Objective"),
+        f("Control_Description",      "Control Description"),
+        f("CTRL_NATRE",               "Control Nature"),
+        f("CTRL_FREQ",                "Frequency"),
+        f("CTRL_TYP",                 "Control Type"),
+        f("CTRL_KEY_CONTRL",          "Key Control"),
+        f("CTRL_CTGRY_1",             "Category 1"),
+        f("CTRL_CTGRY_2",             "Category 2"),
+        f("CTRL_EVDNCD",              "Evidence"),
+        f("CTRL_MNTRD",               "Monitoring"),
+        f("CTRL_CATEGORY",            "Control Category"),
+        f("CTRL_LOC_LIST",            "Location"),
+        f("CTRL_FLDR_LVL_2(Division)","Division"),
+        f("object_path_leaf",         "Business Area"),
+        f("gold_control",             "Gold Control"),
+        f("Product",                  "Product"),
+    ]
+    if INCLUDE_CTRL_OWNER:
+        parts.append(f("CTRL_OWNER", "Control Owner"))
+    return "\n\n".join(p for p in parts if p)
+
+
+def build_llm_payload_text(row):
+    """Enriched text for LLM. Includes product cluster context."""
+    def f(field, label):
+        val = safe_str(row.get(field, ""))
+        return f"{label}: {val}" if val else ""
+
+    lines = [
+        "=== PRODUCT CLUSTER CONTEXT ===",
+        f("Product",              "Product"),
+        f("scope_id",             "Cluster Scope"),
+        "",
+        "=== CONTROL DETAILS ===",
+        f("Control_ID",           "Control ID"),
+        f("CTRL_NAME",            "Control Name"),
+        f("Control Objective",    "Control Objective"),
+        f("Control_Description",  "Control Description"),
+        f("CTRL_NATRE",           "Control Nature"),
+        f("CTRL_FREQ",            "Frequency"),
+        f("CTRL_TYP",             "Control Type"),
+        f("CTRL_KEY_CONTRL",      "Key Control"),
+        f("CTRL_CTGRY_1",         "Category 1"),
+        f("CTRL_CTGRY_2",         "Category 2"),
+        f("CTRL_EVDNCD",          "Evidence"),
+        f("CTRL_MNTRD",           "Monitoring"),
+        f("CTRL_CATEGORY",        "Control Category"),
+        f("CTRL_LOC_LIST",        "Location"),
+        f("CTRL_FLDR_LVL_2(Division)", "Division"),
+        f("object_path_leaf",     "Business Area"),
+        f("gold_control",         "Gold Control"),
+    ]
+    if INCLUDE_CTRL_OWNER:
+        lines.append(f("CTRL_OWNER", "Control Owner"))
+    return "\n".join(line for line in lines if line != "" or line == "")
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  DATA QUALITY REPORT
+# ─────────────────────────────────────────────────────────────────────────────
+
+def create_dq_report(ctrl_raw, clusters_raw, expanded, joined, log):
+    log.info("Building data quality report...")
+
+    def col_blank(df, col):
+        return int(df[col].apply(is_blank).sum()) if col in df.columns else "n/a"
+
+    no_ids = sum(
+        1 for _, row in clusters_raw.iterrows()
+        if not [c.strip() for c in
+                safe_str(row.get("Unique Control IDs","")).split(",") if c.strip()]
+    )
+    unmatched = joined[joined["CTRL_NAME"].apply(is_blank)]["Control_ID"].unique()
+
+    rows = [
+        ("── INPUT COUNTS ──────────────────────────────────────────", ""),
+        ("ctrl_details rows",                    len(ctrl_raw)),
+        ("ctrl_details unique Control_IDs",       ctrl_raw["Control_ID"].nunique()),
+        ("product_clusters rows (clusters)",      len(clusters_raw)),
+        ("Unique products in clusters",
+         clusters_raw["Product"].apply(safe_str).nunique()),
+        ("── EXPANSION ─────────────────────────────────────────────", ""),
+        ("Expanded control rows",                 len(expanded)),
+        ("Unique products (scopes)",              expanded["scope_id"].nunique()),
+        ("Unique Control_IDs in clusters",        expanded["Control_ID"].nunique()),
+        ("── JOIN ──────────────────────────────────────────────────", ""),
+        ("Matched to ctrl_details",
+         int(joined["CTRL_NAME"].apply(lambda x: not is_blank(x)).sum())),
+        ("Unmatched Control_IDs",                len(unmatched)),
+        ("── DATA QUALITY ──────────────────────────────────────────", ""),
+        ("Duplicate Control_IDs in ctrl_details",
+         int(ctrl_raw["Control_ID"].duplicated().sum())),
+        ("Blank Control_Description",            col_blank(ctrl_raw, "Control_Description")),
+        ("Blank Control Objective",              col_blank(ctrl_raw, "Control Objective")),
+        ("Blank CTRL_EVDNCD",                    col_blank(ctrl_raw, "CTRL_EVDNCD")),
+        ("Blank CTRL_MNTRD",                     col_blank(ctrl_raw, "CTRL_MNTRD")),
+        ("Cluster rows with no Control IDs",     no_ids),
+    ]
+    dq_df = pd.DataFrame(rows, columns=["Metric", "Value"])
+    unmatched_df = pd.DataFrame({"Unmatched_Control_ID": unmatched})
+    return dq_df, unmatched_df
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  MAIN
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--force", action="store_true",
+                        help="Overwrite existing output.")
+    args = parser.parse_args()
+
+    log = setup_logging()
+    log.info("=" * 70)
+    log.info("  Control Rationalisation — Step 1: Preprocessing")
+    log.info("  Dimension 1: Product-level cluster assessment")
+    log.info(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    log.info("=" * 70)
+
+    output_parquet = OUTPUT_DIR / "expanded_product_control_mapping.parquet"
+    if output_parquet.exists() and not args.force:
+        log.info("Output already exists. Use --force to regenerate.")
+        return
+
+    ctrl_raw, clusters_raw = load_inputs(log)
+    validate_columns(ctrl_raw, clusters_raw, log)
+    ctrl     = normalise_ctrl_details(ctrl_raw.copy(), log)
+    expanded = expand_product_clusters(clusters_raw.copy(), log)
+    joined   = join_control_details(expanded, ctrl, log)
+
+    log.info("Building text payloads...")
+    joined["embedding_text"]   = joined.apply(build_embedding_text, axis=1)
+    joined["llm_payload_text"] = joined.apply(build_llm_payload_text, axis=1)
+    log.info(f"  Avg embedding text length : "
+             f"{joined['embedding_text'].str.len().mean():.0f} chars")
+
+    dq_df, unmatched_df = create_dq_report(
+        ctrl_raw, clusters_raw, expanded, joined, log)
+    dq_path = OUTPUT_DIR / "data_quality_report.xlsx"
+    with pd.ExcelWriter(dq_path, engine="openpyxl") as w:
+        dq_df.to_excel(w, index=False, sheet_name="summary")
+        if not unmatched_df.empty:
+            unmatched_df.to_excel(w, index=False, sheet_name="unmatched_ids")
+    log.info(f"Data quality report: {dq_path.name}")
+    for _, r in dq_df.iterrows():
+        if not str(r["Metric"]).startswith("──"):
+            log.info(f"  {r['Metric']}: {r['Value']}")
+
+    joined.to_parquet(output_parquet, index=False, engine="pyarrow")
+    log.info(f"Saved: {output_parquet.name} ({len(joined):,} rows)")
+
+    config = {
+        "script":              "01_preprocess_control_data.py",
+        "dimension":           1,
+        "scope_definition":    "One scope per product (all rows merged)",
+        "run_at":              datetime.now().isoformat(),
+        "file_ctrl_details":   str(FILE_CTRL_DETAILS),
+        "file_product_clusters": str(FILE_PRODUCT_CLUSTERS),
+        "output_dir":          str(OUTPUT_DIR),
+        "similarity_threshold":      SIMILARITY_THRESHOLD,
+        "max_controls_per_llm_call": MAX_CONTROLS_PER_LLM_CALL,
+        "retry_count":               RETRY_COUNT,
+        "force_refresh_embeddings":  FORCE_REFRESH_EMBEDDINGS,
+        "include_ctrl_owner":        INCLUDE_CTRL_OWNER,
+        "run_within_product":        RUN_WITHIN_PRODUCT,
+        "expanded_rows":             len(joined),
+        "unique_controls":           int(joined["Control_ID"].nunique()),
+        "unique_scopes":             int(joined["scope_id"].nunique()),
+    }
+    with open(OUTPUT_DIR / "run_config.json", "w") as f:
+        json.dump(config, f, indent=2)
+    log.info("run_config.json saved.")
+
+    log.info("=" * 70)
+    log.info("  Step 1 complete. Run 02_generate_embeddings_and_candidates.py next.")
+    log.info("=" * 70)
+
+if __name__ == "__main__":
+    main()
