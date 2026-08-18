@@ -1,211 +1,32 @@
-"""
-preview_results.py
-─────────────────────────────────────────────────────────────────────────────
-Reads all available checkpoint files and produces an SME-ready Excel.
-Run at any point while Script 3 is still running — works on partial data.
+PS C:\Users\m061400\ai-test\big_table\duplicates\product> python .\03_run_llm_assessment.py --sample --suffix _sample --force
+2026-08-18 18:00:07 [INFO] ======================================================================
+2026-08-18 18:00:07 [INFO]   Control Rationalisation — Step 3: LLM Assessment
+2026-08-18 18:00:07 [INFO]   Model          : gpt-5.4 (low reasoning)
+2026-08-18 18:00:07 [INFO]   Sub-batch size : 5 controls per call
+2026-08-18 18:00:07 [INFO]   Suffix         : '_sample'
+2026-08-18 18:00:07 [INFO]   Sample mode    : True → ['Agency Service', 'Commercial Hire Purchase']
+2026-08-18 18:00:07 [INFO]   Started        : 2026-08-18 18:00:07
+2026-08-18 18:00:07 [INFO] ======================================================================
+2026-08-18 18:00:07 [INFO] Checkpoint cleared: llm_checkpoint_within_product_sample.jsonl
+2026-08-18 18:00:07 [INFO] Loading data...
+2026-08-18 18:00:07 [INFO]   Scopes: 75 | Pairs: 80,060 | Expanded rows: 2,658
+2026-08-18 18:00:07 [INFO]   Sample: 2 scopes for ['Agency Service', 'Commercial Hire Purchase']
+2026-08-18 18:00:07 [INFO] Verifying connectivity...
+2026-08-18 18:00:07 [INFO]   OK.
+2026-08-18 18:00:07 [INFO]   Done keys in checkpoint: 0
+  [100.0%] WP|Commercial Hire Purchase                             ETA 0s  A$0.20
+2026-08-18 18:05:05 [INFO]   Processed: 7 | Skipped: 0 | Errors: 0 | Cost: A$0.31
+2026-08-18 18:05:05 [INFO] ======================================================================
+2026-08-18 18:05:05 [INFO]   Step 3 complete. Cost: A$0.31
+2026-08-18 18:05:05 [INFO]   Run 04_postprocess_outputs.py next.
+2026-08-18 18:05:05 [INFO] ======================================================================
+PS C:\Users\m061400\ai-test\big_table\duplicates\product> python .\preview_results.py
 
-Output: sme_sample_preview.xlsx (four sheets)
-
-Run:
-  python preview_results.py
-"""
-
-import json
-from pathlib import Path
-import pandas as pd
-
-OUTPUT_DIR  = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
-EXPANDED    = OUTPUT_DIR / "expanded_product_control_mapping.parquet"
-OUTPUT_FILE = OUTPUT_DIR / "sme_sample_preview.xlsx"
-
-CHECKPOINT_FILES = [
-    "llm_checkpoint_within_product.jsonl",
-    "llm_checkpoint_within_product_sample.jsonl",
-    "llm_checkpoint_within_product_p1.jsonl",
-    "llm_checkpoint_within_product_p2.jsonl",
-    "llm_checkpoint_within_product_p3.jsonl",
-    "llm_checkpoint_within_product_p4.jsonl",
-]
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  LOAD CONTROL LOOKUP FROM EXPANDED PARQUET
-# ─────────────────────────────────────────────────────────────────────────────
-
-if not EXPANDED.exists():
-    print(f"ERROR: {EXPANDED.name} not found. Run Script 1 first.")
-    raise SystemExit(1)
-
-expanded = pd.read_parquet(EXPANDED, engine="pyarrow")
-
-# Build lookup: Control_ID → {Product, CTRL_NAME, Control Objective}
-# Only use columns that actually exist in the parquet
-lookup_cols = ["Control_ID"]
-for col in ["CTRL_NAME", "Control Objective", "Control_Description", "Product"]:
-    if col in expanded.columns:
-        lookup_cols.append(col)
-
-ctrl_basic = (
-    expanded[lookup_cols]
-    .drop_duplicates(subset=["Control_ID"], keep="first")
-    .set_index("Control_ID")
-    .to_dict("index")
-)
-
-print(f"Expanded parquet loaded: {len(expanded):,} rows | "
-      f"{expanded['scope_id'].nunique():,} scopes | "
-      f"{expanded['Control_ID'].nunique():,} unique controls")
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  READ ALL CHECKPOINT FILES
-# ─────────────────────────────────────────────────────────────────────────────
-
-rows    = []
-seen    = set()
-n_files = 0
-
-for fname in CHECKPOINT_FILES:
-    ck_path = OUTPUT_DIR / fname
-    if not ck_path.exists():
-        continue
-    n_files += 1
-    print(f"Reading: {fname}")
-
-    with open(ck_path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-
-            if rec.get("skipped") or rec.get("error"):
-                continue
-
-            scope_id  = rec.get("scope_id", "")
-            batch_key = rec.get("batch_key", "")
-
-            # Parse product from scope_id: WP|{Product}
-            parts   = scope_id.split("|")
-            product = parts[1] if len(parts) >= 2 else rec.get("product", "")
-
-            for a in rec.get("assessments", []):
-                ctrl_id = a.get("control_id", "")
-                if not ctrl_id:
-                    continue
-
-                # Deduplicate: keep first assessment per control per scope
-                dedup_key = f"{scope_id}::{ctrl_id}"
-                if dedup_key in seen:
-                    continue
-                seen.add(dedup_key)
-
-                ctx = ctrl_basic.get(ctrl_id, {})
-
-                # Control name: from LLM response → parquet → blank
-                ctrl_name = (a.get("control_name", "")
-                             or ctx.get("CTRL_NAME", ""))
-
-                # Control objective: from LLM response → parquet
-                ctrl_obj  = (a.get("control_objective", "")
-                             or ctx.get("Control Objective", ""))
-
-                rows.append({
-                    "Product":                     product,
-                    "Control ID":                  ctrl_id,
-                    "Control Name":                ctrl_name,
-                    "Control Objective":           ctrl_obj,
-                    "Classification":              a.get("classification", ""),
-                    "Classification Group Key":    a.get("classification_group_key", ""),
-                    "Fragmented Group ID":         a.get("fragmented_group_id", ""),
-                    "Dual Classified":             a.get("dual_classified", False),
-                    "Redundant By Control IDs":    "; ".join(
-                                                   a.get("redundant_by_control_ids") or []),
-                    "Fragmented Control ID Group": "; ".join(
-                                                   a.get("fragmented_control_id_group") or []),
-                    "Rationale":                   a.get("rationale", ""),
-                    "Confidence":                  a.get("confidence", ""),
-                    "Scope ID":                    scope_id,
-                    "Batch Key":                   batch_key,
-                    "Source File":                 fname,
-                })
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  BUILD OUTPUT
-# ─────────────────────────────────────────────────────────────────────────────
-
-if not rows:
-    print("\nNo completed assessments found.")
-    print(f"Looked in: {OUTPUT_DIR}")
-    raise SystemExit(0)
-
-df = pd.DataFrame(rows).sort_values(
-    ["Product", "Classification Group Key", "Control ID"])
-
-clf = df["Classification"].value_counts()
-
-summary_rows = [
-    ("Checkpoint files read",          n_files),
-    ("Total controls assessed",        len(df)),
-    ("Unique products covered",        df["Product"].nunique()),
-    ("─" * 40,                         ""),
-    ("Redundant",
-     int(clf.get("Redundant", 0))),
-    ("Process-Split Fragmentation",
-     int(clf.get("Process-Split Fragmentation", 0))),
-    ("Common Control Opportunity",
-     int(clf.get("Common Control Opportunity", 0))),
-    ("Retain",
-     int(clf.get("Retain", 0))),
-    ("Unclear",
-     int(clf.get("Unclear", 0))),
-    ("─" * 40,                         ""),
-    ("Controls with findings",
-     int(df["Classification"].isin([
-         "Redundant","Process-Split Fragmentation",
-         "Common Control Opportunity"]).sum())),
-]
-summary_df = pd.DataFrame(summary_rows, columns=["Metric","Value"])
-
-findings_df = df[df["Classification"].isin([
-    "Redundant","Process-Split Fragmentation","Common Control Opportunity"
-])].copy()
-
-by_product_df = (
-    df.groupby("Product")
-    .agg(
-        total_controls        =("Control ID",      "count"),
-        redundant             =("Classification",
-                                lambda x: (x=="Redundant").sum()),
-        process_split         =("Classification",
-                                lambda x: (x=="Process-Split Fragmentation").sum()),
-        common_control_opp    =("Classification",
-                                lambda x: (x=="Common Control Opportunity").sum()),
-        retain                =("Classification",
-                                lambda x: (x=="Retain").sum()),
-        unclear               =("Classification",
-                                lambda x: (x=="Unclear").sum()),
-    )
-    .reset_index()
-    .sort_values("total_controls", ascending=False)
-)
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  WRITE
-# ─────────────────────────────────────────────────────────────────────────────
-
-with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as w:
-    summary_df.to_excel(   w, index=False, sheet_name="summary")
-    df.to_excel(           w, index=False, sheet_name="all_assessments")
-    findings_df.to_excel(  w, index=False, sheet_name="findings_only")
-    by_product_df.to_excel(w, index=False, sheet_name="by_product")
-
-print(f"\nWritten: {OUTPUT_FILE.name}")
-print(f"Files read       : {n_files}")
-print(f"Controls assessed: {len(df):,}")
-print(f"Products covered : {df['Product'].nunique():,}")
-print(f"Findings         : {len(findings_df):,}")
-print(f"  Redundant      : {int(clf.get('Redundant', 0)):,}")
-print(f"  Process-Split  : {int(clf.get('Process-Split Fragmentation', 0)):,}")
-print(f"  Common Ctrl Opp: {int(clf.get('Common Control Opportunity', 0)):,}")
+Written: C:\Users\M061400\ai-test\big_table\duplicates\product\output\sme_sample_preview.xlsx
+Checkpoint files read : 2
+Controls assessed     : 512
+Products covered      : 13
+Findings              : 217
+  Redundant           : 1
+  Process-Split       : 35
+  Common Control Opp  : 181
