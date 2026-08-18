@@ -1,2 +1,32 @@
-del "C:\Users\M061400\ai-test\big_table\duplicates\product\output\llm_checkpoint_within_product.jsonl"
-python preview_results.py
+For Agency Service, raw data is:
+Product	Payment Category	Consolidated Stage	Expected CT Reference	Expected Control	Unique Control Count	Unique Control IDs
+Agency Service	Customer to Customer	Initiation & Validation & Authorisation	CT1	Validation of transaction details	5	CTL000041538, CTL000173470, CTL000173709, CTL000176675, CTL000181050
+Agency Service	Customer to Institution	Initiation & Validation & Authorisation	CT1	Validation of transaction details	7	CTL000045174, CTL000079156, CTL000173470, CTL000173709, CTL000176651, CTL000176675, CTL021896
+Agency Service	Customer to Institution	Posting, Accounting & Detection	CT2	Error Detection	3	CTL000041583, CTL000176636, CTL002056
+Agency Service	Institution to Customer	Initiation & Validation & Authorisation	CT1	Validation of transaction details	12	CTL000041538, CTL000052882, CTL000053254, CTL000108886, CTL000140998, CTL000173470, CTL000173709, CTL000176651, CTL000176675, CTL011401, CTL011408, CTL023775
+Agency Service	Institution to Customer	Posting, Accounting & Detection	CT2	Error Detection	3	CTL000041583, CTL000041584, CTL000120390
+
+
+
+But the output is missing one control - CTL023775 (only few columns shown)?
+Product	Control ID	Classification	Classification Group Key	Fragmented Group ID	Dual Classified	Redundant By Control IDs	Fragmented Control ID Group
+Agency Service	CTL000041538	Common Control Opportunity	CC-1		FALSE		
+Agency Service	CTL000045174	Common Control Opportunity	CC-1		FALSE		
+Agency Service	CTL000173709	Common Control Opportunity	CC-1		FALSE		
+Agency Service	CTL000176651	Common Control Opportunity	CC-1		FALSE		
+Agency Service	CTL000052882	Retain	CTL000052882		FALSE		
+Agency Service	CTL000053254	Retain	CTL000053254		FALSE		
+Agency Service	CTL000079156	Retain	CTL000079156		FALSE		
+Agency Service	CTL000108886	Retain	CTL000108886		FALSE		
+Agency Service	CTL000120390	Retain	CTL000120390		FALSE		
+Agency Service	CTL000140998	Retain	CTL000140998		FALSE		
+Agency Service	CTL000173470	Retain	CTL000173470		FALSE		
+Agency Service	CTL000176636	Retain	CTL000176636		FALSE		
+Agency Service	CTL000176675	Retain	CTL000176675		FALSE		
+Agency Service	CTL000181050	Retain	CTL000181050		FALSE		
+Agency Service	CTL002056	Retain	CTL002056		FALSE		
+Agency Service	CTL011401	Retain	CTL011401		FALSE		
+Agency Service	CTL011408	Retain	CTL011408		FALSE		
+Agency Service	CTL021896	Retain	CTL021896		FALSE		
+Agency Service	CTL000041583	Process-Split Fragmentation	P-1	P-1	FALSE		CTL000041583; CTL000041584
+Agency Service	CTL000041584	Process-Split Fragmentation	P-1	P-1	FALSE		CTL000041583; CTL000041584
