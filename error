@@ -1,23 +1,9 @@
-PS C:\Users\m061400\ai-test\big_table\duplicates\product> python .\03_run_llm_assessment.py --sample --suffix _sample --wp-only
-2026-08-18 13:35:58 [INFO] ======================================================================
-2026-08-18 13:35:58 [INFO]   Control Rationalisation — Step 3: LLM Assessment
-2026-08-18 13:35:58 [INFO]   Model           : gpt-5.4 (low reasoning)
-2026-08-18 13:35:58 [INFO]   Sub-batch size  : 5 controls per call
-2026-08-18 13:35:58 [INFO]   Suffix          : '_sample' | Sample: True
-2026-08-18 13:35:58 [INFO]   Started         : 2026-08-18 13:35:58
-2026-08-18 13:35:58 [INFO] ======================================================================
-2026-08-18 13:35:58 [INFO] Loading data...
-2026-08-18 13:35:59 [INFO]   Expanded rows: 3,155
-2026-08-18 13:35:59 [INFO] Verifying connectivity...
-2026-08-18 13:35:59 [INFO]   OK.
-2026-08-18 13:35:59 [INFO]
-Processing within-product scopes...
-2026-08-18 13:35:59 [INFO]   Sample mode: 30 representative scopes
-2026-08-18 13:35:59 [INFO]   Scopes to process: 30 | Done keys: 53
-  [ 20.0%] WP|Business Insights - Data Analytics and Insights|Inst ETA 0s  A$0.002026-08-18 13:42:34 [WARNING]   Attempt 1 failed [WP|Business Insights - Data Analytics and Insights|Institution to Institution|Posting, Accounting & Detection|CT2::0::0]: Request timed out.. Connection error — waiting 90s...
-  [100.0%] WP|Trust Accounts|Customer to Customer|Incident Respons ETA 0s  A$1.54.516
-2026-08-18 14:07:41 [INFO]   Processed: 33 | Skipped: 6 | Errors: 0 | Cost: A$1.58
-2026-08-18 14:07:41 [INFO] ======================================================================
-2026-08-18 14:07:41 [INFO]   Step 3 complete. Total cost: A$1.58
-2026-08-18 14:07:41 [INFO]   Run 04_postprocess_outputs.py next.
-2026-08-18 14:07:41 [INFO] ======================================================================
+Ok - I have received the following comments from the SME whereby the output is not according to how it should be. Comments:
+
+It’s still not grouping the controls. I made that explicitly clear in the prompt. Can you please review and see why the prompt is not working?
+It should be looking at a cluster, whether product or objective and grouping any fragmented/redundant controls. In one cluster there could be more than one grouping. It should be creating a identifier for each separate group
+Example - CT1 could have three groups of common controls; this should be classified as CC1, CC2, CC3. At the moment it’s lumping it all in one big group.
+So the data is cut be product and objective clusters
+These clusters could contain more than one control rationalisation (fragmented or redundant) e.g you might have two broken processes. The LLM is suppose to group this as fragmented group 1 (f-1) and fragmented group 2 (f-2)
+At the moment it’s just grouping it as all one group. You can’t rationalise that because there’s two groups doing two different things?
+ 
