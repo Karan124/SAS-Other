@@ -2,6 +2,9 @@ python -c "
 import pandas as pd
 from pathlib import Path
 df = pd.read_parquet(r'C:\Users\M061400\ai-test\big_table\duplicates\product\output\scope_summary_within_product.parquet')
-print(f'Total scopes: {len(df)}')
-print(df[['scope_id','Product','n_controls','send_all','n_batches']].to_string())
+df = df.reset_index()
+df['est_llm_calls'] = (df['n_controls'] / 5).apply(lambda x: max(1, int(x)))
+print(df[['index','scope_id','n_controls','n_batches','est_llm_calls']]
+      .sort_values('n_controls', ascending=False)
+      .to_string())
 "
