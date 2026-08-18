@@ -1,10 +1,76 @@
-python -c "
-import pandas as pd
-from pathlib import Path
-df = pd.read_parquet(r'C:\Users\M061400\ai-test\big_table\duplicates\product\output\scope_summary_within_product.parquet')
-df = df.reset_index()
-df['est_llm_calls'] = (df['n_controls'] / 5).apply(lambda x: max(1, int(x)))
-print(df[['index','scope_id','n_controls','n_batches','est_llm_calls']]
-      .sort_values('n_controls', ascending=False)
-      .to_string())
-"
+    index                                                            scope_id  n_controls  n_batches  est_llm_calls
+18     18                                       WP|Domestic Payments - Credit         123          7             24
+19     19                                   WP|Domestic Payments - Non Credit         112          6             22
+20     20                              WP|Domestic Payments - Payer Initiated         109          6             21
+68     68                                             WP|Transaction Accounts         107          6             21
+65     65                                                    WP|Term Deposits         104          6             20
+55     55                                                 WP|Savings Accounts         102          6             20
+35     35                                           WP|International Payments         100          5             20
+9       9                                                 WP|Commercial Cards          93          5             18
+54     54                                                    WP|Prepaid Cards          87          5             17
+69     69                                                   WP|Trust Accounts          85          5             17
+34     34                                              WP|International Needs          75          4             15
+2       2                                         WP|AUD Transaction Accounts          52          3             10
+38     38                                              WP|Investor Home Loans          45          3              9
+66     66                                                       WP|Term Loans          45          3              9
+50     50                                        WP|Owner Occupied Home Loans          45          3              9
+0       0                                          WP|AUD Investment Accounts          43          3              8
+27     27                                        WP|Foreign Currency Accounts          43          3              8
+40     40                                        WP|Liquidity Notional Poling          43          3              8
+1       1                                                   WP|AUD Overdrafts          43          3              8
+60     60                                WP|Structured Investments & Deposits          42          3              8
+22     22                                                   WP|FX Derivatives          42          3              8
+32     32                                                   WP|IR Derivatives          42          3              8
+12     12                                                        WP|Commodity          42          3              8
+15     15                                               WP|Credit Derivatives          42          3              8
+17     17                                                WP|Digital Solutions          42          3              8
+61     61                                                 WP|Structured Notes          42          3              8
+26     26                              WP|Foreign Currency Account Overdrafts          42          3              8
+42     42                                               WP|Loans and Deposits          40          2              8
+28     28                                                     WP|Future / ETO          40          2              8
+5       5                                                    WP|Bonds / REPOs          40          2              8
+30     30                                                       WP|Guarantees          39          2              7
+49     49                                                       WP|Overdrafts          38          2              7
+14     14                                                     WP|Credit Cards          36          2              7
+57     57                                                         WP|Services          34          2              6
+4       4                                                    WP|Asset Finance          31          2              6
+62     62                                          WP|Superannuation (Asgard)          23          2              4
+43     43                                 WP|Managed Accounts (MA) (Panorama)          23          2              4
+73     73                                                           WP|eCash)          23          2              4
+37     37            WP|Investor Directed Portfolio Service (IDPS) (Panorama)          23          2              4
+8       8                                    WP|Cash Management (Cash Account          23          2              4
+63     63                                        WP|Superannuation (Panorama)          23          2              4
+36     36  WP|Investor Directed Portfolio Service (IDPS & IDPS Like) (Asgard)          23          2              4
+46     46                                  WP|Managed Funds - Wrap Essentials          22          2              4
+67     67                                                    WP|Trade Finance          22          2              4
+44     44                         WP|Managed Funds - Retail Investments (MIS)          21          2              4
+59     59                                               WP|Structured Finance          21          2              4
+3       3                                                   WP|Agency Service          21          2              4
+41     41                                                    WP|Loan Products          21          2              4
+16     16                                                    WP|Debt Products          21          2              4
+56     56                                           WP|Secured Personal Loans          20          1              4
+71     71                                         WP|Unsecured Personal Loans          20          1              4
+47     47                                                   WP|Margin Lending          19          1              3
+52     52                                  WP|Personal Liability Credit Cards          19          1              3
+7       7                                  WP|Business Liability Credit Cards          19          1              3
+45     45                                   WP|Managed Funds - Wholesale Plus          18          1              3
+21     21                                                      WP|Electricity          17          1              3
+6       6                  WP|Business Insights - Data Analytics and Insights          17          1              3
+53     53                                          WP|Personal Line of Credit          12          1              2
+10     10                                         WP|Commercial Hire Purchase          10          1              2
+58     58                                               WP|Singapore Products          10          1              2
+64     64                                                     WP|Term Deposit           9          1              1
+23     23                                                    WP|Finance Lease           8          1              1
+33     33                          WP|In-store and Mobile Point of Sale (PoS)           7          1              1
+24     24                                      WP|Finance Lease (Non-Novated)           6          1              1
+25     25                                          WP|Finance Lease (Novated)           6          1              1
+29     29                                                       WP|Goods Loan           6          1              1
+31     31                                                    WP|Hire Purchase           6          1              1
+48     48                                                  WP|Operating Lease           6          1              1
+11     11                                                  WP|Commercial Loan           5          1              1
+51     51                                             WP|Permanent Overdrafts           4          1              1
+39     39                                          WP|Invoice Finance - (WBC)           4          1              1
+74     74                                                        WP|eCommerce           3          1              1
+70     70                                                       WP|Unattended           3          1              1
+13     13                                        WP|Consumer Credit Insurance           2          1              1
+72     72                                               WP|Wholesale Bailment           2          1              1
