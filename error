@@ -1,76 +1,389 @@
 """
-02_generate_embeddings_and_candidates.py
+03_run_llm_assessment.py
 ─────────────────────────────────────────────────────────────────────────────
-Control Rationalisation — Step 2 of 4: Embeddings and Candidate Pairs
+Control Rationalisation — Step 3 of 4: LLM Assessment
+Dimension 1: Controls data cut by product (product_clusters.xlsx)
 
-Reads the expanded parquet from Step 1.
-Generates embeddings for unique controls (cached to avoid re-generation).
-Builds within-product and cross-product assessment scopes.
-Identifies candidate pairs using cosine similarity + structured field matching.
-Flags small groups (≤ MAX_CONTROLS_PER_LLM_CALL) for full-group LLM calls.
-Batches large groups using embedding similarity.
-
-Outputs:
-  control_embeddings.parquet             — embeddings per unique control
-  candidate_pairs_within_product.parquet — candidate pairs + batch assignments
-  candidate_pairs_cross_product.parquet  — candidate pairs + batch assignments
-  scope_summary_within_product.parquet   — one row per scope with metadata
-  scope_summary_cross_product.parquet    — one row per scope with metadata
+Key technical decisions:
+  - Fresh AzureOpenAI client created on every retry attempt — eliminates
+    stale proxy connection failures after extended runs
+  - SUB_BATCH_SIZE = 5 controls per LLM call — keeps prompts small and
+    responses reliable
+  - Checkpoint key = scope_id::batch_id::sub_idx — resume at any point
 
 Before running (PowerShell):
   az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
-  $env:REQUESTS_CA_BUNDLE = "C:\\Users\\m061400\\ai-test\\cacert.pem"
-  $env:SSL_CERT_FILE      = "C:\\Users\\m061400\\ai-test\\cacert.pem"
-  Remove-Item Env:AZURE_CA_BUNDLE -ErrorAction SilentlyContinue
-  python 02_generate_embeddings_and_candidates.py
-  python 02_generate_embeddings_and_candidates.py --force
+  python 03_run_llm_assessment.py                         # resume from checkpoint
+  python 03_run_llm_assessment.py --force                 # clear all, restart
+  python 03_run_llm_assessment.py --wp-range 0 107 --suffix _p1 --wp-only
+  python 03_run_llm_assessment.py --wp-range 107 214 --suffix _p2 --wp-only
+  python 03_run_llm_assessment.py --wp-range 214 321 --suffix _p3 --wp-only
+  python 03_run_llm_assessment.py --wp-range 321 428 --suffix _p4 --wp-only
+  python 03_run_llm_assessment.py --cp-only --suffix _cp
+  python 03_run_llm_assessment.py --sample                # representative sample
 """
 
 import argparse
 import json
 import logging
+import random
+import re
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
 
-import numpy as np
+import httpx
 import pandas as pd
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import AzureOpenAI
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  CONFIG — must match Script 1
+#  CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 
-OUTPUT_DIR       = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
+OUTPUT_DIR     = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
+AZURE_ENDPOINT = "https://ai.eng.azure.srv.westpac.com.au"
+API_VERSION    = "2024-10-21"
+LLM_MODEL      = "gpt-5.4"
+PROXY_URL      = "http://127.0.0.1:9000"
+CA_BUNDLE      = r"C:\Users\m061400\ai-test\cacert.pem"
 
-AZURE_ENDPOINT   = "https://ai.eng.azure.srv.westpac.com.au"
-API_VERSION      = "2024-10-21"
-EMBEDDING_MODEL  = "text-embedding-3-large"
-EMBEDDING_DIM    = 3072
+SUB_BATCH_SIZE        = 5
+RETRY_COUNT           = 5
+RETRY_BASE_SECS       = 5
+CONNECTION_SLEEP_SECS = 90
+SLEEP_BETWEEN         = 1.0
+MAX_COMPLETION_TOKENS = 16000
+HTTP_TIMEOUT          = 180.0
 
-EMBED_BATCH      = 20      # texts per embedding API call
-EMBED_SLEEP      = 2.0     # seconds between batches (rate limit buffer)
+INPUT_PRICE_PER_M  = 1.75
+OUTPUT_PRICE_PER_M = 14.00
+AUD_USD_RATE       = 0.65
 
-# Paths (all relative to OUTPUT_DIR)
-EXPANDED_PARQUET        = OUTPUT_DIR / "expanded_product_control_mapping.parquet"
-EMBEDDINGS_PARQUET      = OUTPUT_DIR / "control_embeddings.parquet"
-CAND_WP_PARQUET         = OUTPUT_DIR / "candidate_pairs_within_product.parquet"
-CAND_CP_PARQUET         = OUTPUT_DIR / "candidate_pairs_cross_product.parquet"
-SCOPE_WP_PARQUET        = OUTPUT_DIR / "scope_summary_within_product.parquet"
-SCOPE_CP_PARQUET        = OUTPUT_DIR / "scope_summary_cross_product.parquet"
-RUN_CONFIG              = OUTPUT_DIR / "run_config.json"
+# Sample scope selection — covers multiple products, categories and CT types
+SAMPLE_SCOPE_INDICES = [0, 5, 12, 18, 25, 40, 55, 70, 85, 100,
+                        115, 130, 145, 160, 175, 190, 205, 220,
+                        235, 250, 265, 280, 295, 310, 325, 340,
+                        355, 370, 385, 400]
+
+EXPANDED_PARQUET = OUTPUT_DIR / "expanded_product_control_mapping.parquet"
+SCOPE_WP_PARQUET = OUTPUT_DIR / "scope_summary_within_product.parquet"
+SCOPE_CP_PARQUET = OUTPUT_DIR / "scope_summary_cross_product.parquet"
+CAND_WP_PARQUET  = OUTPUT_DIR / "candidate_pairs_within_product.parquet"
+CAND_CP_PARQUET  = OUTPUT_DIR / "candidate_pairs_cross_product.parquet"
+RUN_CONFIG       = OUTPUT_DIR / "run_config.json"
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  LOGGING (append to existing log from Script 1)
+#  FRESH CLIENT
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_logger() -> logging.Logger:
-    logger = logging.getLogger("ctrl_rat")
+def make_client() -> AzureOpenAI:
+    """Fresh client on every attempt — prevents stale proxy connections."""
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default"
+    )
+    return AzureOpenAI(
+        azure_endpoint=AZURE_ENDPOINT,
+        api_version=API_VERSION,
+        azure_ad_token_provider=token_provider,
+        http_client=httpx.Client(
+            proxy=PROXY_URL,
+            verify=CA_BUNDLE,
+            timeout=httpx.Timeout(HTTP_TIMEOUT, connect=30.0),
+            limits=httpx.Limits(max_keepalive_connections=0, max_connections=1),
+        ),
+    )
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  PROMPTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+SYSTEM_PROMPT = """
+You are an Operational Risk and Controls Analyst with expertise in risk
+management. Your role is to assess groups of controls to identify
+opportunities for consolidation and standardisation.
+
+Return valid JSON only. No markdown. No text outside the JSON object.
+""".strip()
+
+SME_INSTRUCTIONS = """
+DEFINITIONS
+
+Redundant Control
+  A control that does not provide additional risk mitigation because its
+  objective and outcome are already addressed by another control operating
+  at the same or a more effective point in the process.
+
+Common Control Opportunity (Fragmentation)
+  A control may be fragmented where the same control objective and
+  substantially similar control activities are performed separately across
+  multiple products, systems, channels, processes, or business units. The
+  controls operate independently but achieve the same risk management
+  outcome. This may indicate an opportunity to standardise, centralise,
+  or consolidate the controls into a single common control capability.
+
+Process-Split Fragmentation
+  A control may be fragmented where multiple controls form different stages
+  of a single end-to-end control activity rather than operating as
+  genuinely distinct controls. The control has been divided across process
+  steps, systems, teams, or manual and automated activities, with each
+  control performing only part of the overall control objective.
+
+Retain
+  The control provides distinct and necessary risk mitigation, contributes
+  meaningful risk coverage, and is not redundant, fragmented, or a
+  candidate for consolidation. It should continue to operate in its
+  current form.
+
+Unclear
+  Assign Unclear where the control description lacks sufficient detail,
+  the relationship between controls cannot be determined from available
+  information, there is insufficient evidence to conclude a rationalisation
+  outcome, or multiple interpretations are reasonably possible.
+
+DUAL CLASSIFICATION RULE
+  Where a control is assessed as BOTH Fragmented AND Redundant:
+  - Primary classification: Redundant
+  - classification_group_key: the Redundant group key (R-x)
+  - fragmented_group_id: the Fragmented group key (F-x)
+  - dual_classified: true
+  - Rationale must explain both the fragmentation context and why the
+    control is redundant within that fragmented set
+
+FRAGMENTATION AND RATIONALISATION GROUPING RULES — FOLLOW EXACTLY
+
+  Step 1 — Pairwise comparison
+  Compare every pair of controls in this scope. For each pair ask:
+  - Do they share the same specific control activity?
+  - Do they share the same trigger event or input?
+  - Do they share the same process step or system?
+  - Do they share the same expected outcome or risk mitigation purpose?
+  If YES to most of the above: the pair is DIRECTLY RELATED.
+  If NO: the pair is INDEPENDENT — do NOT put them in the same group.
+
+  Step 2 — Form groups from directly related pairs only
+  Group only controls that are DIRECTLY RELATED to each other.
+  Do NOT use transitivity. If CTL-A is related to CTL-B, and CTL-B is
+  related to CTL-C, but CTL-A and CTL-C perform different activities,
+  CTL-A with CTL-B and CTL-C form SEPARATE groups.
+  A shared CT Reference does NOT make controls directly related.
+  A shared product or payment stage does NOT make controls directly related.
+
+  Step 3 — Assign a separate group ID to each independent group
+  Every independent cluster of directly related controls gets its own ID:
+  - First cluster of redundant controls  : R-1
+  - Second cluster of redundant controls : R-2
+  - First common control opportunity     : CC-1
+  - Second common control opportunity    : CC-2
+  - First process-split group            : P-1
+  - Second process-split group           : P-2
+  R-1 and R-2 are always separate findings. CC-1 and CC-2 are always
+  separate findings. Never merge independent groups under one ID.
+
+  EXAMPLE:
+  A scope contains 5 CT1 controls:
+  - CTL-A: validates payment amount fields on Channel X
+  - CTL-B: validates payment amount fields on Channel Y
+  - CTL-C: validates beneficiary account numbers on all channels
+  - CTL-D: validates beneficiary account numbers on mobile only
+  - CTL-E: validates transaction date and cut-off time
+
+  Pairwise analysis:
+  CTL-A and CTL-B: same activity (amount validation), same trigger,
+    same outcome. DIRECTLY RELATED → CC-1
+  CTL-C and CTL-D: same activity (beneficiary validation), different
+    channel scope but same purpose. DIRECTLY RELATED → CC-2
+  CTL-E: distinct activity (date/cut-off validation). Not directly
+    related to any other control → Retain
+
+  Result: CC-1 {CTL-A, CTL-B} and CC-2 {CTL-C, CTL-D} are two
+  independent groups. CTL-E is Retain. Do NOT merge CC-1 and CC-2.
+
+CLASSIFICATION GROUP KEYS
+  Use separate numbered keys for each independent group:
+  Redundant                           : R-1, R-2, R-3 ...
+  Common Control Opportunity          : CC-1, CC-2, CC-3 ...
+  Process-Split Fragmentation         : P-1, P-2, P-3 ...
+  Dual classification supplementary  : F-1, F-2, F-3 ...
+  Retain  : use the control own Control_ID as the key
+  Unclear : use the control own Control_ID as the key
+
+ASSESSMENT RULES
+  Base all classifications solely on the information in the source data.
+  Do not infer or assume control activities, risk coverage, process steps,
+  dependencies, ownership, effectiveness, or relationships not explicitly
+  described.
+  Do not create fragmented, redundant, or common control relationships
+  without sufficient supporting evidence.
+  Look beyond differences in wording, ownership, systems, products,
+  channels, or implementation methods. Focus on whether the underlying
+  control objective, control activity, and risk outcome are substantially
+  the same.
+  Do NOT assume redundant solely because controls contain similar wording.
+  Do NOT assume fragmented solely because controls share a CT Reference.
+  Do NOT assume common controls solely because controls operate within the
+  same product, process, or payment stage.
+  Do NOT force a rationalisation outcome. If sufficient evidence does not
+  exist, classify as Unclear.
+  Do not compare controls across different Control Objective Groups.
+  Apply classifications consistently across all controls in the scope.
+
+CONFIDENCE LEVELS
+  High   : Strong evidence supports the classification
+  Medium : Some evidence; minor assumptions or interpretation required
+  Low    : Limited evidence; treat as indicative only
+
+OUTPUT RULES
+  - One assessment object per control, no exceptions
+  - Every control in the input must appear in assessments exactly once
+  - Do not invent Control_IDs
+  - redundant_by_control_ids: empty list if not Redundant
+  - fragmented_control_id_group: empty list if not fragmented
+  - Do not aggregate multiple controls into a single output row
+""".strip()
+
+RESPONSE_FORMAT = """
+Return this JSON structure exactly. No markdown. No text outside the JSON.
+
+{
+  "scope_id": "<scope_id>",
+  "scope_type": "<within_product or cross_product>",
+  "batch_key": "<batch_key>",
+  "assessments": [
+    {
+      "control_id": "<Control_ID — copied exactly>",
+      "control_name": "<CTRL_NAME>",
+      "control_objective": "<Control Objective>",
+      "classification": "<Retain|Redundant|Process-Split Fragmentation|Common Control Opportunity|Unclear>",
+      "classification_group_key": "<R-1|R-2|P-1|CC-1|CC-2|control_id for Retain/Unclear>",
+      "fragmented_group_id": "<F-1 or P-1 if fragmented; empty string otherwise>",
+      "dual_classified": false,
+      "redundant_by_control_ids": [],
+      "fragmented_control_id_group": [],
+      "rationale": "<plain English, cite specific evidence from control details>",
+      "confidence": "<High|Medium|Low>"
+    }
+  ]
+}
+
+IMPORTANT:
+- Multiple independent groups are allowed (R-1 and R-2 can both appear).
+- Only assign the same group key to controls with a DIRECT relationship.
+- Controls sharing a CT Reference do not automatically share a group.
+""".strip()
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  CONTROL TEXT
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_control_text(row: pd.Series) -> str:
+    def f(field, label):
+        val = str(row.get(field, "") or "").strip()
+        return f"{label}: {val}" if val else ""
+    lines = [
+        f("Control_ID",               "Control ID"),
+        f("CTRL_NAME",                "Control Name"),
+        f("Control Objective",        "Control Objective"),
+        f("Control_Description",      "Control Description"),
+        f("CTRL_NATRE",               "Nature"),
+        f("CTRL_TYP",                 "Type"),
+        f("CTRL_FREQ",                "Frequency"),
+        f("CTRL_EVDNCD",              "Evidence"),
+        f("CTRL_MNTRD",               "Monitoring"),
+        f("Product",                  "Product"),
+        f("Payment Category",         "Payment Category"),
+        f("Consolidated Stage",       "Stage"),
+        f("ct_ref_norm",              "CT Reference"),
+        f("Expected Control",         "Expected Control"),
+        f("CTRL_FLDR_LVL_2(Division)","Division"),
+        f("object_path_leaf",         "Business Area"),
+        f("CTRL_CATEGORY",            "Control Category"),
+    ]
+    return "\n".join(line for line in lines if line)
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  PROMPT BUILDERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_wp_prompt(scope_id, batch_key, n_total, sub_ctrls, scope_meta):
+    n = len(sub_ctrls)
+    sub_note = (
+        f"\nNOTE: Sub-batch of {n} from {n_total} controls in this scope. "
+        f"Assess within this sub-batch only."
+        if n < n_total else ""
+    )
+    lines = [
+        "SCOPE CONTEXT",
+        "Scope type : Within-Product Cluster Assessment",
+        f"Scope ID   : {scope_id}",
+        f"Product    : {scope_meta.get('Product','')}",
+        sub_note, "",
+        f"CONTROLS TO ASSESS ({n}):", "",
+    ]
+    for _, row in sub_ctrls.iterrows():
+        lines += ["─" * 60, build_control_text(row), ""]
+    lines += [
+        "─" * 60, "",
+        "TASK — WITHIN-PRODUCT CLUSTER ASSESSMENT",
+        "The controls below all belong to the same product cluster as defined",
+        "by the SME. Compare each control against all others in this cluster.",
+        "Assess for Redundant Controls, Process-Split Fragmentation, and",
+        "Common Control Opportunities.",
+        "Note: this cluster may contain multiple independent rationalisation",
+        "groups — do not force all controls into a single group.",
+        "", SME_INSTRUCTIONS, "", RESPONSE_FORMAT,
+        f'\nUse scope_id: "{scope_id}" and batch_key: "{batch_key}".',
+    ]
+    return "\n".join(lines)
+
+
+def build_cp_prompt(scope_id, batch_key, n_total, sub_ctrls, ct_ref):
+    n = len(sub_ctrls)
+    products = (sub_ctrls["Product"].dropna().unique().tolist()
+                if "Product" in sub_ctrls.columns else [])
+    sub_note = (
+        f"\nNOTE: Sub-batch of {n} from {n_total} controls. "
+        f"Assess within this sub-batch only."
+        if n < n_total else ""
+    )
+    lines = [
+        "SCOPE CONTEXT",
+        "Scope type   : Cross-Product Assessment",
+        f"Scope ID     : {scope_id}",
+        f"CT Reference : {ct_ref}",
+        f"Products     : {', '.join(products[:10])}",
+        sub_note, "",
+        f"CONTROLS TO ASSESS ({n} across multiple products):", "",
+    ]
+    for _, row in sub_ctrls.iterrows():
+        lines += ["─" * 60, build_control_text(row), ""]
+    lines += [
+        "─" * 60, "",
+        "TASK — CROSS-PRODUCT ASSESSMENT WITHIN CONTROL OBJECTIVE GROUP",
+        "Controls share the same CT Reference but come from different",
+        "products and may be owned by different business areas.",
+        "Do NOT compare controls across different CT References.",
+        "Assess for Redundant Controls, Process-Split Fragmentation, and",
+        "Common Control Opportunities.",
+        "Note: controls in this scope may belong to multiple independent",
+        "rationalisation groups — do not force them into a single group.",
+        "", SME_INSTRUCTIONS, "", RESPONSE_FORMAT,
+        f'\nUse scope_id: "{scope_id}" and batch_key: "{batch_key}".',
+    ]
+    return "\n".join(lines)
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  LOGGING
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_logger(suffix: str = "") -> logging.Logger:
+    name = f"ctrl_rat{suffix}"
+    logger = logging.getLogger(name)
     if logger.handlers:
         return logger
-    log_path = OUTPUT_DIR / "processing_log.txt"
+    log_path = OUTPUT_DIR / f"processing_log{suffix}.txt"
     fh = logging.FileHandler(log_path, encoding="utf-8")
     fh.setLevel(logging.DEBUG)
     ch = logging.StreamHandler(sys.stdout)
@@ -85,282 +398,231 @@ def get_logger() -> logging.Logger:
     return logger
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  AZURE CLIENT
+#  CHECKPOINT
 # ─────────────────────────────────────────────────────────────────────────────
 
-def init_client() -> AzureOpenAI:
-    token_provider = get_bearer_token_provider(
-        DefaultAzureCredential(),
-        "https://cognitiveservices.azure.com/.default"
-    )
-    return AzureOpenAI(
-        azure_endpoint=AZURE_ENDPOINT,
-        api_version=API_VERSION,
-        azure_ad_token_provider=token_provider,
-    )
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  EMBEDDING GENERATION
-# ─────────────────────────────────────────────────────────────────────────────
-
-def generate_embeddings(client: AzureOpenAI,
-                        texts: list[str],
-                        label: str,
-                        log: logging.Logger) -> np.ndarray:
-    """Generate embeddings in batches with retry and rate-limit handling."""
-    all_embs = []
-    total = len(texts)
-    log.info(f"  Embedding {total:,} {label} in batches of {EMBED_BATCH}...")
-
-    for i in range(0, total, EMBED_BATCH):
-        batch = texts[i:i + EMBED_BATCH]
-        # Truncate to ~24k chars (~8000 tokens) as safety margin
-        batch = [t[:24000] for t in batch]
-
-        for attempt in range(4):
+def load_checkpoint(path: Path) -> set:
+    done = set()
+    if not path.exists():
+        return done
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
             try:
-                resp = client.embeddings.create(
-                    model=EMBEDDING_MODEL, input=batch)
-                all_embs.extend([d.embedding for d in resp.data])
-                done = min(i + EMBED_BATCH, total)
-                print(f"    {done:,}/{total:,} ({done/total*100:.0f}%)", end="\r")
-                time.sleep(EMBED_SLEEP)
-                break
-            except Exception as e:
-                if attempt == 3:
-                    log.error(f"Embedding batch {i//EMBED_BATCH+1} failed: {e}")
-                    raise
-                wait = min(5 * 2**attempt, 60)
-                log.warning(f"Batch {i//EMBED_BATCH+1} attempt {attempt+1} failed: "
-                            f"{e}. Retrying in {wait}s...")
-                time.sleep(wait)
-
-    print(f"    {total:,}/{total:,} (100%) done        ")
-    return np.array(all_embs, dtype=np.float32)
+                key = json.loads(line).get("batch_key", "")
+                if key:
+                    done.add(key)
+            except json.JSONDecodeError:
+                continue
+    return done
 
 
-def load_or_generate_embeddings(df: pd.DataFrame,
-                                force: bool,
-                                log: logging.Logger) -> pd.DataFrame:
-    """
-    Returns a DataFrame with columns: Control_ID, embedding (list of float).
-    Uses cached parquet if available and --force not set.
-    """
-    if EMBEDDINGS_PARQUET.exists() and not force:
-        log.info(f"Loading cached embeddings: {EMBEDDINGS_PARQUET.name}")
-        emb_df = pd.read_parquet(EMBEDDINGS_PARQUET, engine="pyarrow")
-        log.info(f"  Loaded {len(emb_df):,} embeddings")
-        return emb_df
-
-    log.info("Generating embeddings for unique controls...")
-    unique_ctrl = (df[["Control_ID","embedding_text"]]
-                   .drop_duplicates(subset=["Control_ID"])
-                   .reset_index(drop=True))
-    log.info(f"  Unique controls to embed: {len(unique_ctrl):,}")
-
-    log.info("Initialising Azure OpenAI client...")
-    client = init_client()
-    log.info("Client ready.")
-
-    texts  = unique_ctrl["embedding_text"].tolist()
-    embs   = generate_embeddings(client, texts, "controls", log)
-
-    emb_df = pd.DataFrame({
-        "Control_ID": unique_ctrl["Control_ID"].tolist(),
-        "embedding":  [e.tolist() for e in embs],
-    })
-    emb_df.to_parquet(EMBEDDINGS_PARQUET, index=False, engine="pyarrow")
-    log.info(f"Embeddings cached: {EMBEDDINGS_PARQUET.name} ({len(emb_df):,} rows)")
-    return emb_df
+def write_checkpoint(rec: dict, path: Path) -> None:
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=True) + "\n")
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  COSINE SIMILARITY
+#  LLM CALL
 # ─────────────────────────────────────────────────────────────────────────────
 
-def cosine_sim_matrix(embs: np.ndarray) -> np.ndarray:
-    """N×N cosine similarity matrix for a set of embeddings."""
-    norms = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-9
-    normed = embs / norms
-    return (normed @ normed.T).astype(np.float32)
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  BATCH ASSIGNMENT FOR LARGE GROUPS
-# ─────────────────────────────────────────────────────────────────────────────
-
-def assign_batches(ctrl_ids: list[str],
-                   sim_matrix: np.ndarray,
-                   threshold: float,
-                   max_per_batch: int) -> dict[str, int]:
-    """
-    For groups larger than max_per_batch, assign each control to a batch.
-    Strategy:
-      1. Build a graph where edges connect controls with similarity >= threshold.
-      2. Use a greedy approach: seed a batch from the unassigned control with
-         the most neighbours, fill to max_per_batch with its most similar
-         unassigned neighbours.
-      3. Repeat until all controls are assigned.
-      4. Every control appears in at least one batch.
-
-    Returns: {control_id: batch_id}
-    """
-    n = len(ctrl_ids)
-    assigned   = {}   # control_id → batch_id
-    batch_id   = 0
-
-    # Build adjacency: for each control, sorted neighbour indices by similarity
-    neighbours = {}
-    for i in range(n):
-        # Sort by descending similarity, exclude self
-        sorted_idx = np.argsort(sim_matrix[i])[::-1]
-        sorted_idx = [j for j in sorted_idx if j != i]
-        neighbours[i] = sorted_idx
-
-    unassigned = set(range(n))
-
-    while unassigned:
-        # Seed with unassigned control that has most unassigned neighbours above threshold
-        def degree(i):
-            return sum(1 for j in neighbours[i]
-                       if j in unassigned and sim_matrix[i][j] >= threshold)
-
-        seed = max(unassigned, key=degree)
-        batch = [seed]
-        unassigned.discard(seed)
-
-        # Fill batch with most similar unassigned neighbours
-        for j in neighbours[seed]:
-            if len(batch) >= max_per_batch:
-                break
-            if j in unassigned:
-                batch.append(j)
-                unassigned.discard(j)
-
-        for idx in batch:
-            assigned[ctrl_ids[idx]] = batch_id
-
-        batch_id += 1
-
-    return assigned
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  CANDIDATE PAIR BUILDING
-# ─────────────────────────────────────────────────────────────────────────────
-
-def build_candidate_pairs(scope_df: pd.DataFrame,
-                          emb_lookup: dict[str, np.ndarray],
-                          scope_id: str,
-                          scope_type: str,
-                          threshold: float,
-                          max_per_batch: int,
-                          log: logging.Logger) -> tuple[list[dict], dict]:
-    """
-    For one scope (group), build candidate pairs and batch assignments.
-
-    Returns:
-      pairs_rows: list of dicts (one per candidate pair)
-      scope_meta: dict describing this scope
-    """
-    ctrl_ids = scope_df["Control_ID"].unique().tolist()
-    n = len(ctrl_ids)
-
-    # Retrieve embeddings in order
-    embs = []
-    missing = []
-    for cid in ctrl_ids:
-        if cid in emb_lookup:
-            embs.append(emb_lookup[cid])
+def parse_response(text: str) -> dict:
+    text = re.sub(r'^```(?:json)?\s*', '', (text or "").strip())
+    text = re.sub(r'\s*```$', '', text).strip()
+    if not text:
+        raise ValueError("Empty response from model")
+    try:
+        result = json.loads(text)
+    except json.JSONDecodeError:
+        m = re.search(r'\{.*\}', text, re.DOTALL)
+        if m:
+            result = json.loads(m.group(0))
         else:
-            missing.append(cid)
-            embs.append(np.zeros(EMBEDDING_DIM, dtype=np.float32))
+            raise
+    if "assessments" not in result:
+        raise ValueError("Missing 'assessments' key")
+    return result
 
-    if missing:
-        log.warning(f"  Scope {scope_id}: {len(missing)} controls missing embeddings: "
-                    f"{missing[:3]}")
 
-    embs_arr = np.array(embs, dtype=np.float32)
-    sim_mat  = cosine_sim_matrix(embs_arr)
+def call_llm(prompt: str, batch_key: str,
+             log: logging.Logger) -> tuple:
+    usage = {"input_tokens": 0, "output_tokens": 0,
+             "reasoning_tokens": 0, "latency_ms": 0}
 
-    send_all  = (n <= max_per_batch)
-    pairs_rows = []
-    batch_map  = {}
+    for attempt in range(1, RETRY_COUNT + 1):
+        try:
+            client = make_client()   # fresh connection every attempt
+            t0     = time.time()
+            resp   = client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user",   "content": prompt},
+                ],
+                reasoning_effort="low",
+                max_completion_tokens=MAX_COMPLETION_TOKENS,
+            )
+            latency = int((time.time() - t0) * 1000)
+            text    = resp.choices[0].message.content or ""
 
+            u = getattr(resp, "usage", None)
+            if u:
+                usage["input_tokens"]  = getattr(u, "prompt_tokens", 0)
+                usage["output_tokens"] = getattr(u, "completion_tokens", 0)
+                d = getattr(u, "completion_tokens_details", None)
+                if d:
+                    usage["reasoning_tokens"] = getattr(d, "reasoning_tokens", 0)
+            usage["latency_ms"] = latency
+
+            return parse_response(text), usage
+
+        except Exception as exc:
+            exc_str = str(exc).lower()
+            is_conn = any(w in exc_str for w in
+                          ["connection", "timed out", "timeout",
+                           "network", "proxy"])
+            if attempt < RETRY_COUNT:
+                wait = CONNECTION_SLEEP_SECS if is_conn else min(
+                    RETRY_BASE_SECS * 2**(attempt-1) + random.uniform(0, 2), 60)
+                log.warning(f"  Attempt {attempt} failed [{batch_key}]: "
+                            f"{exc}. {'Connection error — ' if is_conn else ''}"
+                            f"waiting {wait:.0f}s...")
+                time.sleep(wait)
+            else:
+                log.error(f"  All {RETRY_COUNT} retries failed [{batch_key}]: {exc}")
+                return None, usage
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  SCOPE DATA HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_scope_controls(scope_id, pairs_df, expanded_df):
+    sp = pairs_df[pairs_df["scope_id"] == scope_id]
+    ids = set(sp["control_id_a"].dropna().tolist())
+    ids.update(c for c in sp["control_id_b"].dropna().tolist() if c)
+    return (expanded_df[expanded_df["Control_ID"].isin(ids)]
+            .drop_duplicates(subset=["Control_ID"])
+            .reset_index(drop=True))
+
+
+def get_batch_controls(scope_id, batch_id, send_all, pairs_df, expanded_df):
     if send_all:
-        # All controls go to LLM in one call — all pairs are candidates
-        batch_map = {cid: 0 for cid in ctrl_ids}
-        for i in range(n):
-            for j in range(i + 1, n):
-                pairs_rows.append({
-                    "scope_id":         scope_id,
-                    "scope_type":       scope_type,
-                    "control_id_a":     ctrl_ids[i],
-                    "control_id_b":     ctrl_ids[j],
-                    "cosine_similarity":float(sim_mat[i, j]),
-                    "above_threshold":  bool(sim_mat[i, j] >= threshold),
-                    "batch_id":         0,
-                    "send_all":         True,
-                })
-    else:
-        # Large group — assign batches using embedding similarity
-        batch_map = assign_batches(ctrl_ids, sim_mat, threshold, max_per_batch)
-        # Candidate pairs: all pairs above threshold (cross-batch pairs included
-        # so post-processing can detect cross-batch redundancy)
-        for i in range(n):
-            for j in range(i + 1, n):
-                sim = float(sim_mat[i, j])
-                if sim >= threshold:
-                    pairs_rows.append({
-                        "scope_id":         scope_id,
-                        "scope_type":       scope_type,
-                        "control_id_a":     ctrl_ids[i],
-                        "control_id_b":     ctrl_ids[j],
-                        "cosine_similarity":sim,
-                        "above_threshold":  True,
-                        "batch_id":         batch_map.get(ctrl_ids[i], 0),
-                        "send_all":         False,
-                    })
-
-    # n_batches
-    n_batches = len(set(batch_map.values())) if batch_map else 1
-
-    scope_meta = {
-        "scope_id":       scope_id,
-        "scope_type":     scope_type,
-        "n_controls":     n,
-        "send_all":       send_all,
-        "n_batches":      n_batches,
-        "n_pairs_above_threshold": sum(1 for r in pairs_rows
-                                       if r.get("above_threshold")),
-    }
-    return pairs_rows, scope_meta
+        return get_scope_controls(scope_id, pairs_df, expanded_df)
+    sp = pairs_df[(pairs_df["scope_id"] == scope_id) &
+                  (pairs_df["batch_id"] == batch_id)]
+    ids = set(sp["control_id_a"].dropna().tolist())
+    return (expanded_df[expanded_df["Control_ID"].isin(ids)]
+            .drop_duplicates(subset=["Control_ID"])
+            .reset_index(drop=True))
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  SCOPE BUILDING
+#  PROCESSING LOOP
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_within_product_scopes(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    """
-    Within-product scope key: scope_id from Script 1 (one per cluster row).
-    Format: WP|{Product}|{cluster_row_index:04d}
-    Each row in product_clusters.xlsx = one cluster = one scope.
-    """
-    groups = {}
-    for scope_id, grp in df.groupby("scope_id", dropna=False):
-        groups[scope_id] = grp.drop_duplicates(subset=["Control_ID"]).copy()
-    return groups
+def process_scopes(scope_type, scope_df, pairs_df, expanded_df,
+                   ck_path, done_keys, log) -> float:
+    total_in  = total_out = 0
+    n_proc    = n_skip = n_err = 0
+    n_total   = len(scope_df)
+    t_start   = time.time()
 
+    for row_num, sr in enumerate(scope_df.itertuples(index=False), 1):
+        scope_id    = sr.scope_id
+        send_all    = bool(getattr(sr, "send_all", True))
+        n_controls  = int(getattr(sr, "n_controls", 0))
+        n_batches   = int(getattr(sr, "n_batches", 1))
+        skip_reason = getattr(sr, "skip_reason", "")
 
-def build_cross_product_scopes(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    """
-    Cross-product scope key: ct_ref_norm only.
-    Controls are deduplicated by Control_ID across all products.
-    """
-    groups = {}
-    for ct_ref, grp in df.groupby("ct_ref_norm", dropna=False):
-        if not ct_ref:
+        if skip_reason == "single_control" or n_controls < 2:
+            n_skip += 1
+            bk = f"{scope_id}::0::0"
+            if bk not in done_keys:
+                write_checkpoint({"batch_key": bk, "scope_id": scope_id,
+                                  "scope_type": scope_type, "skipped": True,
+                                  "skip_reason": "single_control",
+                                  "assessments": []}, ck_path)
+                done_keys.add(bk)
             continue
-        scope_id = f"CP|{ct_ref}"
-        groups[scope_id] = grp.drop_duplicates(subset=["Control_ID"]).copy()
-    return groups
+
+        elapsed = time.time() - t_start
+        pct     = row_num / n_total * 100
+        eta_s   = (elapsed / row_num) * (n_total - row_num) if row_num > 1 else 0
+        eta_str = (f"{int(eta_s//3600)}h {int((eta_s%3600)//60)}m"
+                   if eta_s > 60 else f"{int(eta_s)}s")
+        cost    = ((total_in / 1e6 * INPUT_PRICE_PER_M +
+                    total_out / 1e6 * OUTPUT_PRICE_PER_M) / AUD_USD_RATE)
+        print(f"\r  [{pct:5.1f}%] {scope_id[:55]:<55} "
+              f"ETA {eta_str}  A${cost:.2f}", end="")
+
+        all_ctrls = get_scope_controls(scope_id, pairs_df, expanded_df)
+        n_scope   = len(all_ctrls)
+        if n_scope == 0:
+            continue
+
+        sample = all_ctrls.iloc[0]
+        scope_meta = {"Product": str(sample.get("Product", "") or "")}
+
+        for batch_id in (range(n_batches) if not send_all else [0]):
+            batch = get_batch_controls(
+                scope_id, batch_id, send_all, pairs_df, expanded_df)
+            if len(batch) == 0:
+                continue
+
+            n_sub = max(1, (len(batch) + SUB_BATCH_SIZE - 1) // SUB_BATCH_SIZE)
+
+            for sub_idx in range(n_sub):
+                sub = batch.iloc[
+                    sub_idx * SUB_BATCH_SIZE:(sub_idx + 1) * SUB_BATCH_SIZE
+                ].reset_index(drop=True)
+
+                if len(sub) == 0:
+                    continue
+
+                bk = f"{scope_id}::{batch_id}::{sub_idx}"
+                if bk in done_keys:
+                    n_skip += 1
+                    continue
+
+                prompt = (build_wp_prompt(scope_id, bk, n_scope,
+                                          sub, scope_meta)
+                          if scope_type == "within_product"
+                          else build_cp_prompt(scope_id, bk, n_scope,
+                                               sub, scope_id.replace("CP|","")))
+
+                result, usage = call_llm(prompt, bk, log)
+                total_in  += usage.get("input_tokens", 0)
+                total_out += usage.get("output_tokens", 0)
+
+                if result is None:
+                    n_err += 1
+                    write_checkpoint({
+                        "batch_key": bk, "scope_id": scope_id,
+                        "scope_type": scope_type, "error": True,
+                        "assessments": [],
+                        "control_ids_in_batch": sub["Control_ID"].tolist(),
+                    }, ck_path)
+                else:
+                    result.update({
+                        "batch_key":   bk,
+                        "scope_type":  scope_type,
+                        "input_tokens":  usage.get("input_tokens", 0),
+                        "output_tokens": usage.get("output_tokens", 0),
+                        "error":       False,
+                        "control_ids_in_batch": sub["Control_ID"].tolist(),
+                    })
+                    write_checkpoint(result, ck_path)
+                    n_proc += 1
+
+                done_keys.add(bk)
+                time.sleep(SLEEP_BETWEEN)
+
+    print()
+    cost_aud = ((total_in / 1e6 * INPUT_PRICE_PER_M +
+                 total_out / 1e6 * OUTPUT_PRICE_PER_M) / AUD_USD_RATE)
+    log.info(f"  Processed: {n_proc:,} | Skipped: {n_skip:,} | "
+             f"Errors: {n_err:,} | Cost: A${cost_aud:.2f}")
+    return cost_aud
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  MAIN
@@ -368,166 +630,116 @@ def build_cross_product_scopes(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--force", action="store_true",
-                        help="Regenerate embeddings and candidate pairs even if cached.")
+    parser.add_argument("--force",    action="store_true",
+                        help="Clear checkpoints and restart.")
+    parser.add_argument("--wp-only",  action="store_true",
+                        help="Within-product scopes only.")
+    parser.add_argument("--cp-only",  action="store_true",
+                        help="Cross-product scopes only.")
+    parser.add_argument("--sample",   action="store_true",
+                        help="Run a representative sample of 30 scopes.")
+    parser.add_argument("--wp-range", nargs=2, type=int,
+                        metavar=("START", "END"),
+                        help="Process WP scopes[START:END] only.")
+    parser.add_argument("--cp-range", nargs=2, type=int,
+                        metavar=("START", "END"),
+                        help="Process CP scopes[START:END] only.")
+    parser.add_argument("--suffix",   default="",
+                        help="Checkpoint/log suffix for parallel runs.")
     args = parser.parse_args()
 
-    log = get_logger()
+    log = get_logger(args.suffix)
     log.info("=" * 70)
-    log.info("  Control Rationalisation — Step 2: Embeddings & Candidate Pairs")
-    log.info(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    log.info("  Control Rationalisation — Step 3: LLM Assessment")
+    log.info(f"  Model           : {LLM_MODEL} (low reasoning)")
+    log.info(f"  Sub-batch size  : {SUB_BATCH_SIZE} controls per call")
+    log.info(f"  Suffix          : '{args.suffix}' | "
+             f"Sample: {args.sample}")
+    log.info(f"  Started         : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     log.info("=" * 70)
 
-    # ── Load config from Script 1 ──────────────────────────────────────────
-    if not RUN_CONFIG.exists():
-        log.error(f"run_config.json not found. Run Script 1 first.")
-        sys.exit(1)
+    for f in [EXPANDED_PARQUET, SCOPE_WP_PARQUET, SCOPE_CP_PARQUET,
+              CAND_WP_PARQUET, CAND_CP_PARQUET, RUN_CONFIG]:
+        if not f.exists():
+            log.error(f"Required input not found: {f.name}. "
+                      f"Run Scripts 1 and 2 first.")
+            sys.exit(1)
+
     with open(RUN_CONFIG) as f:
         config = json.load(f)
 
-    threshold        = config.get("similarity_threshold", 0.78)
-    max_per_batch    = config.get("max_controls_per_llm_call", 20)
-    run_within       = config.get("run_within_product", True)
-    run_cross        = config.get("run_cross_product", True)
-    force_emb        = args.force or config.get("force_refresh_embeddings", False)
+    run_wp = config.get("run_within_product", True) and not args.cp_only
+    run_cp = config.get("run_cross_product",  True) and not args.wp_only
 
-    log.info(f"  Similarity threshold   : {threshold}")
-    log.info(f"  Max controls per batch : {max_per_batch}")
-    log.info(f"  Run within-product     : {run_within}")
-    log.info(f"  Run cross-product      : {run_cross}")
+    ck_wp = OUTPUT_DIR / f"llm_checkpoint_within_product{args.suffix}.jsonl"
+    ck_cp = OUTPUT_DIR / f"llm_checkpoint_cross_product{args.suffix}.jsonl"
 
-    # ── Load expanded parquet ──────────────────────────────────────────────
-    if not EXPANDED_PARQUET.exists():
-        log.error(f"Expanded parquet not found. Run Script 1 first.")
+    if args.force:
+        for ck in [ck_wp, ck_cp]:
+            if ck.exists():
+                ck.unlink()
+                log.info(f"Checkpoint cleared: {ck.name}")
+
+    log.info("Loading data...")
+    expanded = pd.read_parquet(EXPANDED_PARQUET, engine="pyarrow")
+    log.info(f"  Expanded rows: {len(expanded):,}")
+
+    log.info("Verifying connectivity...")
+    try:
+        make_client()
+        log.info("  OK.")
+    except Exception as e:
+        log.error(f"  Failed: {e}")
         sys.exit(1)
 
-    log.info(f"Loading expanded dataset...")
-    df = pd.read_parquet(EXPANDED_PARQUET, engine="pyarrow")
-    log.info(f"  Rows: {len(df):,} | Unique controls: {df['Control_ID'].nunique():,}")
+    total_cost = 0.0
 
-    # ── Check if outputs already exist ────────────────────────────────────
-    outputs_exist = (CAND_WP_PARQUET.exists() and CAND_CP_PARQUET.exists()
-                     and SCOPE_WP_PARQUET.exists() and SCOPE_CP_PARQUET.exists())
-    if outputs_exist and not args.force:
-        log.info("Candidate pair outputs already exist. Use --force to regenerate.")
-        log.info("Exiting Step 2.")
-        return
+    if run_wp:
+        log.info("\nProcessing within-product scopes...")
+        scope_wp = pd.read_parquet(SCOPE_WP_PARQUET, engine="pyarrow")
+        pairs_wp = pd.read_parquet(CAND_WP_PARQUET, engine="pyarrow")
 
-    # ── Load or generate embeddings ────────────────────────────────────────
-    emb_df = load_or_generate_embeddings(df, force_emb, log)
-    emb_lookup = {
-        row["Control_ID"]: np.array(row["embedding"], dtype=np.float32)
-        for _, row in emb_df.iterrows()
-    }
-    log.info(f"Embedding lookup ready: {len(emb_lookup):,} controls")
+        if args.sample:
+            idx = [i for i in SAMPLE_SCOPE_INDICES if i < len(scope_wp)]
+            scope_wp = scope_wp.iloc[idx].reset_index(drop=True)
+            log.info(f"  Sample mode: {len(scope_wp)} representative scopes")
+        elif args.wp_range:
+            s, e = args.wp_range
+            scope_wp = scope_wp.iloc[s:e].reset_index(drop=True)
+            log.info(f"  Range mode: scopes {s}–{e} ({len(scope_wp)} scopes)")
 
-    # ── Build scopes ───────────────────────────────────────────────────────
-    all_wp_pairs, all_wp_scopes = [], []
-    all_cp_pairs, all_cp_scopes = [], []
+        done_wp = load_checkpoint(ck_wp)
+        log.info(f"  Scopes to process: {len(scope_wp):,} | "
+                 f"Done keys: {len(done_wp):,}")
+        total_cost += process_scopes(
+            "within_product", scope_wp, pairs_wp,
+            expanded, ck_wp, done_wp, log)
 
-    if run_within:
-        log.info("\nBuilding within-product scopes and candidate pairs...")
-        wp_scopes = build_within_product_scopes(df)
-        log.info(f"  Within-product scopes: {len(wp_scopes):,}")
+    if run_cp:
+        log.info("\nProcessing cross-product scopes...")
+        scope_cp = pd.read_parquet(SCOPE_CP_PARQUET, engine="pyarrow")
+        pairs_cp = pd.read_parquet(CAND_CP_PARQUET, engine="pyarrow")
 
-        small, large = 0, 0
-        for scope_id, scope_df in wp_scopes.items():
-            n = scope_df["Control_ID"].nunique()
-            if n < 2:
-                # Single-control scope — no comparison possible
-                all_wp_scopes.append({
-                    "scope_id":   scope_id,
-                    "scope_type": "within_product",
-                    "n_controls": n,
-                    "send_all":   True,
-                    "n_batches":  1,
-                    "n_pairs_above_threshold": 0,
-                    "skip_reason": "single_control",
-                })
-                # Add a single-control "pair" row so Script 3 knows about this control
-                for _, row in scope_df.iterrows():
-                    all_wp_pairs.append({
-                        "scope_id":         scope_id,
-                        "scope_type":       "within_product",
-                        "control_id_a":     row["Control_ID"],
-                        "control_id_b":     None,
-                        "cosine_similarity":None,
-                        "above_threshold":  None,
-                        "batch_id":         0,
-                        "send_all":         True,
-                        "single_control":   True,
-                    })
-                continue
+        if args.cp_range:
+            s, e = args.cp_range
+            scope_cp = scope_cp.iloc[s:e].reset_index(drop=True)
+            log.info(f"  Range mode: scopes {s}–{e} ({len(scope_cp)} scopes)")
 
-            pairs_rows, scope_meta = build_candidate_pairs(
-                scope_df, emb_lookup, scope_id, "within_product",
-                threshold, max_per_batch, log)
-            scope_meta["skip_reason"] = ""
-            all_wp_pairs.extend(pairs_rows)
-            all_wp_scopes.append(scope_meta)
+        done_cp = load_checkpoint(ck_cp)
+        log.info(f"  Scopes to process: {len(scope_cp):,} | "
+                 f"Done keys: {len(done_cp):,}")
+        total_cost += process_scopes(
+            "cross_product", scope_cp, pairs_cp,
+            expanded, ck_cp, done_cp, log)
 
-            if scope_meta["send_all"]:
-                small += 1
-            else:
-                large += 1
-                log.info(f"  Large scope ({n} controls, "
-                         f"{scope_meta['n_batches']} batches): {scope_id[:80]}")
-
-        log.info(f"  Small scopes (send_all): {small:,} | "
-                 f"Large scopes (batched): {large:,}")
-
-    # Cross-product scopes not used in Dimension 1.
-    # Deferred to Dimension 2 (CT-objective-level run).
-    if run_cross:
-        log.info("\nCross-product assessment skipped for Dimension 1.")
-        log.info("  CP scopes are handled in Dimension 2.")
-
-    # ── Save outputs ───────────────────────────────────────────────────────
-    log.info("\nSaving candidate pair outputs...")
-
-    if all_wp_pairs:
-        wp_df = pd.DataFrame(all_wp_pairs)
-        wp_df.to_parquet(CAND_WP_PARQUET, index=False, engine="pyarrow")
-        log.info(f"  {CAND_WP_PARQUET.name}: {len(wp_df):,} rows")
-    else:
-        pd.DataFrame().to_parquet(CAND_WP_PARQUET, index=False, engine="pyarrow")
-
-    if all_wp_scopes:
-        ws_df = pd.DataFrame(all_wp_scopes)
-        ws_df.to_parquet(SCOPE_WP_PARQUET, index=False, engine="pyarrow")
-        log.info(f"  {SCOPE_WP_PARQUET.name}: {len(ws_df):,} scopes")
-        log.info(f"    send_all scopes   : "
-                 f"{ws_df['send_all'].sum():,}")
-        log.info(f"    batched scopes    : "
-                 f"{(~ws_df['send_all']).sum():,}")
-    else:
-        pd.DataFrame().to_parquet(SCOPE_WP_PARQUET, index=False, engine="pyarrow")
-
-    if all_cp_pairs:
-        cp_df = pd.DataFrame(all_cp_pairs)
-        cp_df.to_parquet(CAND_CP_PARQUET, index=False, engine="pyarrow")
-        log.info(f"  {CAND_CP_PARQUET.name}: {len(cp_df):,} rows")
-    else:
-        pd.DataFrame().to_parquet(CAND_CP_PARQUET, index=False, engine="pyarrow")
-
-    if all_cp_scopes:
-        cs_df = pd.DataFrame(all_cp_scopes)
-        cs_df.to_parquet(SCOPE_CP_PARQUET, index=False, engine="pyarrow")
-        log.info(f"  {SCOPE_CP_PARQUET.name}: {len(cs_df):,} scopes")
-    else:
-        pd.DataFrame().to_parquet(SCOPE_CP_PARQUET, index=False, engine="pyarrow")
-
-    # Update run_config with Step 2 results
-    config["step2_completed_at"] = datetime.now().isoformat()
-    config["n_within_product_scopes"] = len(all_wp_scopes)
-    config["n_cross_product_scopes"]  = len(all_cp_scopes)
-    config["n_wp_candidate_pairs"]    = len(all_wp_pairs)
-    config["n_cp_candidate_pairs"]    = len(all_cp_pairs)
+    config[f"step3{args.suffix}_completed_at"]   = datetime.now().isoformat()
+    config[f"step3{args.suffix}_total_cost_aud"] = round(total_cost, 2)
     with open(RUN_CONFIG, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
 
     log.info("=" * 70)
-    log.info("  Step 2 complete. Run 03_run_llm_assessment.py next.")
+    log.info(f"  Step 3 complete. Total cost: A${total_cost:.2f}")
+    log.info("  Run 04_postprocess_outputs.py next.")
     log.info("=" * 70)
 
 
