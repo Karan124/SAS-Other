@@ -1,81 +1,77 @@
 """
-01_preprocess_control_data.py
+02_generate_embeddings_and_candidates.py
 ─────────────────────────────────────────────────────────────────────────────
-Control Rationalisation — Step 1 of 4: Data Preprocessing
-Dimension 1: Controls data cut by product
+Control Rationalisation — Step 2 of 4: Embeddings and Candidate Pairs
 
-Scope definition (simplified):
-  Each ROW in product_clusters.xlsx = one cluster = one scope.
-  Scope key: WP|{Product}|{row_index:04d}
-
-  Only two fields are read from product_clusters.xlsx:
-    - Product
-    - Unique Control IDs
-
-  CT Reference, Payment Category, Consolidated Stage, and Expected Control
-  are NOT used in Dimension 1. They belong to Dimension 2.
+Reads the expanded parquet from Step 1.
+Generates embeddings for unique controls (cached to avoid re-generation).
+Builds within-product and cross-product assessment scopes.
+Identifies candidate pairs using cosine similarity + structured field matching.
+Flags small groups (≤ MAX_CONTROLS_PER_LLM_CALL) for full-group LLM calls.
+Batches large groups using embedding similarity.
 
 Outputs:
-  expanded_product_control_mapping.parquet
-  data_quality_report.xlsx
-  processing_log.txt
-  run_config.json
+  control_embeddings.parquet             — embeddings per unique control
+  candidate_pairs_within_product.parquet — candidate pairs + batch assignments
+  candidate_pairs_cross_product.parquet  — candidate pairs + batch assignments
+  scope_summary_within_product.parquet   — one row per scope with metadata
+  scope_summary_cross_product.parquet    — one row per scope with metadata
 
-Run:
-  python 01_preprocess_control_data.py
-  python 01_preprocess_control_data.py --force
+Before running (PowerShell):
+  az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
+  $env:REQUESTS_CA_BUNDLE = "C:\\Users\\m061400\\ai-test\\cacert.pem"
+  $env:SSL_CERT_FILE      = "C:\\Users\\m061400\\ai-test\\cacert.pem"
+  Remove-Item Env:AZURE_CA_BUNDLE -ErrorAction SilentlyContinue
+  python 02_generate_embeddings_and_candidates.py
+  python 02_generate_embeddings_and_candidates.py --force
 """
 
 import argparse
 import json
 import logging
-import re
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from openai import AzureOpenAI
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  CONFIG
+#  CONFIG — must match Script 1
 # ─────────────────────────────────────────────────────────────────────────────
 
-FILE_CTRL_DETAILS     = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\raw\ctrl_details.xlsx")
-FILE_PRODUCT_CLUSTERS = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\raw\product_clusters.xlsx")
-OUTPUT_DIR            = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
+OUTPUT_DIR       = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
 
-SIMILARITY_THRESHOLD      = 0.58
-MAX_CONTROLS_PER_LLM_CALL = 20
-LLM_TEMPERATURE           = 0
-RETRY_COUNT               = 5
-FORCE_REFRESH_EMBEDDINGS  = False
-INCLUDE_CTRL_OWNER        = False
-RUN_WITHIN_PRODUCT        = True
+AZURE_ENDPOINT   = "https://ai.eng.azure.srv.westpac.com.au"
+API_VERSION      = "2024-10-21"
+EMBEDDING_MODEL  = "text-embedding-3-large"
+EMBEDDING_DIM    = 3072
 
-CTRL_REQUIRED_COLS = ["Control_ID", "CTRL_NAME"]
+EMBED_BATCH      = 20      # texts per embedding API call
+EMBED_SLEEP      = 2.0     # seconds between batches (rate limit buffer)
 
-CTRL_OPTIONAL_COLS = [
-    "CTRL_NATRE", "CTRL_STUS", "CTRL_OWNER", "CTRL_FREQ", "CTRL_KEY_CONTRL",
-    "Control Objective", "CTRL_TYP", "CTRL_ASSESS_RTNG",
-    "CTRL_CTGRY_1", "CTRL_CTGRY_2", "CTRL_OE_RTNG", "CTRL_DE_RTNG",
-    "CTRL_LOC_LIST", "CTRL_EVDNCD", "CTRL_MNTRD", "CTRL_CATEGORY",
-    "Control_Description", "CTRL_FLDR", "object_path_leaf",
-    "CTRL_FLDR_LVL_2(Division)", "gold_control",
-]
-
-# Only these two fields are required from product_clusters.xlsx
-CLUSTER_REQUIRED_COLS = ["Product", "Unique Control IDs"]
+# Paths (all relative to OUTPUT_DIR)
+EXPANDED_PARQUET        = OUTPUT_DIR / "expanded_product_control_mapping.parquet"
+EMBEDDINGS_PARQUET      = OUTPUT_DIR / "control_embeddings.parquet"
+CAND_WP_PARQUET         = OUTPUT_DIR / "candidate_pairs_within_product.parquet"
+CAND_CP_PARQUET         = OUTPUT_DIR / "candidate_pairs_cross_product.parquet"
+SCOPE_WP_PARQUET        = OUTPUT_DIR / "scope_summary_within_product.parquet"
+SCOPE_CP_PARQUET        = OUTPUT_DIR / "scope_summary_cross_product.parquet"
+RUN_CONFIG              = OUTPUT_DIR / "run_config.json"
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  LOGGING
+#  LOGGING (append to existing log from Script 1)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def setup_logging() -> logging.Logger:
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+def get_logger() -> logging.Logger:
     logger = logging.getLogger("ctrl_rat")
     if logger.handlers:
         return logger
-    fh = logging.FileHandler(OUTPUT_DIR / "processing_log.txt", encoding="utf-8")
+    log_path = OUTPUT_DIR / "processing_log.txt"
+    fh = logging.FileHandler(log_path, encoding="utf-8")
     fh.setLevel(logging.DEBUG)
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(logging.INFO)
@@ -89,274 +85,282 @@ def setup_logging() -> logging.Logger:
     return logger
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  HELPERS
+#  AZURE CLIENT
 # ─────────────────────────────────────────────────────────────────────────────
 
-def safe_str(val, default=""):
-    if pd.isna(val):
-        return default
-    s = str(val).replace("\t", " ").replace("\r", " ").replace("\n", " ")
-    return re.sub(r" {2,}", " ", s).strip()
-
-def is_blank(val):
-    return safe_str(val) == ""
-
-def clean_cols(df):
-    df.columns = df.columns.str.strip()
-    return df
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  LOAD AND VALIDATE
-# ─────────────────────────────────────────────────────────────────────────────
-
-def load_inputs(log):
-    for f in [FILE_CTRL_DETAILS, FILE_PRODUCT_CLUSTERS]:
-        if not f.exists():
-            log.error(f"Input file not found: {f}")
-            sys.exit(1)
-
-    log.info(f"Loading ctrl_details: {FILE_CTRL_DETAILS.name}")
-    ctrl = clean_cols(pd.read_excel(FILE_CTRL_DETAILS, dtype=str, engine="openpyxl"))
-    log.info(f"  Rows: {len(ctrl):,}")
-
-    log.info(f"Loading product_clusters: {FILE_PRODUCT_CLUSTERS.name}")
-    clusters = clean_cols(pd.read_excel(FILE_PRODUCT_CLUSTERS, dtype=str,
-                                        engine="openpyxl"))
-    log.info(f"  Rows: {len(clusters):,} | Columns: {list(clusters.columns)}")
-    return ctrl, clusters
-
-
-def validate_columns(ctrl, clusters, log):
-    missing_ctrl = [c for c in CTRL_REQUIRED_COLS if c not in ctrl.columns]
-    missing_clus = [c for c in CLUSTER_REQUIRED_COLS if c not in clusters.columns]
-    if missing_ctrl:
-        log.error(f"ctrl_details missing required columns: {missing_ctrl}")
-        sys.exit(1)
-    if missing_clus:
-        log.error(f"product_clusters missing required columns: {missing_clus}")
-        log.error(f"  Available columns: {list(clusters.columns)}")
-        sys.exit(1)
-    missing_opt = [c for c in CTRL_OPTIONAL_COLS if c not in ctrl.columns]
-    if missing_opt:
-        log.warning(f"Optional columns not found (will be blank): {missing_opt}")
-    log.info("Column validation passed.")
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  NORMALISE
-# ─────────────────────────────────────────────────────────────────────────────
-
-def normalise_ctrl_details(ctrl, log):
-    ctrl["Control_ID"] = ctrl["Control_ID"].apply(safe_str)
-    for col in ctrl.columns:
-        ctrl[col] = ctrl[col].apply(safe_str)
-    dups = ctrl[ctrl["Control_ID"].duplicated(keep=False)]["Control_ID"].unique()
-    if len(dups):
-        log.warning(f"{len(dups)} duplicate Control_ID(s): {list(dups)[:5]}")
-    ctrl = ctrl.drop_duplicates(subset=["Control_ID"], keep="first")
-    log.info(f"ctrl_details: {len(ctrl):,} unique controls after dedup")
-    return ctrl
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  EXPAND CLUSTERS
-#
-#  Each ROW in product_clusters.xlsx = one cluster = one scope.
-#  Scope key: WP|{Product}|{row_index:04d}
-#  Only Product and Unique Control IDs are used.
-# ─────────────────────────────────────────────────────────────────────────────
-
-def expand_product_clusters(clusters, log):
-    """
-    Group ALL rows by Product into one cluster per product.
-    All Control IDs across all rows for the same product are merged and
-    deduplicated into a single scope: WP|{Product}.
-
-    Scripts 2 and 3 then use embeddings to find natural sub-clusters within
-    each product's control pool and send each sub-cluster to the LLM.
-
-    Example: Agency Service has 5 rows in product_clusters.xlsx.
-    All unique Control IDs across those 5 rows are merged into one scope:
-    WP|Agency Service → [CTL000041538, CTL000041583, ..., CTL023775]
-    """
-    log.info("Grouping Control IDs by Product (one scope per product)...")
-
-    # Collect all Control IDs per product, deduplicating across rows
-    product_controls: dict[str, set] = {}
-    n_no_prod = n_no_ids = 0
-
-    for _, row in clusters.iterrows():
-        product = safe_str(row.get("Product", ""))
-        if not product:
-            n_no_prod += 1
-            continue
-
-        raw_ids  = safe_str(row.get("Unique Control IDs", ""))
-        ctrl_ids = [c.strip() for c in raw_ids.split(",") if c.strip()]
-
-        if not ctrl_ids:
-            n_no_ids += 1
-            continue
-
-        if product not in product_controls:
-            product_controls[product] = set()
-        product_controls[product].update(ctrl_ids)
-
-    if n_no_prod:
-        log.warning(f"  {n_no_prod} rows with no Product — skipped")
-    if n_no_ids:
-        log.warning(f"  {n_no_ids} rows with no Control IDs — skipped")
-
-    # Build expanded table — one row per unique Control_ID per product
-    rows = []
-    for product in sorted(product_controls):
-        scope_id = f"WP|{product}"
-        for ctrl_id in sorted(product_controls[product]):
-            rows.append({
-                "scope_id":  scope_id,
-                "Product":   product,
-                "Control_ID": ctrl_id,
-            })
-
-    expanded = pd.DataFrame(rows)
-    log.info(f"  Products (scopes)   : {len(product_controls):,}")
-    log.info(f"  Total control rows  : {len(expanded):,}")
-    log.info(f"  Unique Control IDs  : {expanded['Control_ID'].nunique():,}")
-
-    # Log per-product control counts
-    counts = expanded.groupby("Product")["Control_ID"].count().sort_values(ascending=False)
-    log.info("  Controls per product (top 10):")
-    for prod, n in counts.head(10).items():
-        log.info(f"    {prod}: {n}")
-
-    return expanded
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  JOIN CONTROL DETAILS
-# ─────────────────────────────────────────────────────────────────────────────
-
-def join_control_details(expanded, ctrl, log):
-    log.info("Joining control details...")
-    joined = expanded.merge(ctrl, on="Control_ID", how="left")
-    matched   = joined["CTRL_NAME"].apply(lambda x: not is_blank(x)).sum()
-    unmatched = joined[joined["CTRL_NAME"].apply(is_blank)]["Control_ID"].unique()
-    log.info(f"  Matched   : {matched:,}")
-    log.info(f"  Unmatched : {len(unmatched):,}")
-    if len(unmatched) > 0:
-        log.warning(f"  Unmatched IDs (first 10): {list(unmatched[:10])}")
-    return joined
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  BUILD TEXT PAYLOADS
-# ─────────────────────────────────────────────────────────────────────────────
-
-def build_embedding_text(row):
-    """Semantic text for embedding. Product-only context (no CT/stage)."""
-    def f(field, label):
-        val = safe_str(row.get(field, ""))
-        return f"{label}:\n{val}" if val else ""
-
-    parts = [
-        f("Control_ID",               "Control ID"),
-        f("CTRL_NAME",                "Control Name"),
-        f("Control Objective",        "Control Objective"),
-        f("Control_Description",      "Control Description"),
-        f("CTRL_NATRE",               "Control Nature"),
-        f("CTRL_FREQ",                "Frequency"),
-        f("CTRL_TYP",                 "Control Type"),
-        f("CTRL_KEY_CONTRL",          "Key Control"),
-        f("CTRL_CTGRY_1",             "Category 1"),
-        f("CTRL_CTGRY_2",             "Category 2"),
-        f("CTRL_EVDNCD",              "Evidence"),
-        f("CTRL_MNTRD",               "Monitoring"),
-        f("CTRL_CATEGORY",            "Control Category"),
-        f("CTRL_LOC_LIST",            "Location"),
-        f("CTRL_FLDR_LVL_2(Division)","Division"),
-        f("object_path_leaf",         "Business Area"),
-        f("gold_control",             "Gold Control"),
-        f("Product",                  "Product"),
-    ]
-    if INCLUDE_CTRL_OWNER:
-        parts.append(f("CTRL_OWNER", "Control Owner"))
-    return "\n\n".join(p for p in parts if p)
-
-
-def build_llm_payload_text(row):
-    """Enriched text for LLM. Includes product cluster context."""
-    def f(field, label):
-        val = safe_str(row.get(field, ""))
-        return f"{label}: {val}" if val else ""
-
-    lines = [
-        "=== PRODUCT CLUSTER CONTEXT ===",
-        f("Product",              "Product"),
-        f("scope_id",             "Cluster Scope"),
-        "",
-        "=== CONTROL DETAILS ===",
-        f("Control_ID",           "Control ID"),
-        f("CTRL_NAME",            "Control Name"),
-        f("Control Objective",    "Control Objective"),
-        f("Control_Description",  "Control Description"),
-        f("CTRL_NATRE",           "Control Nature"),
-        f("CTRL_FREQ",            "Frequency"),
-        f("CTRL_TYP",             "Control Type"),
-        f("CTRL_KEY_CONTRL",      "Key Control"),
-        f("CTRL_CTGRY_1",         "Category 1"),
-        f("CTRL_CTGRY_2",         "Category 2"),
-        f("CTRL_EVDNCD",          "Evidence"),
-        f("CTRL_MNTRD",           "Monitoring"),
-        f("CTRL_CATEGORY",        "Control Category"),
-        f("CTRL_LOC_LIST",        "Location"),
-        f("CTRL_FLDR_LVL_2(Division)", "Division"),
-        f("object_path_leaf",     "Business Area"),
-        f("gold_control",         "Gold Control"),
-    ]
-    if INCLUDE_CTRL_OWNER:
-        lines.append(f("CTRL_OWNER", "Control Owner"))
-    return "\n".join(line for line in lines if line != "" or line == "")
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  DATA QUALITY REPORT
-# ─────────────────────────────────────────────────────────────────────────────
-
-def create_dq_report(ctrl_raw, clusters_raw, expanded, joined, log):
-    log.info("Building data quality report...")
-
-    def col_blank(df, col):
-        return int(df[col].apply(is_blank).sum()) if col in df.columns else "n/a"
-
-    no_ids = sum(
-        1 for _, row in clusters_raw.iterrows()
-        if not [c.strip() for c in
-                safe_str(row.get("Unique Control IDs","")).split(",") if c.strip()]
+def init_client() -> AzureOpenAI:
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default"
     )
-    unmatched = joined[joined["CTRL_NAME"].apply(is_blank)]["Control_ID"].unique()
+    return AzureOpenAI(
+        azure_endpoint=AZURE_ENDPOINT,
+        api_version=API_VERSION,
+        azure_ad_token_provider=token_provider,
+    )
 
-    rows = [
-        ("── INPUT COUNTS ──────────────────────────────────────────", ""),
-        ("ctrl_details rows",                    len(ctrl_raw)),
-        ("ctrl_details unique Control_IDs",       ctrl_raw["Control_ID"].nunique()),
-        ("product_clusters rows (clusters)",      len(clusters_raw)),
-        ("Unique products in clusters",
-         clusters_raw["Product"].apply(safe_str).nunique()),
-        ("── EXPANSION ─────────────────────────────────────────────", ""),
-        ("Expanded control rows",                 len(expanded)),
-        ("Unique products (scopes)",              expanded["scope_id"].nunique()),
-        ("Unique Control_IDs in clusters",        expanded["Control_ID"].nunique()),
-        ("── JOIN ──────────────────────────────────────────────────", ""),
-        ("Matched to ctrl_details",
-         int(joined["CTRL_NAME"].apply(lambda x: not is_blank(x)).sum())),
-        ("Unmatched Control_IDs",                len(unmatched)),
-        ("── DATA QUALITY ──────────────────────────────────────────", ""),
-        ("Duplicate Control_IDs in ctrl_details",
-         int(ctrl_raw["Control_ID"].duplicated().sum())),
-        ("Blank Control_Description",            col_blank(ctrl_raw, "Control_Description")),
-        ("Blank Control Objective",              col_blank(ctrl_raw, "Control Objective")),
-        ("Blank CTRL_EVDNCD",                    col_blank(ctrl_raw, "CTRL_EVDNCD")),
-        ("Blank CTRL_MNTRD",                     col_blank(ctrl_raw, "CTRL_MNTRD")),
-        ("Cluster rows with no Control IDs",     no_ids),
-    ]
-    dq_df = pd.DataFrame(rows, columns=["Metric", "Value"])
-    unmatched_df = pd.DataFrame({"Unmatched_Control_ID": unmatched})
-    return dq_df, unmatched_df
+# ─────────────────────────────────────────────────────────────────────────────
+#  EMBEDDING GENERATION
+# ─────────────────────────────────────────────────────────────────────────────
+
+def generate_embeddings(client: AzureOpenAI,
+                        texts: list[str],
+                        label: str,
+                        log: logging.Logger) -> np.ndarray:
+    """Generate embeddings in batches with retry and rate-limit handling."""
+    all_embs = []
+    total = len(texts)
+    log.info(f"  Embedding {total:,} {label} in batches of {EMBED_BATCH}...")
+
+    for i in range(0, total, EMBED_BATCH):
+        batch = texts[i:i + EMBED_BATCH]
+        # Truncate to ~24k chars (~8000 tokens) as safety margin
+        batch = [t[:24000] for t in batch]
+
+        for attempt in range(4):
+            try:
+                resp = client.embeddings.create(
+                    model=EMBEDDING_MODEL, input=batch)
+                all_embs.extend([d.embedding for d in resp.data])
+                done = min(i + EMBED_BATCH, total)
+                print(f"    {done:,}/{total:,} ({done/total*100:.0f}%)", end="\r")
+                time.sleep(EMBED_SLEEP)
+                break
+            except Exception as e:
+                if attempt == 3:
+                    log.error(f"Embedding batch {i//EMBED_BATCH+1} failed: {e}")
+                    raise
+                wait = min(5 * 2**attempt, 60)
+                log.warning(f"Batch {i//EMBED_BATCH+1} attempt {attempt+1} failed: "
+                            f"{e}. Retrying in {wait}s...")
+                time.sleep(wait)
+
+    print(f"    {total:,}/{total:,} (100%) done        ")
+    return np.array(all_embs, dtype=np.float32)
+
+
+def load_or_generate_embeddings(df: pd.DataFrame,
+                                force: bool,
+                                log: logging.Logger) -> pd.DataFrame:
+    """
+    Returns a DataFrame with columns: Control_ID, embedding (list of float).
+    Uses cached parquet if available and --force not set.
+    """
+    if EMBEDDINGS_PARQUET.exists() and not force:
+        log.info(f"Loading cached embeddings: {EMBEDDINGS_PARQUET.name}")
+        emb_df = pd.read_parquet(EMBEDDINGS_PARQUET, engine="pyarrow")
+        log.info(f"  Loaded {len(emb_df):,} embeddings")
+        return emb_df
+
+    log.info("Generating embeddings for unique controls...")
+    unique_ctrl = (df[["Control_ID","embedding_text"]]
+                   .drop_duplicates(subset=["Control_ID"])
+                   .reset_index(drop=True))
+    log.info(f"  Unique controls to embed: {len(unique_ctrl):,}")
+
+    log.info("Initialising Azure OpenAI client...")
+    client = init_client()
+    log.info("Client ready.")
+
+    texts  = unique_ctrl["embedding_text"].tolist()
+    embs   = generate_embeddings(client, texts, "controls", log)
+
+    emb_df = pd.DataFrame({
+        "Control_ID": unique_ctrl["Control_ID"].tolist(),
+        "embedding":  [e.tolist() for e in embs],
+    })
+    emb_df.to_parquet(EMBEDDINGS_PARQUET, index=False, engine="pyarrow")
+    log.info(f"Embeddings cached: {EMBEDDINGS_PARQUET.name} ({len(emb_df):,} rows)")
+    return emb_df
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  COSINE SIMILARITY
+# ─────────────────────────────────────────────────────────────────────────────
+
+def cosine_sim_matrix(embs: np.ndarray) -> np.ndarray:
+    """N×N cosine similarity matrix for a set of embeddings."""
+    norms = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-9
+    normed = embs / norms
+    return (normed @ normed.T).astype(np.float32)
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  BATCH ASSIGNMENT FOR LARGE GROUPS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def assign_batches(ctrl_ids: list[str],
+                   sim_matrix: np.ndarray,
+                   threshold: float,
+                   max_per_batch: int) -> dict[str, int]:
+    """
+    For groups larger than max_per_batch, assign each control to a batch.
+    Strategy:
+      1. Build a graph where edges connect controls with similarity >= threshold.
+      2. Use a greedy approach: seed a batch from the unassigned control with
+         the most neighbours, fill to max_per_batch with its most similar
+         unassigned neighbours.
+      3. Repeat until all controls are assigned.
+      4. Every control appears in at least one batch.
+
+    Returns: {control_id: batch_id}
+    """
+    n = len(ctrl_ids)
+    assigned   = {}   # control_id → batch_id
+    batch_id   = 0
+
+    # Build adjacency: for each control, sorted neighbour indices by similarity
+    neighbours = {}
+    for i in range(n):
+        # Sort by descending similarity, exclude self
+        sorted_idx = np.argsort(sim_matrix[i])[::-1]
+        sorted_idx = [j for j in sorted_idx if j != i]
+        neighbours[i] = sorted_idx
+
+    unassigned = set(range(n))
+
+    while unassigned:
+        # Seed with unassigned control that has most unassigned neighbours above threshold
+        def degree(i):
+            return sum(1 for j in neighbours[i]
+                       if j in unassigned and sim_matrix[i][j] >= threshold)
+
+        seed = max(unassigned, key=degree)
+        batch = [seed]
+        unassigned.discard(seed)
+
+        # Fill batch with most similar unassigned neighbours
+        for j in neighbours[seed]:
+            if len(batch) >= max_per_batch:
+                break
+            if j in unassigned:
+                batch.append(j)
+                unassigned.discard(j)
+
+        for idx in batch:
+            assigned[ctrl_ids[idx]] = batch_id
+
+        batch_id += 1
+
+    return assigned
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  CANDIDATE PAIR BUILDING
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_candidate_pairs(scope_df: pd.DataFrame,
+                          emb_lookup: dict[str, np.ndarray],
+                          scope_id: str,
+                          scope_type: str,
+                          threshold: float,
+                          max_per_batch: int,
+                          log: logging.Logger) -> tuple[list[dict], dict]:
+    """
+    For one scope (group), build candidate pairs and batch assignments.
+
+    Returns:
+      pairs_rows: list of dicts (one per candidate pair)
+      scope_meta: dict describing this scope
+    """
+    ctrl_ids = scope_df["Control_ID"].unique().tolist()
+    n = len(ctrl_ids)
+
+    # Retrieve embeddings in order
+    embs = []
+    missing = []
+    for cid in ctrl_ids:
+        if cid in emb_lookup:
+            embs.append(emb_lookup[cid])
+        else:
+            missing.append(cid)
+            embs.append(np.zeros(EMBEDDING_DIM, dtype=np.float32))
+
+    if missing:
+        log.warning(f"  Scope {scope_id}: {len(missing)} controls missing embeddings: "
+                    f"{missing[:3]}")
+
+    embs_arr = np.array(embs, dtype=np.float32)
+    sim_mat  = cosine_sim_matrix(embs_arr)
+
+    send_all  = (n <= max_per_batch)
+    pairs_rows = []
+    batch_map  = {}
+
+    if send_all:
+        # All controls go to LLM in one call — all pairs are candidates
+        batch_map = {cid: 0 for cid in ctrl_ids}
+        for i in range(n):
+            for j in range(i + 1, n):
+                pairs_rows.append({
+                    "scope_id":         scope_id,
+                    "scope_type":       scope_type,
+                    "control_id_a":     ctrl_ids[i],
+                    "control_id_b":     ctrl_ids[j],
+                    "cosine_similarity":float(sim_mat[i, j]),
+                    "above_threshold":  bool(sim_mat[i, j] >= threshold),
+                    "batch_id":         0,
+                    "send_all":         True,
+                })
+    else:
+        # Large group — assign batches using embedding similarity
+        batch_map = assign_batches(ctrl_ids, sim_mat, threshold, max_per_batch)
+        # Candidate pairs: all pairs above threshold (cross-batch pairs included
+        # so post-processing can detect cross-batch redundancy)
+        for i in range(n):
+            for j in range(i + 1, n):
+                sim = float(sim_mat[i, j])
+                if sim >= threshold:
+                    pairs_rows.append({
+                        "scope_id":         scope_id,
+                        "scope_type":       scope_type,
+                        "control_id_a":     ctrl_ids[i],
+                        "control_id_b":     ctrl_ids[j],
+                        "cosine_similarity":sim,
+                        "above_threshold":  True,
+                        "batch_id":         batch_map.get(ctrl_ids[i], 0),
+                        "send_all":         False,
+                    })
+
+    # n_batches
+    n_batches = len(set(batch_map.values())) if batch_map else 1
+
+    scope_meta = {
+        "scope_id":       scope_id,
+        "scope_type":     scope_type,
+        "n_controls":     n,
+        "send_all":       send_all,
+        "n_batches":      n_batches,
+        "n_pairs_above_threshold": sum(1 for r in pairs_rows
+                                       if r.get("above_threshold")),
+    }
+    return pairs_rows, scope_meta
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  SCOPE BUILDING
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_within_product_scopes(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    """
+    Within-product scope key: scope_id from Script 1 (one per cluster row).
+    Format: WP|{Product}|{cluster_row_index:04d}
+    Each row in product_clusters.xlsx = one cluster = one scope.
+    """
+    groups = {}
+    for scope_id, grp in df.groupby("scope_id", dropna=False):
+        groups[scope_id] = grp.drop_duplicates(subset=["Control_ID"]).copy()
+    return groups
+
+
+def build_cross_product_scopes(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    """
+    Cross-product scope key: ct_ref_norm only.
+    Controls are deduplicated by Control_ID across all products.
+    """
+    groups = {}
+    for ct_ref, grp in df.groupby("ct_ref_norm", dropna=False):
+        if not ct_ref:
+            continue
+        scope_id = f"CP|{ct_ref}"
+        groups[scope_id] = grp.drop_duplicates(subset=["Control_ID"]).copy()
+    return groups
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  MAIN
@@ -365,73 +369,167 @@ def create_dq_report(ctrl_raw, clusters_raw, expanded, joined, log):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--force", action="store_true",
-                        help="Overwrite existing output.")
+                        help="Regenerate embeddings and candidate pairs even if cached.")
     args = parser.parse_args()
 
-    log = setup_logging()
+    log = get_logger()
     log.info("=" * 70)
-    log.info("  Control Rationalisation — Step 1: Preprocessing")
-    log.info("  Dimension 1: Product-level cluster assessment")
+    log.info("  Control Rationalisation — Step 2: Embeddings & Candidate Pairs")
     log.info(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     log.info("=" * 70)
 
-    output_parquet = OUTPUT_DIR / "expanded_product_control_mapping.parquet"
-    if output_parquet.exists() and not args.force:
-        log.info("Output already exists. Use --force to regenerate.")
+    # ── Load config from Script 1 ──────────────────────────────────────────
+    if not RUN_CONFIG.exists():
+        log.error(f"run_config.json not found. Run Script 1 first.")
+        sys.exit(1)
+    with open(RUN_CONFIG) as f:
+        config = json.load(f)
+
+    threshold        = config.get("similarity_threshold", 0.78)
+    max_per_batch    = config.get("max_controls_per_llm_call", 20)
+    run_within       = config.get("run_within_product", True)
+    run_cross        = config.get("run_cross_product", True)
+    force_emb        = args.force or config.get("force_refresh_embeddings", False)
+
+    log.info(f"  Similarity threshold   : {threshold}")
+    log.info(f"  Max controls per batch : {max_per_batch}")
+    log.info(f"  Run within-product     : {run_within}")
+    log.info(f"  Run cross-product      : {run_cross}")
+
+    # ── Load expanded parquet ──────────────────────────────────────────────
+    if not EXPANDED_PARQUET.exists():
+        log.error(f"Expanded parquet not found. Run Script 1 first.")
+        sys.exit(1)
+
+    log.info(f"Loading expanded dataset...")
+    df = pd.read_parquet(EXPANDED_PARQUET, engine="pyarrow")
+    log.info(f"  Rows: {len(df):,} | Unique controls: {df['Control_ID'].nunique():,}")
+
+    # ── Check if outputs already exist ────────────────────────────────────
+    outputs_exist = (CAND_WP_PARQUET.exists() and CAND_CP_PARQUET.exists()
+                     and SCOPE_WP_PARQUET.exists() and SCOPE_CP_PARQUET.exists())
+    if outputs_exist and not args.force:
+        log.info("Candidate pair outputs already exist. Use --force to regenerate.")
+        log.info("Exiting Step 2.")
         return
 
-    ctrl_raw, clusters_raw = load_inputs(log)
-    validate_columns(ctrl_raw, clusters_raw, log)
-    ctrl     = normalise_ctrl_details(ctrl_raw.copy(), log)
-    expanded = expand_product_clusters(clusters_raw.copy(), log)
-    joined   = join_control_details(expanded, ctrl, log)
-
-    log.info("Building text payloads...")
-    joined["embedding_text"]   = joined.apply(build_embedding_text, axis=1)
-    joined["llm_payload_text"] = joined.apply(build_llm_payload_text, axis=1)
-    log.info(f"  Avg embedding text length : "
-             f"{joined['embedding_text'].str.len().mean():.0f} chars")
-
-    dq_df, unmatched_df = create_dq_report(
-        ctrl_raw, clusters_raw, expanded, joined, log)
-    dq_path = OUTPUT_DIR / "data_quality_report.xlsx"
-    with pd.ExcelWriter(dq_path, engine="openpyxl") as w:
-        dq_df.to_excel(w, index=False, sheet_name="summary")
-        if not unmatched_df.empty:
-            unmatched_df.to_excel(w, index=False, sheet_name="unmatched_ids")
-    log.info(f"Data quality report: {dq_path.name}")
-    for _, r in dq_df.iterrows():
-        if not str(r["Metric"]).startswith("──"):
-            log.info(f"  {r['Metric']}: {r['Value']}")
-
-    joined.to_parquet(output_parquet, index=False, engine="pyarrow")
-    log.info(f"Saved: {output_parquet.name} ({len(joined):,} rows)")
-
-    config = {
-        "script":              "01_preprocess_control_data.py",
-        "dimension":           1,
-        "scope_definition":    "One scope per product (all rows merged)",
-        "run_at":              datetime.now().isoformat(),
-        "file_ctrl_details":   str(FILE_CTRL_DETAILS),
-        "file_product_clusters": str(FILE_PRODUCT_CLUSTERS),
-        "output_dir":          str(OUTPUT_DIR),
-        "similarity_threshold":      SIMILARITY_THRESHOLD,
-        "max_controls_per_llm_call": MAX_CONTROLS_PER_LLM_CALL,
-        "retry_count":               RETRY_COUNT,
-        "force_refresh_embeddings":  FORCE_REFRESH_EMBEDDINGS,
-        "include_ctrl_owner":        INCLUDE_CTRL_OWNER,
-        "run_within_product":        RUN_WITHIN_PRODUCT,
-        "expanded_rows":             len(joined),
-        "unique_controls":           int(joined["Control_ID"].nunique()),
-        "unique_scopes":             int(joined["scope_id"].nunique()),
+    # ── Load or generate embeddings ────────────────────────────────────────
+    emb_df = load_or_generate_embeddings(df, force_emb, log)
+    emb_lookup = {
+        row["Control_ID"]: np.array(row["embedding"], dtype=np.float32)
+        for _, row in emb_df.iterrows()
     }
-    with open(OUTPUT_DIR / "run_config.json", "w") as f:
+    log.info(f"Embedding lookup ready: {len(emb_lookup):,} controls")
+
+    # ── Build scopes ───────────────────────────────────────────────────────
+    all_wp_pairs, all_wp_scopes = [], []
+    all_cp_pairs, all_cp_scopes = [], []
+
+    if run_within:
+        log.info("\nBuilding within-product scopes and candidate pairs...")
+        wp_scopes = build_within_product_scopes(df)
+        log.info(f"  Within-product scopes: {len(wp_scopes):,}")
+
+        small, large = 0, 0
+        for scope_id, scope_df in wp_scopes.items():
+            n = scope_df["Control_ID"].nunique()
+            if n < 2:
+                # Single-control scope — no comparison possible
+                all_wp_scopes.append({
+                    "scope_id":   scope_id,
+                    "scope_type": "within_product",
+                    "n_controls": n,
+                    "send_all":   True,
+                    "n_batches":  1,
+                    "n_pairs_above_threshold": 0,
+                    "skip_reason": "single_control",
+                })
+                # Add a single-control "pair" row so Script 3 knows about this control
+                for _, row in scope_df.iterrows():
+                    all_wp_pairs.append({
+                        "scope_id":         scope_id,
+                        "scope_type":       "within_product",
+                        "control_id_a":     row["Control_ID"],
+                        "control_id_b":     None,
+                        "cosine_similarity":None,
+                        "above_threshold":  None,
+                        "batch_id":         0,
+                        "send_all":         True,
+                        "single_control":   True,
+                    })
+                continue
+
+            pairs_rows, scope_meta = build_candidate_pairs(
+                scope_df, emb_lookup, scope_id, "within_product",
+                threshold, max_per_batch, log)
+            scope_meta["skip_reason"] = ""
+            all_wp_pairs.extend(pairs_rows)
+            all_wp_scopes.append(scope_meta)
+
+            if scope_meta["send_all"]:
+                small += 1
+            else:
+                large += 1
+                log.info(f"  Large scope ({n} controls, "
+                         f"{scope_meta['n_batches']} batches): {scope_id[:80]}")
+
+        log.info(f"  Small scopes (send_all): {small:,} | "
+                 f"Large scopes (batched): {large:,}")
+
+    # Cross-product scopes not used in Dimension 1.
+    # Deferred to Dimension 2 (CT-objective-level run).
+    if run_cross:
+        log.info("\nCross-product assessment skipped for Dimension 1.")
+        log.info("  CP scopes are handled in Dimension 2.")
+
+    # ── Save outputs ───────────────────────────────────────────────────────
+    log.info("\nSaving candidate pair outputs...")
+
+    if all_wp_pairs:
+        wp_df = pd.DataFrame(all_wp_pairs)
+        wp_df.to_parquet(CAND_WP_PARQUET, index=False, engine="pyarrow")
+        log.info(f"  {CAND_WP_PARQUET.name}: {len(wp_df):,} rows")
+    else:
+        pd.DataFrame().to_parquet(CAND_WP_PARQUET, index=False, engine="pyarrow")
+
+    if all_wp_scopes:
+        ws_df = pd.DataFrame(all_wp_scopes)
+        ws_df.to_parquet(SCOPE_WP_PARQUET, index=False, engine="pyarrow")
+        log.info(f"  {SCOPE_WP_PARQUET.name}: {len(ws_df):,} scopes")
+        log.info(f"    send_all scopes   : "
+                 f"{ws_df['send_all'].sum():,}")
+        log.info(f"    batched scopes    : "
+                 f"{(~ws_df['send_all']).sum():,}")
+    else:
+        pd.DataFrame().to_parquet(SCOPE_WP_PARQUET, index=False, engine="pyarrow")
+
+    if all_cp_pairs:
+        cp_df = pd.DataFrame(all_cp_pairs)
+        cp_df.to_parquet(CAND_CP_PARQUET, index=False, engine="pyarrow")
+        log.info(f"  {CAND_CP_PARQUET.name}: {len(cp_df):,} rows")
+    else:
+        pd.DataFrame().to_parquet(CAND_CP_PARQUET, index=False, engine="pyarrow")
+
+    if all_cp_scopes:
+        cs_df = pd.DataFrame(all_cp_scopes)
+        cs_df.to_parquet(SCOPE_CP_PARQUET, index=False, engine="pyarrow")
+        log.info(f"  {SCOPE_CP_PARQUET.name}: {len(cs_df):,} scopes")
+    else:
+        pd.DataFrame().to_parquet(SCOPE_CP_PARQUET, index=False, engine="pyarrow")
+
+    # Update run_config with Step 2 results
+    config["step2_completed_at"] = datetime.now().isoformat()
+    config["n_within_product_scopes"] = len(all_wp_scopes)
+    config["n_cross_product_scopes"]  = len(all_cp_scopes)
+    config["n_wp_candidate_pairs"]    = len(all_wp_pairs)
+    config["n_cp_candidate_pairs"]    = len(all_cp_pairs)
+    with open(RUN_CONFIG, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
-    log.info("run_config.json saved.")
 
     log.info("=" * 70)
-    log.info("  Step 1 complete. Run 02_generate_embeddings_and_candidates.py next.")
+    log.info("  Step 2 complete. Run 03_run_llm_assessment.py next.")
     log.info("=" * 70)
+
 
 if __name__ == "__main__":
     main()
