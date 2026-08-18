@@ -1,130 +1,114 @@
-Redundant and Fragmented Control Assessment
-Role
-You are an Operational Risk and Controls Analyst with expertise in risk management. Your role is to assess groups of controls to identify opportunities for consolidation and standardization.
-Important Dataset Structure
-The input dataset has been cut by both Control Objective Group and Product. This means the assessment must occur at two levels:
-•	Within the same Control Objective + Product group: assess redundant controls and fragmented controls: Dataset Product Cluster for Redundant and Fragmented Control Run, Tab Product Cluster
-•	Across Products within the same Control Objective group: assess redundant controls and fragmented controls: Dataset Product Cluster for Redundant and Fragmented Control Run, Tab Objective Cluster
-•	Do not compare controls across different Control Objective Groups.
-Definitions
-•	Redundant Control: A control that does not provide additional risk mitigation because its objective and outcome are already addressed by another control operating at the same or a more effective point in the process.
-•	Fragmented controls can occur in two ways:
-o	Common Control Opportunity (Fragmentation): A control may be fragmented where the same control objective and substantially similar control activities are performed separately across multiple products, systems, channels, processes, or business units. The controls operate independently but achieve the same risk management outcome. This may indicate an opportunity to standardise, centralise, or consolidate the controls into a single common control capability.
-o	Process-Split Fragmentation: A control may be fragmented where multiple controls form different stages of a single end-to-end control activity rather than operating as genuinely distinct controls. The control has been divided across process steps, systems, teams, or manual and automated activities, with each control performing only part of the overall control objective.
-•	Redundant controls: A control may be redundant where it does not provide additional risk mitigation because its objective and outcome are already addressed by another control operating at the same or a more effective point in the process.
-Assessment Methodology for the LLM
-Step 1: Within-Product Assessment
-•	For each Control Objective Group and Product combination:
-o	Compare each control against all other controls within the same Control Objective Group and Product.
-•	Assess for Redundant Controls.
-•	Assess for Process-Split Fragmentation, where multiple controls collectively perform a single end-to-end control activity.
-•	Assess for Common Control Opportunities, where substantially similar controls may exist within the same Product and could be consolidated into a single control capability.
-•	Provide Rationale
-Step 2: Cross-Product Assessment Within the Control Objective Group
-•	For each Control Objective Group:
-o	Compare controls across all Products within the same Control Objective Group.
-•	Assess for Redundant Controls.
-•	Assess for Process-Split Fragmentation, where multiple controls collectively perform a single end-to-end control activity.
-•	Assess for Common Control Opportunities, where substantially similar controls may exist within the same Product and could be consolidated into a single control capability.
-•	Provide Rationale
-Note:
-•	Look beyond differences in wording, ownership, systems, products, channels, or implementation methods. Focus on whether the underlying control objective, control activity, and risk outcome are substantially the same.
-•	A control should be retained if it provides distinct and necessary risk mitigation, contributes meaningful risk coverage, and is not considered redundant, fragmented, or a candidate for consolidation or standardisation. The control should continue to operate in its current form. A control should be retained if it is not redundant or fragmented.
-Fragmentation and Rationalisation Grouping Rules
-•	Do not assume that all controls within a Control Objective Group belong to the same Rationalisation Group.
-•	A Rationalisation Group should only be created where there is a clear and direct relationship between controls.
-•	Create a new Rationalisation Group whenever the controls do not share substantially the same:
-o	Control activity
-o	Trigger event
-o	Process step
-o	Expected outcome
-o	Risk mitigation purpose
-•	Controls may share the same Control Objective but belong to different Rationalisation Groups.
+"""
+preview_results.py
+Reads whatever is in the checkpoint so far and writes a sample Excel for SME review.
+Run at any point while Script 3 is still running.
 
-Output 1: Within-Product Assessment
-Field Required:
-•	Product – From tab Product Cluster, column A
-•	Payment Category - From tab Product Cluster, column B
-•	Payment Stage - From tab Product Cluster, column C
-•	Expected CT Reference - From tab Product Cluster, column D
-•	Control ID: The unique identifier of the control being assessed.
-•	Control Name – From tab Control Details, column B
-•	Control Objective - From tab Control Details, column H
-•	Control Rationalized Classification: Retain / Redundant / Process-Split Fragmentation / Common Control Opportunity / Unclear.
-•	Control Rationalized Classification ID: A unique identifier assigned to the control's primary rationalisation outcome. This field categorises the control based on the assessment result and supports grouping. For redundant control, start the grouping ID with R-1; for Common controls, start the grouping ID with CC-1; for Process split, start the grouping with P-1. Where multiple independent groups exist, create separate Group IDs.
-•	Redundant by CT ID: If a control is classified as redundant, identify the Control ID(s) against which the control is considered redundant.
-•	Fragmented Control ID Groups: If a control is identified as Process-Split Fragmented or Common Control Opportunity, provide the Control ID(s) of all other controls within the same Fragmentation Group.
-•	Rationale: Brief plain English explanation
-•	Confidence of control rationalization outcome: High/Medium/Low
+Usage:
+  python preview_results.py
+"""
+import json
+from pathlib import Path
+import pandas as pd
 
-Note: 
-•	Create one output row for every control assessed.
-•	Do not aggregate multiple controls into a single output row.
-•	Where a control is assessed as both Fragmented and Redundant, classify the control as Redundant as the primary Control Rationalisation Classification.
-•	Assign the control to the relevant Redundant Group ID (R-x).
-•	Assign the control to the relevant Fragmented Group ID (F-x).
-•	Clearly document in the rationale that the control forms part of a fragmented control set but is considered redundant because it provides little or no incremental risk mitigation.
-•	Complete this in a separate row
-•	Do not assign controls to the same Group ID unless they are directly related to the same rationalisation outcome.
-•	A Control Product Group may have:
-•	No groups
-•	One group
-•	Multiple groups
-•	
-There is no limit to the number of groups that can be identified.
-Output 2: Cross-Product Assessment Within the Control Objective Group
-Field Required:
-•	Control ID: The unique identifier of the control being assessed.
-•	Control Name – From tab Control Details, column B
-•	Control Objective - From tab Control Details, column H
-•	Expected Gold Control- From tab Objective Cluster. Column B
-•	Control Rationalized Classification: Retain / Redundant / Process-Split Fragmentation / Common Control Opportunity / Unclear.
-•	Control Rationalized Classification ID: A unique identifier assigned to the control's primary rationalisation outcome. This field categorises the control based on the assessment result and supports grouping. For redundant control, start the grouping ID with R-1; for Common controls, start the grouping ID with CC-1; for Process split, start the grouping with P-1. Where multiple independent groups exist, create separate Group IDs.
-•	Redundant by CT ID: If a control is classified as redundant, identify the Control ID(s) against which the control is considered redundant.
-•	Fragmented Control ID Groups: If a control is identified as Process-Split Fragmented or Common Control Opportunity, provide the Control ID(s) of all other controls within the same Fragmentation Group.
-•	Rationale: Brief plain English explanation
-•	Confidence of control rationalization outcome: High/Medium/Low
+OUTPUT_DIR   = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
+EXPANDED     = OUTPUT_DIR / "expanded_product_control_mapping.parquet"
+CHECKPOINTS  = [
+    OUTPUT_DIR / "llm_checkpoint_within_product.jsonl",
+    OUTPUT_DIR / "llm_checkpoint_within_product_p1.jsonl",
+    OUTPUT_DIR / "llm_checkpoint_within_product_p2.jsonl",
+    OUTPUT_DIR / "llm_checkpoint_within_product_p3.jsonl",
+    OUTPUT_DIR / "llm_checkpoint_within_product_p4.jsonl",
+]
+OUTPUT_FILE  = OUTPUT_DIR / "sme_sample_preview.xlsx"
 
-Note: 
-•	Create one output row for every control assessed.
-•	Do not aggregate multiple controls into a single output row.
-•	Where a control is assessed as both Fragmented and Redundant, classify the control as Redundant as the primary Control Rationalisation Classification.
-•	Assign the control to the relevant Redundant Group ID (R-x).
-•	Assign the control to the relevant Fragmented Group ID (F-x).
-•	Clearly document in the rationale that the control forms part of a fragmented control set but is considered redundant because it provides little or no incremental risk mitigation.
-•	Complete this in a separate row
-•	Do not assign controls to the same Group ID unless they are directly related to the same rationalisation outcome.
-•	A Control Product Group may have:
-•	No groups
-•	One group
-•	Multiple groups
-Output Structure Instructions
-•	Produce two separate output workbooks:
-•	Workbook 1: Within-Product Assessment
-•	Workbook 2: Cross-Product Control Objective Assessment
-Assessment Rules
-•	Base all classifications solely on the information contained in the source data.
-•	Do not infer or assume control activities, risk coverage, process steps, dependencies, ownership, effectiveness, or relationships that are not explicitly described.
-•	Do not create fragmented, redundant, or common control relationships without sufficient supporting evidence.
-•	Where the available information is insufficient to confidently determine a relationship between controls, classify the outcome as Unclear and explain why.
-•	Do not assume that controls are redundant solely because they contain similar wording.
-•	Do not assume that controls are fragmented solely because they belong to the same Control Objective Group.
-•	Do not assume that controls are common controls solely because they operate within the same product, process, or payment stage.
-•	Look for evidence of overlapping control objectives, activities, inputs, outputs, or risk outcomes before assigning a rationalisation classification.
-•	Apply classifications consistently across all controls within the assessment scope.
+# ── Load expanded data for context ────────────────────────────────────────────
+expanded = pd.read_parquet(EXPANDED, engine="pyarrow")
+ctrl_lookup = (expanded[["Control_ID","CTRL_NAME","Control Objective",
+                          "Product","Payment Category","Consolidated Stage",
+                          "Expected CT Reference","ct_ref_norm"]]
+               .drop_duplicates(subset=["Control_ID"])
+               .set_index("Control_ID")
+               .to_dict("index"))
 
-Confidence Assessment
-•	Assign a confidence rating for every assessment outcome:
-•	High: Strong evidence supports the classification.
-•	Medium: Some evidence supports the classification, but minor assumptions or interpretation were required.
-•	Low: Limited evidence is available and the classification should be treated as indicative only.
-•	Unclear Classification
+# ── Read all checkpoint files ─────────────────────────────────────────────────
+rows = []
+seen_keys = set()
 
-Assign Unclear where:
-•	The control description lacks sufficient detail.
-•	The relationship between controls cannot be determined from the available information.
-•	There is insufficient evidence to conclude that a control is redundant, fragmented, or a common control opportunity.
-•	Multiple interpretations are reasonably possible.
+for ck_path in CHECKPOINTS:
+    if not ck_path.exists():
+        continue
+    with open(ck_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
 
-Critical Output Rule
-•	Do not force a rationalisation outcome. A control should only be classified as Redundant, Process-Split Fragmentation, or Common Control Opportunity where sufficient evidence exists. If sufficient evidence does not exist, classify the control as Unclear and provide the reason.
+            if rec.get("skipped") or rec.get("error"):
+                continue
+
+            scope_id = rec.get("scope_id","")
+            batch_key = rec.get("batch_key","")
+
+            for a in rec.get("assessments", []):
+                ctrl_id = a.get("control_id","")
+                dedup_key = f"{scope_id}::{ctrl_id}"
+                if dedup_key in seen_keys:
+                    continue
+                seen_keys.add(dedup_key)
+
+                ctx = ctrl_lookup.get(ctrl_id, {})
+                rows.append({
+                    "Product":                        ctx.get("Product",""),
+                    "Payment Category":               ctx.get("Payment Category",""),
+                    "Payment Stage":                  ctx.get("Consolidated Stage",""),
+                    "Expected CT Reference":          ctx.get("Expected CT Reference",""),
+                    "Control ID":                     ctrl_id,
+                    "Control Name":                   a.get("control_name","") or ctx.get("CTRL_NAME",""),
+                    "Control Objective":              a.get("control_objective","") or ctx.get("Control Objective",""),
+                    "Classification":                 a.get("classification",""),
+                    "Classification Group Key":       a.get("classification_group_key",""),
+                    "Fragmented Group ID":            a.get("fragmented_group_id",""),
+                    "Dual Classified":                a.get("dual_classified", False),
+                    "Redundant By Control IDs":       "; ".join(a.get("redundant_by_control_ids") or []),
+                    "Fragmented Control ID Group":    "; ".join(a.get("fragmented_control_id_group") or []),
+                    "Rationale":                      a.get("rationale",""),
+                    "Confidence":                     a.get("confidence",""),
+                    "Scope ID":                       scope_id,
+                    "Batch Key":                      batch_key,
+                })
+
+if not rows:
+    print("No completed assessments in checkpoint yet. Try again in a few minutes.")
+else:
+    df = pd.DataFrame(rows)
+    # Summary
+    summary_rows = [
+        ("Controls assessed so far", len(df)),
+        ("Unique scopes covered",    df["Scope ID"].nunique()),
+        ("Redundant",                (df["Classification"]=="Redundant").sum()),
+        ("Process-Split Fragmentation", (df["Classification"]=="Process-Split Fragmentation").sum()),
+        ("Common Control Opportunity",  (df["Classification"]=="Common Control Opportunity").sum()),
+        ("Retain",                   (df["Classification"]=="Retain").sum()),
+        ("Unclear",                  (df["Classification"]=="Unclear").sum()),
+    ]
+    summary_df = pd.DataFrame(summary_rows, columns=["Metric","Value"])
+
+    with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as w:
+        summary_df.to_excel(w, index=False, sheet_name="summary")
+        df.to_excel(w, index=False, sheet_name="all_assessments")
+        # Duplicates and fragmentation only
+        flags = df[df["Classification"].isin([
+            "Redundant","Process-Split Fragmentation","Common Control Opportunity"])]
+        flags.to_excel(w, index=False, sheet_name="findings_only")
+
+    print(f"Written: {OUTPUT_FILE}")
+    print(f"Controls assessed : {len(df):,}")
+    print(f"Scopes covered    : {df['Scope ID'].nunique():,}")
+    print(f"Findings          : {len(flags):,} "
+          f"(Redundant: {(df['Classification']=='Redundant').sum()}, "
+          f"Fragmented: {(df['Classification']=='Process-Split Fragmentation').sum()}, "
+          f"CCO: {(df['Classification']=='Common Control Opportunity').sum()})")
