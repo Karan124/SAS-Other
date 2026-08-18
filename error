@@ -1,14 +1,329 @@
-For Commercial Hire Purchase - below is the input data from product_clusters.xlsx
+"""
+01_preprocess_control_data.py
+─────────────────────────────────────────────────────────────────────────────
+Control Rationalisation — Step 1 of 4
+Dimension 1: Product-level cluster assessment
 
-Product	Payment Category	Consolidated Stage	Expected CT Reference	Expected Control	Unique Control Count	Unique Control IDs
-Commercial Hire Purchase	Customer to Institution	Posting, Accounting & Detection	CT2	Error Detection	4	CTL000046172, CTL000086702, CTL000141609, CTL000165592
-Commercial Hire Purchase	Institution to Customer	Initiation & Validation & Authorisation	CT1	Validation of transaction details	6	CTL000046170, CTL000046201, CTL000141592, CTL000154629, CTL000168429, CTL011408
+Scope: one scope per product (WP|{Product}).
+All rows for the same product in product_clusters.xlsx are merged.
+Only Product and Unique Control IDs are read from product_clusters.xlsx.
+
+Run:
+  python 01_preprocess_control_data.py
+  python 01_preprocess_control_data.py --force
+"""
+
+import argparse
+import json
+import logging
+import re
+import sys
+from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  CONFIG
+# ─────────────────────────────────────────────────────────────────────────────
+
+FILE_CTRL_DETAILS     = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\raw\ctrl_details.xlsx")
+FILE_PRODUCT_CLUSTERS = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\raw\product_clusters.xlsx")
+OUTPUT_DIR            = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
+
+SIMILARITY_THRESHOLD      = 0.58
+MAX_CONTROLS_PER_LLM_CALL = 20
+RETRY_COUNT               = 5
+INCLUDE_CTRL_OWNER        = False
+
+CTRL_REQUIRED_COLS = ["Control_ID", "CTRL_NAME"]
+CTRL_OPTIONAL_COLS = [
+    "CTRL_NATRE", "CTRL_STUS", "CTRL_OWNER", "CTRL_FREQ",
+    "CTRL_KEY_CONTRL", "Control Objective", "CTRL_TYP",
+    "CTRL_ASSESS_RTNG", "CTRL_OE_RTNG", "CTRL_DE_RTNG",
+    "CTRL_CTGRY_1", "CTRL_CTGRY_2", "CTRL_LOC_LIST",
+    "CTRL_EVDNCD", "CTRL_MNTRD", "CTRL_CATEGORY",
+    "Control_Description", "CTRL_FLDR", "object_path_leaf",
+    "CTRL_FLDR_LVL_2(Division)", "gold_control",
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def safe_str(val):
+    if pd.isna(val):
+        return ""
+    return re.sub(r"\s+", " ", str(val).replace("\t"," ").replace("\r"," ")
+                  .replace("\n"," ")).strip()
+
+def is_blank(val):
+    return safe_str(val) == ""
+
+def clean_cols(df):
+    df.columns = df.columns.str.strip()
+    return df
+
+def setup_logging():
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    logger = logging.getLogger("ctrl_rat")
+    if logger.handlers:
+        return logger
+    fh = logging.FileHandler(OUTPUT_DIR / "processing_log.txt", encoding="utf-8")
+    ch = logging.StreamHandler(sys.stdout)
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s",
+                            datefmt="%Y-%m-%d %H:%M:%S")
+    fh.setFormatter(fmt); ch.setFormatter(fmt)
+    fh.setLevel(logging.DEBUG); ch.setLevel(logging.INFO)
+    logger.addHandler(fh); logger.addHandler(ch)
+    logger.setLevel(logging.DEBUG)
+    return logger
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  LOAD AND VALIDATE
+# ─────────────────────────────────────────────────────────────────────────────
+
+def load_and_validate(log):
+    for f in [FILE_CTRL_DETAILS, FILE_PRODUCT_CLUSTERS]:
+        if not f.exists():
+            log.error(f"Not found: {f}")
+            sys.exit(1)
+
+    log.info(f"Loading ctrl_details...")
+    ctrl = clean_cols(pd.read_excel(FILE_CTRL_DETAILS, dtype=str, engine="openpyxl"))
+    log.info(f"  {len(ctrl):,} rows | {ctrl.columns.tolist()[:5]}...")
+
+    log.info(f"Loading product_clusters...")
+    clusters = clean_cols(pd.read_excel(FILE_PRODUCT_CLUSTERS, dtype=str,
+                                        engine="openpyxl"))
+    log.info(f"  {len(clusters):,} rows | columns: {clusters.columns.tolist()}")
+
+    if "Control_ID" not in ctrl.columns:
+        log.error("ctrl_details missing Control_ID column")
+        sys.exit(1)
+    if "Product" not in clusters.columns:
+        log.error("product_clusters missing Product column")
+        sys.exit(1)
+
+    # Find the control IDs column (flexible name matching)
+    id_col = next((c for c in clusters.columns
+                   if "unique" in c.lower() and "control" in c.lower()
+                   and "id" in c.lower()), None)
+    if id_col is None:
+        id_col = next((c for c in clusters.columns
+                       if "control" in c.lower() and "id" in c.lower()), None)
+    if id_col is None:
+        log.error(f"Cannot find Unique Control IDs column. "
+                  f"Available: {clusters.columns.tolist()}")
+        sys.exit(1)
+    log.info(f"  Using control ID column: '{id_col}'")
+
+    missing_opt = [c for c in CTRL_OPTIONAL_COLS if c not in ctrl.columns]
+    if missing_opt:
+        log.warning(f"Optional columns not found (blank in output): {missing_opt}")
+
+    return ctrl, clusters, id_col
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  EXPAND CLUSTERS
+# One scope per product — all rows for the same product merged together
+# ─────────────────────────────────────────────────────────────────────────────
+
+def expand_clusters(clusters, id_col, log):
+    log.info("Grouping all rows by Product into one scope per product...")
+
+    product_controls: dict[str, set] = {}
+    n_skip = 0
+
+    for _, row in clusters.iterrows():
+        product = safe_str(row.get("Product", ""))
+        if not product:
+            n_skip += 1
+            continue
+        raw_ids  = safe_str(row.get(id_col, ""))
+        ctrl_ids = [c.strip() for c in raw_ids.split(",") if c.strip()]
+        if not ctrl_ids:
+            n_skip += 1
+            continue
+        product_controls.setdefault(product, set()).update(ctrl_ids)
+
+    if n_skip:
+        log.warning(f"  {n_skip} rows skipped (blank product or no IDs)")
+
+    rows = []
+    for product in sorted(product_controls):
+        scope_id = f"WP|{product}"
+        for ctrl_id in sorted(product_controls[product]):
+            rows.append({"scope_id": scope_id,
+                         "Product":  product,
+                         "Control_ID": ctrl_id})
+
+    expanded = pd.DataFrame(rows)
+    log.info(f"  Products (scopes)  : {len(product_controls):,}")
+    log.info(f"  Total control rows : {len(expanded):,}")
+    log.info(f"  Unique controls    : {expanded['Control_ID'].nunique():,}")
+
+    sizes = expanded.groupby("Product")["Control_ID"].count().sort_values(ascending=False)
+    log.info("  Controls per product (top 10):")
+    for p, n in sizes.head(10).items():
+        log.info(f"    {p}: {n}")
+    return expanded
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  JOIN CONTROL DETAILS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def join_details(expanded, ctrl, log):
+    log.info("Joining control details...")
+    ctrl_clean = ctrl.copy()
+    ctrl_clean["Control_ID"] = ctrl_clean["Control_ID"].apply(safe_str)
+    for col in ctrl_clean.columns:
+        ctrl_clean[col] = ctrl_clean[col].apply(safe_str)
+    ctrl_clean = ctrl_clean.drop_duplicates(subset=["Control_ID"], keep="first")
+
+    joined = expanded.merge(ctrl_clean, on="Control_ID", how="left")
+    n_matched   = joined["CTRL_NAME"].apply(lambda x: not is_blank(x)).sum()
+    n_unmatched = joined["CTRL_NAME"].apply(is_blank).sum()
+    unmatched   = joined[joined["CTRL_NAME"].apply(is_blank)]["Control_ID"].unique()
+    log.info(f"  Matched   : {n_matched:,}")
+    log.info(f"  Unmatched : {n_unmatched:,}")
+    if len(unmatched):
+        log.warning(f"  Unmatched IDs: {list(unmatched[:10])}")
+    return joined
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  TEXT PAYLOADS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_embedding_text(row):
+    def f(field, label):
+        val = safe_str(row.get(field, ""))
+        return f"{label}:\n{val}" if val else ""
+    parts = [
+        f("Control_ID",               "Control ID"),
+        f("CTRL_NAME",                "Control Name"),
+        f("Control Objective",        "Control Objective"),
+        f("Control_Description",      "Control Description"),
+        f("CTRL_NATRE",               "Nature"),
+        f("CTRL_FREQ",                "Frequency"),
+        f("CTRL_TYP",                 "Type"),
+        f("CTRL_KEY_CONTRL",          "Key Control"),
+        f("CTRL_CTGRY_1",             "Category 1"),
+        f("CTRL_CTGRY_2",             "Category 2"),
+        f("CTRL_EVDNCD",              "Evidence"),
+        f("CTRL_MNTRD",               "Monitoring"),
+        f("CTRL_CATEGORY",            "Control Category"),
+        f("CTRL_FLDR_LVL_2(Division)","Division"),
+        f("object_path_leaf",         "Business Area"),
+        f("Product",                  "Product"),
+    ]
+    if INCLUDE_CTRL_OWNER:
+        parts.append(f("CTRL_OWNER", "Control Owner"))
+    return "\n\n".join(p for p in parts if p)
 
 
-And for the same product - this is from the output - why are some controls missing?
+def build_llm_text(row):
+    def f(field, label):
+        val = safe_str(row.get(field, ""))
+        return f"{label}: {val}" if val else ""
+    lines = [
+        f("Product",              "Product"),
+        f("Control_ID",           "Control ID"),
+        f("CTRL_NAME",            "Control Name"),
+        f("Control Objective",    "Control Objective"),
+        f("Control_Description",  "Control Description"),
+        f("CTRL_NATRE",           "Nature"),
+        f("CTRL_FREQ",            "Frequency"),
+        f("CTRL_TYP",             "Type"),
+        f("CTRL_KEY_CONTRL",      "Key Control"),
+        f("CTRL_CTGRY_1",         "Category 1"),
+        f("CTRL_CTGRY_2",         "Category 2"),
+        f("CTRL_EVDNCD",          "Evidence"),
+        f("CTRL_MNTRD",           "Monitoring"),
+        f("CTRL_CATEGORY",        "Control Category"),
+        f("CTRL_FLDR_LVL_2(Division)", "Division"),
+        f("object_path_leaf",     "Business Area"),
+        f("gold_control",         "Gold Control"),
+    ]
+    if INCLUDE_CTRL_OWNER:
+        lines.append(f("CTRL_OWNER", "Control Owner"))
+    return "\n".join(l for l in lines if l)
 
-Product	Control ID	Control Name	Control Objective	Classification	Classification Group Key	Fragmented Group ID	Dual Classified	Redundant By Control IDs	Fragmented Control ID Group	Rationale	Confidence	Scope ID
-Commercial Hire Purchase	CTL000046170	EFO – Administrative Requests Hindsight Review for Accredited Onshore Team Members	The control ensures accounts related activities processed by accredited WEF Servicing Onshore team members are completed accurately and timely in line with business standards.	Common Control Opportunity	CC-1		FALSE			This control and CTL000046201 use substantially the same QA/accreditation control model: monthly hindsight review, prior-period population extraction, sample-based testing of accredited staff activity, use of QA checklists/systems, recording of exceptions, remediation, and re-review. The difference is the operational population reviewed: CTL000046170 covers administrative requests across servicing and banking administration mailboxes, while CTL000046201 covers settlements activity. Because they operate separately across different process streams but achieve the same quality assurance and transaction-validation outcome through the same control pattern, they indicate a standardisation opportunity rather than redundancy.	High	WP|Commercial Hire Purchase|Institution to Customer|Initiation & Validation & Authorisation|CT1
-Commercial Hire Purchase	CTL000046201	EFO – WEF/CFAL & SGB - Settlement QA for Accredited Team Members	The objective of this control is to ensure that settlements related activities processed by WEF Settlements team members are completed accurately and in line with business standards. Brand: WEF/CFAL & SGB	Common Control Opportunity	CC-1		FALSE			This control is substantively aligned with CTL000046170 in design and intended outcome. Both are monthly detective QA controls over accredited team members using population extracts, defined sample rates, independent review, checklist-based testing, exception logging, remediation, and reperformance monitoring. CTL000046201 applies that model to settlement activity, while CTL000046170 applies it to administrative request activity. The controls are therefore not redundant because each covers a different operational population, but they are fragmented instances of the same assurance framework and present a common control opportunity for standardised QA governance, sampling, evidence capture, and exception handling.	High	WP|Commercial Hire Purchase|Institution to Customer|Initiation & Validation & Authorisation|CT1
-Commercial Hire Purchase	CTL011408	CSF – Drawdown Notices are checked and signed-off by a second team member	To ensure the Asset Finance Deal Packs are completed and authorised by two team members and to match Credit’s approval of the transaction with the necessary supporting documentation before being sent to WNZL Credit Risk Control for settlement.	Process-Split Fragmentation	P-1	P-1	FALSE		CTL011408; CTL000154629	This control appears to be the upstream validation stage of the same WNZL Asset Finance drawdown control chain reflected in CTL000154629. CTL011408 requires a Deal Pack to be prepared, checked, and countersigned, including verification of customer request, credit approval, supporting documentation, asset details, limit availability, and security requirements before settlement. CTL000154629 then uses that completed Deal Pack as an input to prepare a Settlement Checklist, validate financial and payee details, and perform maker/checker review before release of funds. The two controls are not exact duplicates because they operate at different points and validate different elements, but they form consecutive stages of one end-to-end drawdown validation and authorisation process.	High	WP|Commercial Hire Purchase|Institution to Customer|Initiation & Validation & Authorisation|CT1
-Commercial Hire Purchase	CTL000154629	WPO - Maker/Checker for Asset Finance drawdown using a checklist	Independent manual maker/checker review of all customer static data creation and amendment into InfoLease by Asset Finance Operations (AFO) for accuracy and completeness by using a Asset Finance Drawdown checklist. The risk the control mitigates is Internal Fraud and the risk of incomplete, delayed, inaccurate or omitted processing/settlement of customer transactions or payments made to/from customers.	Process-Split Fragmentation	P-1	P-1	FALSE		CTL011408; CTL000154629	This control is the downstream settlement and system-input stage of the same WNZL Asset Finance drawdown validation flow as CTL011408. CTL000154629 explicitly relies on the completed Deal Pack from the Asset Finance team, then performs maker/checker validation through a Settlement Checklist, financial calculation checks, payee and invoice checks, InfoLease input checks, and review before release of funds. CTL011408 performs the earlier Deal Pack preparation and second-person sign-off over customer request, limits, documentation, and credit approval. Together they operate as split stages of one end-to-end control over drawdown validation, setup, and authorisation rather than fully independent controls.	High	WP|Commercial Hire Purchase|Institution to Customer|Initiation & Validation & Authorisation|CT1
+# ─────────────────────────────────────────────────────────────────────────────
+#  MAIN
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--force", action="store_true")
+    args = parser.parse_args()
+
+    log = setup_logging()
+    log.info("=" * 70)
+    log.info("  Control Rationalisation — Step 1: Preprocessing (Dimension 1)")
+    log.info(f"  Scope: one scope per product (WP|{{Product}})")
+    log.info(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    log.info("=" * 70)
+
+    output_parquet = OUTPUT_DIR / "expanded_product_control_mapping.parquet"
+    if output_parquet.exists() and not args.force:
+        log.info("Output exists. Use --force to regenerate.")
+        return
+
+    ctrl, clusters, id_col = load_and_validate(log)
+    expanded = expand_clusters(clusters, id_col, log)
+    joined   = join_details(expanded, ctrl, log)
+
+    log.info("Building text payloads...")
+    joined["embedding_text"]   = joined.apply(build_embedding_text, axis=1)
+    joined["llm_payload_text"] = joined.apply(build_llm_text, axis=1)
+
+    joined.to_parquet(output_parquet, index=False, engine="pyarrow")
+    log.info(f"Saved: {output_parquet.name} ({len(joined):,} rows, "
+             f"{joined['scope_id'].nunique():,} scopes)")
+
+    # Data quality report
+    unmatched = joined[joined["CTRL_NAME"].apply(is_blank)]["Control_ID"].unique()
+    dq = pd.DataFrame([
+        ("Products (scopes)",            joined["scope_id"].nunique()),
+        ("Total control rows",           len(joined)),
+        ("Unique controls",              joined["Control_ID"].nunique()),
+        ("Matched to ctrl_details",
+         int(joined["CTRL_NAME"].apply(lambda x: not is_blank(x)).sum())),
+        ("Unmatched Control_IDs",        len(unmatched)),
+        ("Blank Control_Description",
+         int(joined["Control_Description"].apply(is_blank).sum())
+         if "Control_Description" in joined.columns else "n/a"),
+        ("Blank Control Objective",
+         int(joined["Control Objective"].apply(is_blank).sum())
+         if "Control Objective" in joined.columns else "n/a"),
+    ], columns=["Metric", "Value"])
+
+    dq_path = OUTPUT_DIR / "data_quality_report.xlsx"
+    with pd.ExcelWriter(dq_path, engine="openpyxl") as w:
+        dq.to_excel(w, index=False, sheet_name="summary")
+        if len(unmatched):
+            pd.DataFrame({"Unmatched_Control_ID": unmatched}).to_excel(
+                w, index=False, sheet_name="unmatched_ids")
+    log.info(f"Data quality report: {dq_path.name}")
+
+    config = {
+        "run_at":              datetime.now().isoformat(),
+        "dimension":           1,
+        "scope_definition":    "One scope per product — WP|{Product}",
+        "similarity_threshold":      SIMILARITY_THRESHOLD,
+        "max_controls_per_llm_call": MAX_CONTROLS_PER_LLM_CALL,
+        "retry_count":               RETRY_COUNT,
+        "expanded_rows":             len(joined),
+        "unique_controls":           int(joined["Control_ID"].nunique()),
+        "unique_scopes":             int(joined["scope_id"].nunique()),
+    }
+    with open(OUTPUT_DIR / "run_config.json", "w") as f:
+        json.dump(config, f, indent=2)
+
+    log.info("=" * 70)
+    log.info("  Step 1 complete. Run 02_generate_embeddings_and_candidates.py next.")
+    log.info("=" * 70)
+
+if __name__ == "__main__":
+    main()
