@@ -1,7 +1,130 @@
-Product	Payment Category	Payment Stage	Expected CT Reference	Control ID	Control Name	Control Objective	Classification	Classification Group Key	Fragmented Group ID	Dual Classified	Redundant By Control IDs	Fragmented Control ID Group	Rationale	Confidence	Scope ID
-AUD Investment Accounts	Customer to Customer	Execution & Early Processing Assurance	CT3	CTL000174089	Payment Operational Data Store (PODS) Auto Controls	CCMP PODS (A0154A) will be the persistent data store for W1C Payment data. PODS is an infrastructure component with no business users. The control is designed to prevent PODS from processing duplicate payment event information into the data store.	Retain	CTL000174089		FALSE			This control operates at the PODS data-ingestion layer and specifically prevents duplicate technical message events from being ingested into the PODS publish data store by comparing event attributes such as ID and event code. The other control operates within FIS transaction processing and OVA workflow, covering payment message validation, duplicate MPIR detection, and maker-checker approval for replay/reject actions. Although both address duplication/processing error risk under CT3, they do so at different system layers, on different inputs, and with different outcomes: PODS protects downstream data-store integrity, while FIS protects payment initiation and transaction processing integrity. There is not enough evidence that PODS merely repeats FIS validation or that both form one split end-to-end control activity.	High	WP|AUD Investment Accounts|Customer to Customer|Execution & Early Processing Assurance|CT3
-AUD Investment Accounts	Customer to Customer	Execution & Early Processing Assurance	CT3	CTL000176671	FIS (NPP) Auto Controls	The objective of the controls is to prevent FIS from processing NPP payments and to prevent PayTo Mandates to non NPP enabled customers payments due to: - incomplete, inaccurate, and/or duplicate data - incomplete mandate payment initiation requests (MPIR). The control mitigates the risk associated with poor customer experience, erroneous/delayed transaction processing, and data quality.	Retain	CTL000176671		FALSE			This control is broader and earlier in the payment-processing chain than the PODS control. It includes automated FIS validations over payment message fields, duplicate MPIR checks for PayTo, and OVA maker-checker controls over replay/reject actions in the exception queue. These activities prevent incorrect or duplicate payment processing within the payment engine and govern operational intervention. By contrast, the PODS control only filters duplicate technical events before ingestion into a publish store. The overlap is only at a high-level risk theme of duplication and processing errors; the specific activities, systems, and control outcomes are materially different. Therefore this control provides distinct risk mitigation and should be retained.	High	WP|AUD Investment Accounts|Customer to Customer|Execution & Early Processing Assurance|CT3
-AUD Investment Accounts	Customer to Customer	Execution & Early Processing Assurance	CT4	CTL000044755	Direct Entry - exception queue monitoring	The objective of the control is to ensure that where files were unable to be processed these are identified and ultimately repaired or removed. This looks to mitigate errors, delays and omissions with client payments relating to Direct Entry (7.4.1)	Common Control Opportunity	CC-1		FALSE			This control and CTL000082206 have substantially the same underlying control pattern: system-generated payment/transaction exceptions are reviewed daily by an operations team, investigated, escalated where needed, and tracked to resolution. Here, the Direct Entry exception queue report identifies rejected files that could not be processed same day, and the DE team reviews, escalates and follows up unresolved items. CTL000082206 similarly uses TLM-created exceptions, requires team ownership and investigation, and management monitors volumes and SLA breaches through daily dashboards. Although they operate in different systems and business areas, both mitigate the same core risk outcome of non-identification of processing failures leading to errors and delays. This indicates fragmentation of a common exception-monitoring capability rather than true duplication, because each applies to a different processing environment.	Medium	WP|AUD Investment Accounts|Customer to Customer|Execution & Early Processing Assurance|CT4
-AUD Investment Accounts	Customer to Customer	Execution & Early Processing Assurance	CT4	CTL000082206	NZIO - Daily Investigations and Monitoring of Exceptions in Transaction Lifecycle Management (TLM)	The control is in place to ensure that exceptions automatically created in Transaction Lifecycle Management (TLM) are being investigated, resolved and monitored on a daily basis. The purpose of this activity is to mitigate the risk of non-identification, errors and delays in processing a transaction by ensuring exceptions are investigated and resolved by the NZIO Reconciliation and Investigations Team and the NZIO Management Team monitoring the exceptions through the reporting being provided to them on the NZIO Reconciliation and Investigations Team service levels on a daily basis.	Common Control Opportunity	CC-1		FALSE			This control is a strong match to CTL000044755 at the level of objective, activity and outcome. TLM automatically creates exceptions, the NZIO team takes ownership, investigates, records commentary, closes items, and management reviews daily dashboards on volumes and SLA breaches. CTL000044755 also relies on a daily exception report for unprocessed files, manual review by the operations team, escalation, and monitoring to resolution. Both are daily detective exception-management controls for failed or unmatched transaction processing, differing mainly by platform and organisational ownership. They therefore suggest an opportunity to standardise or centralise the exception-monitoring control model across payment operations, but neither is redundant because each covers a separate system population.	Medium	WP|AUD Investment Accounts|Customer to Customer|Execution & Early Processing Assurance|CT4
-AUD Investment Accounts	Customer to Customer	Execution & Early Processing Assurance	CT4	CTL009174	Automatic interface between VisionPlus and the Oracle General Ledger for externally generated postings to ensure the completeness and accuracy of Vision Plus to Oracle GL reconciliations	Automatic interface between VisionPlus and the Oracle General Ledger for externally generated postings to ensure the completeness and accuracy of VisionPlus to Oracle GL reconciliations. The interface controls include automatic error messages within VisionPlus and the Oracle GL which will then be reported for investigation.	Retain	CTL009174		FALSE			This control provides distinct risk mitigation and should be retained. Unlike CTL000044755 and CTL000082206, which are manual daily detective reviews of operational exception queues, this is an automated interface control between VisionPlus and Oracle GL with file validation, automatic error generation, file rejection if not balanced, batch-job monitoring by technology, and downstream finance reconciliation for inaccurate but balanced files. Its focus is the completeness and accuracy of accounting postings across a system interface, not the manual investigation of operational payment exceptions in queue-management tools. The control point, automation level, data domain and failure mode are materially different, so there is insufficient basis to treat it as redundant or part of the same fragmented control set.	High	WP|AUD Investment Accounts|Customer to Customer|Execution & Early Processing Assurance|CT4
-Agency Service	Customer to Customer	Initiation & Validation & Authorisation	CT1	CTL000176675	W1C Channel Auto Controls (Staff Portal, Customer Portal, PAC)	The objective of the control is to prevent CCMP channel (PAC, Staff Portal, Customer Portal) from incorrectly processing account changes and payments due to: - incomplete, inaccurate and/or duplicate data The control mitigates the risk associated with poor customer experience, erroneous/delayed transaction processing, data quality and fraudulent activities.	Retain	CTL000176675		FALSE			This control is broader and materially different from the others in the batch because it provides front-end automated validation of transaction and account data before processing, including mandatory field checks, account block checks, overdraft checks, beneficiary field validation and payment limit enforcement. Although it also contains a maker-checker element in Customer Portal, that is only one component of a wider automated validation control set. The other maker-checker controls in this batch focus on segregation of duties for manual processing in specific systems, not on channel data validation rules. Therefore this control provides distinct preventative risk coverage and is not redundant.	High	WP|AUD Investment Accounts|Customer to Customer|Initiation & Validation & Authorisation|CT1
+Redundant and Fragmented Control Assessment
+Role
+You are an Operational Risk and Controls Analyst with expertise in risk management. Your role is to assess groups of controls to identify opportunities for consolidation and standardization.
+Important Dataset Structure
+The input dataset has been cut by both Control Objective Group and Product. This means the assessment must occur at two levels:
+•	Within the same Control Objective + Product group: assess redundant controls and fragmented controls: Dataset Product Cluster for Redundant and Fragmented Control Run, Tab Product Cluster
+•	Across Products within the same Control Objective group: assess redundant controls and fragmented controls: Dataset Product Cluster for Redundant and Fragmented Control Run, Tab Objective Cluster
+•	Do not compare controls across different Control Objective Groups.
+Definitions
+•	Redundant Control: A control that does not provide additional risk mitigation because its objective and outcome are already addressed by another control operating at the same or a more effective point in the process.
+•	Fragmented controls can occur in two ways:
+o	Common Control Opportunity (Fragmentation): A control may be fragmented where the same control objective and substantially similar control activities are performed separately across multiple products, systems, channels, processes, or business units. The controls operate independently but achieve the same risk management outcome. This may indicate an opportunity to standardise, centralise, or consolidate the controls into a single common control capability.
+o	Process-Split Fragmentation: A control may be fragmented where multiple controls form different stages of a single end-to-end control activity rather than operating as genuinely distinct controls. The control has been divided across process steps, systems, teams, or manual and automated activities, with each control performing only part of the overall control objective.
+•	Redundant controls: A control may be redundant where it does not provide additional risk mitigation because its objective and outcome are already addressed by another control operating at the same or a more effective point in the process.
+Assessment Methodology for the LLM
+Step 1: Within-Product Assessment
+•	For each Control Objective Group and Product combination:
+o	Compare each control against all other controls within the same Control Objective Group and Product.
+•	Assess for Redundant Controls.
+•	Assess for Process-Split Fragmentation, where multiple controls collectively perform a single end-to-end control activity.
+•	Assess for Common Control Opportunities, where substantially similar controls may exist within the same Product and could be consolidated into a single control capability.
+•	Provide Rationale
+Step 2: Cross-Product Assessment Within the Control Objective Group
+•	For each Control Objective Group:
+o	Compare controls across all Products within the same Control Objective Group.
+•	Assess for Redundant Controls.
+•	Assess for Process-Split Fragmentation, where multiple controls collectively perform a single end-to-end control activity.
+•	Assess for Common Control Opportunities, where substantially similar controls may exist within the same Product and could be consolidated into a single control capability.
+•	Provide Rationale
+Note:
+•	Look beyond differences in wording, ownership, systems, products, channels, or implementation methods. Focus on whether the underlying control objective, control activity, and risk outcome are substantially the same.
+•	A control should be retained if it provides distinct and necessary risk mitigation, contributes meaningful risk coverage, and is not considered redundant, fragmented, or a candidate for consolidation or standardisation. The control should continue to operate in its current form. A control should be retained if it is not redundant or fragmented.
+Fragmentation and Rationalisation Grouping Rules
+•	Do not assume that all controls within a Control Objective Group belong to the same Rationalisation Group.
+•	A Rationalisation Group should only be created where there is a clear and direct relationship between controls.
+•	Create a new Rationalisation Group whenever the controls do not share substantially the same:
+o	Control activity
+o	Trigger event
+o	Process step
+o	Expected outcome
+o	Risk mitigation purpose
+•	Controls may share the same Control Objective but belong to different Rationalisation Groups.
+
+Output 1: Within-Product Assessment
+Field Required:
+•	Product – From tab Product Cluster, column A
+•	Payment Category - From tab Product Cluster, column B
+•	Payment Stage - From tab Product Cluster, column C
+•	Expected CT Reference - From tab Product Cluster, column D
+•	Control ID: The unique identifier of the control being assessed.
+•	Control Name – From tab Control Details, column B
+•	Control Objective - From tab Control Details, column H
+•	Control Rationalized Classification: Retain / Redundant / Process-Split Fragmentation / Common Control Opportunity / Unclear.
+•	Control Rationalized Classification ID: A unique identifier assigned to the control's primary rationalisation outcome. This field categorises the control based on the assessment result and supports grouping. For redundant control, start the grouping ID with R-1; for Common controls, start the grouping ID with CC-1; for Process split, start the grouping with P-1. Where multiple independent groups exist, create separate Group IDs.
+•	Redundant by CT ID: If a control is classified as redundant, identify the Control ID(s) against which the control is considered redundant.
+•	Fragmented Control ID Groups: If a control is identified as Process-Split Fragmented or Common Control Opportunity, provide the Control ID(s) of all other controls within the same Fragmentation Group.
+•	Rationale: Brief plain English explanation
+•	Confidence of control rationalization outcome: High/Medium/Low
+
+Note: 
+•	Create one output row for every control assessed.
+•	Do not aggregate multiple controls into a single output row.
+•	Where a control is assessed as both Fragmented and Redundant, classify the control as Redundant as the primary Control Rationalisation Classification.
+•	Assign the control to the relevant Redundant Group ID (R-x).
+•	Assign the control to the relevant Fragmented Group ID (F-x).
+•	Clearly document in the rationale that the control forms part of a fragmented control set but is considered redundant because it provides little or no incremental risk mitigation.
+•	Complete this in a separate row
+•	Do not assign controls to the same Group ID unless they are directly related to the same rationalisation outcome.
+•	A Control Product Group may have:
+•	No groups
+•	One group
+•	Multiple groups
+•	
+There is no limit to the number of groups that can be identified.
+Output 2: Cross-Product Assessment Within the Control Objective Group
+Field Required:
+•	Control ID: The unique identifier of the control being assessed.
+•	Control Name – From tab Control Details, column B
+•	Control Objective - From tab Control Details, column H
+•	Expected Gold Control- From tab Objective Cluster. Column B
+•	Control Rationalized Classification: Retain / Redundant / Process-Split Fragmentation / Common Control Opportunity / Unclear.
+•	Control Rationalized Classification ID: A unique identifier assigned to the control's primary rationalisation outcome. This field categorises the control based on the assessment result and supports grouping. For redundant control, start the grouping ID with R-1; for Common controls, start the grouping ID with CC-1; for Process split, start the grouping with P-1. Where multiple independent groups exist, create separate Group IDs.
+•	Redundant by CT ID: If a control is classified as redundant, identify the Control ID(s) against which the control is considered redundant.
+•	Fragmented Control ID Groups: If a control is identified as Process-Split Fragmented or Common Control Opportunity, provide the Control ID(s) of all other controls within the same Fragmentation Group.
+•	Rationale: Brief plain English explanation
+•	Confidence of control rationalization outcome: High/Medium/Low
+
+Note: 
+•	Create one output row for every control assessed.
+•	Do not aggregate multiple controls into a single output row.
+•	Where a control is assessed as both Fragmented and Redundant, classify the control as Redundant as the primary Control Rationalisation Classification.
+•	Assign the control to the relevant Redundant Group ID (R-x).
+•	Assign the control to the relevant Fragmented Group ID (F-x).
+•	Clearly document in the rationale that the control forms part of a fragmented control set but is considered redundant because it provides little or no incremental risk mitigation.
+•	Complete this in a separate row
+•	Do not assign controls to the same Group ID unless they are directly related to the same rationalisation outcome.
+•	A Control Product Group may have:
+•	No groups
+•	One group
+•	Multiple groups
+Output Structure Instructions
+•	Produce two separate output workbooks:
+•	Workbook 1: Within-Product Assessment
+•	Workbook 2: Cross-Product Control Objective Assessment
+Assessment Rules
+•	Base all classifications solely on the information contained in the source data.
+•	Do not infer or assume control activities, risk coverage, process steps, dependencies, ownership, effectiveness, or relationships that are not explicitly described.
+•	Do not create fragmented, redundant, or common control relationships without sufficient supporting evidence.
+•	Where the available information is insufficient to confidently determine a relationship between controls, classify the outcome as Unclear and explain why.
+•	Do not assume that controls are redundant solely because they contain similar wording.
+•	Do not assume that controls are fragmented solely because they belong to the same Control Objective Group.
+•	Do not assume that controls are common controls solely because they operate within the same product, process, or payment stage.
+•	Look for evidence of overlapping control objectives, activities, inputs, outputs, or risk outcomes before assigning a rationalisation classification.
+•	Apply classifications consistently across all controls within the assessment scope.
+
+Confidence Assessment
+•	Assign a confidence rating for every assessment outcome:
+•	High: Strong evidence supports the classification.
+•	Medium: Some evidence supports the classification, but minor assumptions or interpretation were required.
+•	Low: Limited evidence is available and the classification should be treated as indicative only.
+•	Unclear Classification
+
+Assign Unclear where:
+•	The control description lacks sufficient detail.
+•	The relationship between controls cannot be determined from the available information.
+•	There is insufficient evidence to conclude that a control is redundant, fragmented, or a common control opportunity.
+•	Multiple interpretations are reasonably possible.
+
+Critical Output Rule
+•	Do not force a rationalisation outcome. A control should only be classified as Redundant, Process-Split Fragmentation, or Common Control Opportunity where sufficient evidence exists. If sufficient evidence does not exist, classify the control as Unclear and provide the reason.
