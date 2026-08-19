@@ -1,7 +1,467 @@
-Did not work - again the same:
+"""
+04_postprocess_outputs.py
+─────────────────────────────────────────────────────────────────────────────
+Control Rationalisation — Step 4 of 4: Post-processing and Output Generation
+Dimension 1: Product-level cluster assessment
 
-Product	Control ID	Classification	Classification Group Key	Redundant By Control IDs	Grouped Control IDs	Rationale
-Agency Service	CTL000041538	Common Control Opportunity	CC-1		CTL000041538; CTL000045174	This control and CTL000045174 perform the same underlying control pattern: system-enforced maker/checker with an independent checker reviewing and releasing user-created payment-related activity. Both are preventative, manual-automated, key controls, and both mitigate fraud and payment error risk through segregation of duties enforced in-system. They are not redundant because they operate in different systems and on different transaction types (LoanIQ payments versus TLM outbound free-format SWIFT messages that could amend payments). This indicates a standardisation opportunity for a common maker/checker control capability rather than duplication.
-Agency Service	CTL000045174	Common Control Opportunity	CC-1		CTL000041538; CTL000045174	This control and CTL000041538 share the same core control design: system-enforced maker/checker, role-based restriction, independent release, and checker review of accuracy/completeness for payment-related activity. Both are preventative segregation controls intended to prevent self-release and reduce fraud and transaction error risk. They are not the same process step because this control applies to TLM outbound amendment/cancellation-related messages, while CTL000041538 applies to LoanIQ payment processing. The overlap is therefore a common control opportunity across systems rather than redundancy.
-Agency Service	CTL000173709	Common Control Opportunity	CC-1		CTL000173709; CTL000176651	This control and CTL000176651 are directly related because both use a substantially similar control pattern: system-enforced maker/checker with independent preparation and authorisation to prevent self-release, internal fraud, and processing error. The activities are materially the same even though they are executed in different systems and processes: BankTrade for manual payments versus PEXA for drawdowns/settlements. Because they are separate implementations of the same segregation-of-duties capability across different operational platforms, they represent a common control standardisation opportunity rather than redundancy.
-Agency Service	CTL000176651	Common Control Opportunity	CC-1		CTL000173709; CTL000176651	This control and CTL000173709 perform the same core control activity: a system-enforced maker/checker workflow where one user inputs the transaction and an independent supervisor authorises it, preventing self-release and reducing fraud and operational error. The underlying control objective and operating model are substantially similar, but they are deployed in different platforms and transaction types: PEXA drawdowns/settlements versus BankTrade manual payments. That makes this a common control opportunity across systems rather than a redundant control.
+Purpose:
+  1. Reads all checkpoint JSONL files from Script 3 parallel runs
+  2. Merges and deduplicates: where the same control was assessed in
+     multiple sub-batches, keeps the most substantive classification:
+     Redundant > Process-Split Fragmentation > Common Control Opportunity
+     > Unclear > Retain
+  3. Reconciles group IDs: two sub-batches can both assign P-1 to
+     genuinely different groups. Union-find detects independent groups
+     and renumbers them P-1, P-2, P-3 / CC-1, CC-2, CC-3 etc.
+  4. Flags controls with no assessment (coverage gaps)
+  5. Writes two output workbooks for SME review
+
+Outputs:
+  within_product_assessment{suffix}.xlsx  — main SME output
+  assessment_summary{suffix}.xlsx         — statistics
+
+Run:
+  python 04_postprocess_outputs.py
+  python 04_postprocess_outputs.py --suffix _sample
+"""
+
+import argparse
+import json
+import logging
+import sys
+from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  CONFIG
+# ─────────────────────────────────────────────────────────────────────────────
+
+OUTPUT_DIR = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
+EXPANDED   = OUTPUT_DIR / "expanded_product_control_mapping.parquet"
+
+ALL_CHECKPOINT_FILES = [
+    "llm_checkpoint_within_product.jsonl",
+    "llm_checkpoint_within_product_sample.jsonl",
+    "llm_checkpoint_within_product_p1.jsonl",
+    "llm_checkpoint_within_product_p2.jsonl",
+    "llm_checkpoint_within_product_p3.jsonl",
+    "llm_checkpoint_within_product_p4.jsonl",
+]
+
+CLASSIFICATION_PRIORITY = {
+    "Redundant":                   5,
+    "Process-Split Fragmentation": 4,
+    "Common Control Opportunity":  3,
+    "Unclear":                     2,
+    "Retain":                      1,
+    "":                            0,
+}
+
+CONFIDENCE_RANK = {"High": 3, "Medium": 2, "Low": 1, "": 0}
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  LOGGING
+# ─────────────────────────────────────────────────────────────────────────────
+
+def setup_logging():
+    logger = logging.getLogger("ctrl_rat_post")
+    if logger.handlers:
+        return logger
+    fh = logging.FileHandler(OUTPUT_DIR / "processing_log.txt", encoding="utf-8")
+    ch = logging.StreamHandler(sys.stdout)
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s",
+                            datefmt="%Y-%m-%d %H:%M:%S")
+    fh.setFormatter(fmt); ch.setFormatter(fmt)
+    fh.setLevel(logging.DEBUG); ch.setLevel(logging.INFO)
+    logger.addHandler(fh); logger.addHandler(ch)
+    logger.setLevel(logging.DEBUG)
+    return logger
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  LOAD CHECKPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def load_checkpoints(files, log):
+    records = []
+    n_files = n_skipped = n_errors = 0
+    for fname in files:
+        path = OUTPUT_DIR / fname
+        if not path.exists():
+            continue
+        n_files += 1
+        log.info(f"  Reading: {fname}")
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    n_errors += 1
+                    continue
+                if rec.get("skipped"):
+                    n_skipped += 1
+                    continue
+                if rec.get("error"):
+                    n_errors += 1
+                    continue
+                scope_id = rec.get("scope_id", "")
+                product  = rec.get("product", "")
+                if not product:
+                    parts   = scope_id.split("|")
+                    product = parts[1] if len(parts) >= 2 else ""
+                for a in rec.get("assessments", []):
+                    if not a.get("control_id"):
+                        continue
+                    records.append({
+                        "scope_id":  scope_id,
+                        "product":   product,
+                        "batch_key": rec.get("batch_key", ""),
+                        "source":    fname,
+                        **a,
+                    })
+    log.info(f"  Files: {n_files} | Skipped: {n_skipped} | "
+             f"Errors: {n_errors} | Rows: {len(records):,}")
+    return records
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  DEDUPLICATE
+# ─────────────────────────────────────────────────────────────────────────────
+
+def deduplicate(records, log):
+    best = {}
+    for rec in records:
+        key = (rec["scope_id"], rec.get("control_id", ""))
+        clf = rec.get("classification", "")
+        pri = CLASSIFICATION_PRIORITY.get(clf, 0)
+        if key not in best:
+            best[key] = rec
+        else:
+            existing_pri = CLASSIFICATION_PRIORITY.get(
+                best[key].get("classification", ""), 0)
+            if pri > existing_pri:
+                best[key] = rec
+            elif pri == existing_pri:
+                conf_new = CONFIDENCE_RANK.get(rec.get("confidence", ""), 0)
+                conf_old = CONFIDENCE_RANK.get(
+                    best[key].get("confidence", ""), 0)
+                if conf_new > conf_old:
+                    best[key] = rec
+    deduped = list(best.values())
+    log.info(f"  Before dedup: {len(records):,} | After: {len(deduped):,}")
+    return deduped
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  GROUP ID RECONCILIATION
+#
+#  Problem: the LLM assigns group IDs independently within each sub-batch,
+#  so two different groups can both be assigned P-1 or CC-1.
+#
+#  Fix: within each product scope, use union-find to identify truly
+#  independent groups from the Grouped Control IDs field, then assign
+#  sequential IDs: P-1, P-2... CC-1, CC-2... R-1, R-2...
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _find(parent, x):
+    if parent[x] != x:
+        parent[x] = _find(parent, parent[x])
+    return parent[x]
+
+def _union(parent, x, y):
+    px, py = _find(parent, x), _find(parent, y)
+    if px != py:
+        parent[px] = py
+
+def reconcile_group_ids(df):
+    """
+    For each product scope, detect independent rationalisation groups using
+    union-find on the Grouped Control IDs column and renumber sequentially.
+
+    Example input:  CTL-A → P-1, CTL-C → P-1 (two different groups)
+    Example output: CTL-A → P-1, CTL-C → P-2
+    """
+    prefixes = {
+        "Redundant":                   "R",
+        "Process-Split Fragmentation": "P",
+        "Common Control Opportunity":  "CC",
+    }
+    result_parts = []
+
+    for scope_id, scope_df in df.groupby("Scope ID", sort=False):
+        scope_df = scope_df.copy().reset_index(drop=True)
+
+        for clf_type, prefix in prefixes.items():
+            mask    = scope_df["Classification"] == clf_type
+            indices = scope_df.index[mask].tolist()
+            if not indices:
+                continue
+
+            ctrl_ids = scope_df.loc[indices, "Control ID"].tolist()
+            parent   = {cid: cid for cid in ctrl_ids}
+
+            for idx in indices:
+                cid     = scope_df.at[idx, "Control ID"]
+                grp_str = str(scope_df.at[idx, "Grouped Control IDs"] or "")
+                members = [m.strip() for m in grp_str.split(";") if m.strip()]
+                for m in members:
+                    if m in parent:
+                        _union(parent, cid, m)
+
+            # Build components
+            components = {}
+            for cid in ctrl_ids:
+                root = _find(parent, cid)
+                components.setdefault(root, []).append(cid)
+
+            # Sort components by earliest Control_ID for deterministic order
+            sorted_roots = sorted(components.keys(),
+                                  key=lambda r: min(components[r]))
+            id_map = {root: f"{prefix}-{i+1}"
+                      for i, root in enumerate(sorted_roots)}
+
+            for idx in indices:
+                cid  = scope_df.at[idx, "Control ID"]
+                root = _find(parent, cid)
+                scope_df.at[idx, "Classification Group Key"] = id_map.get(
+                    root, f"{prefix}-1")
+
+        result_parts.append(scope_df)
+
+    if not result_parts:
+        return df
+    return pd.concat(result_parts, ignore_index=True)
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  COVERAGE CHECK
+# ─────────────────────────────────────────────────────────────────────────────
+
+def check_coverage(deduped, expanded_df, log):
+    assessed = {(r["scope_id"], r.get("control_id","")) for r in deduped}
+    missing  = []
+    for _, row in expanded_df.iterrows():
+        if (row["scope_id"], row["Control_ID"]) not in assessed:
+            missing.append({
+                "Scope ID":   row["scope_id"],
+                "Product":    row["Product"],
+                "Control ID": row["Control_ID"],
+                "CTRL_NAME":  row.get("CTRL_NAME", ""),
+                "Issue":      "No assessment found",
+            })
+    if missing:
+        log.warning(f"  {len(missing):,} controls with no assessment")
+    else:
+        log.info("  Coverage: all controls assessed ✓")
+    return pd.DataFrame(missing)
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  BUILD OUTPUT DATAFRAME
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_output_df(deduped, expanded_df, log):
+    ctrl_lookup = (
+        expanded_df
+        .drop_duplicates(subset=["Control_ID"], keep="first")
+        .set_index("Control_ID")
+        .to_dict("index")
+    )
+    rows = []
+    for rec in deduped:
+        ctrl_id = rec.get("control_id", "")
+        ctx     = ctrl_lookup.get(ctrl_id, {})
+        product = rec.get("product", "") or ctx.get("Product", "")
+        rows.append({
+            "Product":                  product,
+            "Control ID":               ctrl_id,
+            "Control Name":             (rec.get("control_name","")
+                                         or ctx.get("CTRL_NAME","")),
+            "Control Objective":        (rec.get("control_objective","")
+                                         or ctx.get("Control Objective","")),
+            "Classification":           rec.get("classification",""),
+            "Classification Group Key": rec.get("classification_group_key",""),
+            "Redundant By Control IDs": "; ".join(
+                rec.get("redundant_by_control_ids") or []),
+            "Grouped Control IDs":      "; ".join(
+                rec.get("fragmented_control_id_group") or []),
+            "Rationale":                rec.get("rationale",""),
+            "Confidence":               rec.get("confidence",""),
+            "Scope ID":                 rec.get("scope_id",""),
+            "Batch Key":                rec.get("batch_key",""),
+        })
+    df = pd.DataFrame(rows)
+    log.info(f"  Output rows built: {len(df):,}")
+    return df
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  BUILD SUMMARY SHEETS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_summary(df, coverage_df, log):
+    clf = df["Classification"].value_counts()
+
+    summary_rows = [
+        ("Total controls assessed",         len(df)),
+        ("Products covered",                df["Product"].nunique()),
+        ("Coverage gaps",                   len(coverage_df)),
+        ("─" * 40,                          ""),
+        ("Redundant",                       int(clf.get("Redundant", 0))),
+        ("Process-Split Fragmentation",
+         int(clf.get("Process-Split Fragmentation", 0))),
+        ("Common Control Opportunity",
+         int(clf.get("Common Control Opportunity", 0))),
+        ("Retain",                          int(clf.get("Retain", 0))),
+        ("Unclear",                         int(clf.get("Unclear", 0))),
+        ("─" * 40,                          ""),
+        ("Controls with a finding",
+         int(df["Classification"].isin([
+             "Redundant","Process-Split Fragmentation",
+             "Common Control Opportunity"]).sum())),
+    ]
+    summary_df = pd.DataFrame(summary_rows, columns=["Metric","Value"])
+
+    by_product = (
+        df.groupby("Product").agg(
+            total         =("Control ID",     "count"),
+            redundant     =("Classification",
+                            lambda x: (x=="Redundant").sum()),
+            process_split =("Classification",
+                            lambda x: (x=="Process-Split Fragmentation").sum()),
+            cco           =("Classification",
+                            lambda x: (x=="Common Control Opportunity").sum()),
+            retain        =("Classification",
+                            lambda x: (x=="Retain").sum()),
+            unclear       =("Classification",
+                            lambda x: (x=="Unclear").sum()),
+        ).reset_index().sort_values("total", ascending=False)
+    )
+
+    findings = df[df["Classification"].isin([
+        "Redundant","Process-Split Fragmentation","Common Control Opportunity"
+    ])].copy()
+
+    groups = pd.DataFrame()
+    if not findings.empty:
+        groups = (
+            findings
+            .groupby(["Product","Classification","Classification Group Key"],
+                     sort=False)
+            .agg(
+                n_controls  =("Control ID", "count"),
+                control_ids =("Control ID", lambda x: "; ".join(x)),
+                confidence  =("Confidence", "first"),
+                rationale   =("Rationale",  "first"),
+            )
+            .reset_index()
+            .sort_values(["Product","Classification","Classification Group Key"])
+        )
+
+    return summary_df, by_product, groups
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  MAIN
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--suffix", default="",
+                        help="Process only the checkpoint with this suffix. "
+                             "e.g. --suffix _sample")
+    args = parser.parse_args()
+
+    log = setup_logging()
+    log.info("=" * 70)
+    log.info("  Control Rationalisation — Step 4: Post-processing")
+    log.info(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    log.info("=" * 70)
+
+    if not EXPANDED.exists():
+        log.error("expanded_product_control_mapping.parquet not found.")
+        sys.exit(1)
+
+    checkpoint_files = (
+        [f"llm_checkpoint_within_product{args.suffix}.jsonl"]
+        if args.suffix else ALL_CHECKPOINT_FILES
+    )
+    output_wb1 = OUTPUT_DIR / f"within_product_assessment{args.suffix}.xlsx"
+    output_wb2 = OUTPUT_DIR / f"assessment_summary{args.suffix}.xlsx"
+
+    log.info("Loading expanded dataset...")
+    expanded_df = pd.read_parquet(EXPANDED, engine="pyarrow")
+    log.info(f"  {len(expanded_df):,} rows | "
+             f"{expanded_df['scope_id'].nunique():,} scopes | "
+             f"{expanded_df['Control_ID'].nunique():,} controls")
+
+    # ── Step 1: Load ──────────────────────────────────────────────────────────
+    log.info("\nLoading checkpoints...")
+    raw = load_checkpoints(checkpoint_files, log)
+    if not raw:
+        log.error("No assessment records found. Run Script 3 first.")
+        sys.exit(1)
+
+    # ── Step 2: Deduplicate ───────────────────────────────────────────────────
+    log.info("\nDeduplicating...")
+    deduped = deduplicate(raw, log)
+
+    # ── Step 3: Build output DataFrame ───────────────────────────────────────
+    log.info("\nBuilding output...")
+    df = build_output_df(deduped, expanded_df, log)
+
+    # ── Step 4: Reconcile group IDs ───────────────────────────────────────────
+    log.info("\nReconciling group IDs...")
+    before = df["Classification Group Key"].value_counts().to_dict()
+    df = reconcile_group_ids(df)
+    after  = df["Classification Group Key"].value_counts().to_dict()
+    new_keys = sorted(set(after) - set(before))
+    if new_keys:
+        log.info(f"  New group keys after reconciliation: {new_keys}")
+    n_groups = df[df["Classification"].isin([
+        "Redundant","Process-Split Fragmentation","Common Control Opportunity"
+    ])].groupby(["Scope ID","Classification Group Key"]).ngroups
+    log.info(f"  Distinct rationalisation groups: {n_groups:,}")
+
+    # Sort for SME readability
+    df = df.sort_values(
+        ["Product","Classification","Classification Group Key","Control ID"]
+    ).reset_index(drop=True)
+
+    # ── Step 5: Coverage check ────────────────────────────────────────────────
+    log.info("\nChecking coverage...")
+    coverage_df = check_coverage(deduped, expanded_df, log)
+
+    # ── Step 6: Build summary ─────────────────────────────────────────────────
+    summary_df, by_product_df, groups_df = build_summary(df, coverage_df, log)
+    findings_df = df[df["Classification"].isin([
+        "Redundant","Process-Split Fragmentation","Common Control Opportunity"
+    ])].copy()
+
+    # ── Step 7: Write workbooks ───────────────────────────────────────────────
+    log.info(f"\nWriting: {output_wb1.name}")
+    with pd.ExcelWriter(output_wb1, engine="openpyxl") as w:
+        df.to_excel(           w, index=False, sheet_name="all_assessments")
+        findings_df.to_excel(  w, index=False, sheet_name="findings_only")
+        if not groups_df.empty:
+            groups_df.to_excel(w, index=False, sheet_name="finding_groups")
+        if not coverage_df.empty:
+            coverage_df.to_excel(w, index=False, sheet_name="coverage_gaps")
+
+    log.info(f"Writing: {output_wb2.name}")
+    with pd.ExcelWriter(output_wb2, engine="openpyxl") as w:
+        summary_df.to_excel(   w, index=False, sheet_name="summary")
+        by_product_df.to_excel(w, index=False, sheet_name="by_product")
+
+    # ── Summary ───────────────────────────────────────────────────────────────
+    log.info("\n" + "=" * 70)
+    log.info("  RESULTS")
+    log.info("=" * 70)
+    for _, r in summary_df.iterrows():
+        if not str(r["Metric"]).startswith("─"):
+            log.info(f"  {r['Metric']}: {r['Value']}")
+    log.info(f"\n  {output_wb1.name}: {len(df):,} controls, "
+             f"{len(findings_df):,} findings, {n_groups:,} groups")
+    log.info(f"  {output_wb2.name}: summary + by_product")
+    log.info("=" * 70)
+
+if __name__ == "__main__":
+    main()
