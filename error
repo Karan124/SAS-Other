@@ -1,362 +1,663 @@
-"""
-02_generate_embeddings_ct.py
-─────────────────────────────────────────────────────────────────────────────
-Control Rationalisation — Step 2 of 4 (Dimension 2: Gold Controls)
+BEST-OF-BREED, DUPLICATE AND FRAGENTED CONTROL ASSESSMENT PROMPT
+Objective
+You are an experienced Operational Risk Manager. Assess the controls within each Control Objective group and identify:
+1.	The best-of-breed control
+2.	Fragmented controls, where the objective is achieved through multiple control activities
+3.	Duplicate controls, where controls perform substantially the same activity and provide overlapping coverage.
 
-Generates embeddings for all 708 controls and builds candidate pairs
-within each CT group scope.
+The best of breed is not eligible to be eliminated as duplicates or fragmented.
+Definition
+•	Best of breed control: The control that provides the most comprehensive and reliable management of the underlying risk while achieving the control objective through a combination of robust design and appropriate coverage. This control should be considered the benchmark against which other controls in the group (with the same control objective and control type i.e. automated or manual/manual-automated) are compared.[SK1.1][RB1.2]
+•	Fragmented controls can occur in two ways:
+1.	Common Control Opportunity (Fragmentation): A control may be fragmented where the same control objective and substantially similar control activities are performed separately across multiple products, systems, channels, processes, or business units. The controls operate independently but achieve the same risk management outcome. This may indicate an opportunity to standardise, centralise, or consolidate the controls into a single common control capability.
+2.	Process-Split Fragmentation: A control may be fragmented where multiple controls form different stages of a single end-to-end control activity rather than operating as genuinely distinct controls. The control has been divided across process steps, systems, teams, or manual and automated activities, with each control performing only part of the overall control objective.
+•	Redundant controls: A control may be redundant where it does not provide additional risk mitigation because its objective and outcome are already addressed by another control operating at the same or a more effective point in the process.
+Assessment Methodology
+The dataset has already been grouped by Control Objective (e.g. CT1, CT2, CT3). Perform the following assessment within each Control Objective group only.
+Step 1: Identify the Best-of-Breed Control
+•	First, determine the strongest control within the Control Objective Group.
+Assessment Methodology
+Important Assessment Principle for Best of breed
+The ranking must be driven primarily by:
+1.	Expected Best-of-Design Attributes
+2.	Extent of Coverage
+Coverage alone must not outweigh materially stronger control design.
+A control with stronger design attributes but narrower coverage may rank above a control with broader coverage but weaker design. 
+This ranking approach must be applied consistently across all control populations with the same control objective and control type.
+Step 1.1 – Separate Control Population for Best of breed
 
-Note: attempts to reuse embeddings from Dimension 1 cache
-(control_embeddings.parquet in the product output folder) where the same
-Control_ID exists. Only generates new embeddings for controls not already
-cached, saving time and API cost.
+Within the control objective:
+Automated Population
+Include:
+•	Automated controls
+Manual Population
+Include:
+•	Manual controls
+•	Manual-automated controls
+Assess each population independently.
+Do not compare automated controls against manual controls.
+________________________________________
+Step 1.2 – Assess Design Strength for Best of breed
+Assess each control against the applicable control-specific design principles.
+Use the design principles provided below for the relevant control objective.
+For each design principle determine whether it is:
+•	Met
+•	Partially Met
+•	Not Met
+•	Not Evidenced
+Maintain a detailed assessment showing the outcome for every design principle.
+________________________________________
+Design Strength Rating for Best of breed
+Determine overall Design Strength using the following guidance.
+Assign one of the following design strength ratings:
+Strong – Most expected design principles are met. Few or no material gaps identified.
+Moderate – Several design principles are met but some gaps exist.
+Basic – Some design principles are met but significant gaps exist.
+Limited – Few design principles are met. Significant weaknesses or missing capabilities identified.
+When assigning the rating:
+•	Consider both the presence of expected design principles and the absence or presence of red flags.
+•	Assess the design based only on the control description and evidence provided.
+•	Do not assume that undocumented control activities exist.
+•	Do not consider control effectiveness, testing results, incidents or operating performance. Assess design only.
+•	A control does not need to meet every design principle to achieve a Strong rating; however, any material design weakness may reduce the rating.
+•	The greater the number and significance of missing design principles or identified red flags, the lower the rating should be.
+•	Where evidence is insufficient to demonstrate a design principle, treat the principle as not evidenced.
+•	Consider the overall strength of the control design rather than scoring individual principles in isolation.
+________________________________________
+Step 1.3 – Assess Coverage for Best of breed
+Assess extent of coverage using:
+•	Number of Products tagged
+•	Number of Applications tagged
+•	Number of L3 Processes tagged
+Coverage should be based only on supplied coverage information.
+Do not estimate or infer coverage.
+Capture both:
+Coverage Summary for Best of breed
+Example:
+64 Products • 137 Apps • 41 Processes
+Coverage Detail for Best of breed
+List:
+•	Products
+•	Applications
+•	L3 Processes
+where available.
+________________________________________
+Step 1.4 – Rank Controls for Best of breed
+Rank controls within each population of control objective using the following order of importance:
+Primary Criterion
+Expected Best-of-Design Attributes
+Meaning:
+The control captures good design practices and addresses the intended risk.
+Design Strength should drive ranking.
+Secondary Criterion
+Extent of Coverage
+Meaning:
+The control covers a broader range of products, applications and processes.
+Coverage should be used to differentiate controls that have similar design strength.
+________________________________________
+Ranking Guidance for Best of breed
+Generally rank higher controls that:
+•	Meet most design principles
+•	Demonstrate stronger control design
+•	Better address the intended risk
+•	Cover more products
+•	Cover more applications
+•	Cover more L3 processes
+Generally rank lower controls that:
+•	Meet fewer design principles
+•	Have material design gaps
+•	Have limited coverage
+•	Only partially address the intended risk
+Coverage will be used to differentiate controls that have similar design strength
+________________________________________
+Step 1.5 – Identify Best-of-Breed Control
+Within each population:
+•	Rank controls from strongest to weakest.
+•	The highest ranked control becomes the Best-of-Breed control for that population.
+[SK2.1][RB2.2]Step 2: Assess for fragmented control – Process Split
+•	Using the Best-of-Breed Control as the benchmark, assess whether multiple controls together perform what is effectively a single end-to-end control activity.
+•	Indicators, look for controls that:
+o	Operate sequentially within the same process
+o	Perform different stages of the same control activity
+o	Are split across systems, teams, or ownership groups
+o	Consist of manual and automated parts of the same control
+o	Collectively achieve one control objective
+o	Could reasonably be consolidated into a single end-to-end control
+Step 3: Assess for fragmented control - Common Control Opportunities
+•	Assess whether similar controls are independently repeated across products, systems, channels, business units, or processes.
+•	Indicators, look for controls that:
+o	Address the same risk
+o	Achieve the same control objective
+o	Perform substantially similar activities
+o	Differ primarily because of product, system, channel, or business ownership, but achieving the same control objective and risk outcome.
+o	Could potentially operate as one group/enterprise, shared-service/centralised, or common control
+Step 4: Assess for Redundant Controls
+•	After identifying the Best-of-Breed Control and any fragmentation or common control opportunities, assess whether any controls provide little or no incremental risk mitigation.
+•	Indicators, look for controls that:
+o	Achieve the same outcome as another control
+o	Provide little or no incremental risk coverage
+o	Duplicate assurance already provided by a stronger control
+o	Are superseded by a more effective preventive, detective, or automated control
+o	Could be removed without reducing overall risk coverage
+Step 5: Final Rationalisation Conclusion
+•	For each Control Objective Group:
+o	Identify the Best-of-Breed Control.
+o	Identify any Process-Split Fragmentation.
+o	Identify any Common Control Opportunities.
+o	Identify any Redundant Controls.
+Output Format
+•	Output Structure: Create a separate worksheet/tab for each Control Objective Group (e.g. CT1, CT2, CT3). Name each worksheet using the Control Objective Group ID. Perform the full Best-of-Breed, Process-Split Fragmentation, Common Control Opportunity, and Redundant Control assessment independently within each worksheet.
+o	Best of breed – Yes/No; If yes, refer to page 19-20 below ‘ Output requirements’ and ‘Best-of-Breed Summary’
+o	Fragmented control – Yes/No; If yes populate:
+	Fragmented control group ID, starting from 1 (Note: A single Control Objective Group may contain multiple fragmented control groupings
+	Fragmented Control Type – Process Split/Common Control Opportunity
+	Controls ID involved in fragmented group
+	Rationale for fragmented control
+	End to end control activity description
+	Confidence level for fragmented control – High/Medium/Low
+o	Redundant control – Yes/No; If yes populate:
+	Covered by which control – Input all relevant control ID
+	Rationale for redundant control
+	Confidence level for redundant control – High/Medium/Low
 
-Before running:
-  az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
-  python 02_generate_embeddings_ct.py
-  python 02_generate_embeddings_ct.py --force
-"""
+Key Rules[RB3.1]
+Evidence-Based Assessment
+Use only information explicitly contained within the control documentation and supplied in file JUNO Controls to GC Mapping.
+Consider all available information.
+Do Not Infer
+Do not assume:
+•	A control is automated unless explicitly stated.
+•	A control is preventative unless explicitly stated.
+•	A design principle is met unless evidence exists.
+•	A control has broad coverage unless supported by product, application or process tagging.
+•	A control performs an activity that is not explicitly stated.
+If evidence is absent, record:
+"Not Evidenced in Control Documentation"
+Best of Control Design Principles:
+CONTROL OBJECTIVE: CT1 - Data input validation
+Obligations / Control Objectives:
+Errors, duplication, and/or omission arising from human input are detected as part of the data input process
+Automated:
+Best control design principles
+1. System validates mandatory fields, file format, data type and value ranges before processing.
+2. Invalid, incomplete or duplicate inputs are automatically rejected or quarantined before release.
+3. Input source, user ID, timestamp and validation outcome are captured in system logs.
+4. Control totals, record counts and key field validations are checked automatically.
+5. Exception alerts are generated promptly for failed validations.
+6. Only approved users or interfaces can submit or amend input data.
+7. Validation rules are version controlled and subject to change approval.
+Red Flags (Weak Design)
+1. System accepts incomplete or malformed input records.
+2. Validation rules are not documented or not consistently applied.
+3. Duplicate or amended inputs can be processed without warning.
+4. Exceptions are not automatically flagged or reported.
+5. No audit trail of input submission, amendment or validation outcome.
+6. Users can bypass validation controls.
+7. Changes to validation rules are not governed.
+Manual:
+Best control design principles
+1. Predefined checklist confirms mandatory fields, approvals, record counts and totals before processing.
+2. Review is performed by an independent person where practical.
+3. Reviewer checks source records against input file details.
+3a. The reviewer independently inputs key data to validate the maker's entry, with discrepancies identified and resolved before processing.
+4. Errors, omissions or duplicates are recorded and corrected before release.
+5. Evidence of review, challenge and sign-off is retained.
+6. Review is completed before downstream processing.
+7. Recurring input errors are tracked and escalated for remediation.
+Red Flags (Weak Design)
+1. Reviewer only confirms that data was received.
+2. No check against source records or expected totals.
+3. Same person prepares and approves the input without compensating review.
+4. No evidence of review or reviewer challenge.
+5. Errors are corrected informally without tracking.
+6. Review occurs after processing has already completed.
+7. Recurring input errors are not monitored.
+Expected control nature:
+Preventative
+CONTROL OBJECTIVE: CT2 - Payment processing error detection
+Obligations / Control Objectives:
+Payments processing activities are reconciled on a defined frequency to identify any errors
+Automated:
+Best control design principles
+1. System performs scheduled reconciliation between source, processing and target records.
+2. Record counts, values, status codes and control totals are compared automatically.
+3. Tolerances and exception thresholds are clearly configured.
+4. Failed, missing, duplicated or unmatched records are automatically flagged.
+5. Alerts and exception reports are generated for responsible teams.
+6. Reconciliation outcomes and exception actions are captured in an audit trail.
+7. Unresolved exceptions are aged, tracked and escalated.
+Red Flags (Weak Design)
+1. Reconciliation is not performed at a defined frequency.
+2. System only reports successful completion and not processing accuracy.
+3. Missing or unmatched records are not automatically identified.
+4. Tolerances are unclear or too broad.
+5. Exceptions require manual discovery by users.
+6. No evidence of reconciliation outcome or resolution.
+7. Recurring processing errors are not reported.
+Manual:
+Best control design principles
+1. Reconciliation is performed on a defined frequency using approved reports.
+2. Reviewer compares source records, processed records, values and totals.
+3. Exceptions are documented with owner, action and closure status.
+4. Review is completed within a defined SLA.
+5. Evidence of reconciliation and sign-off is retained.
+6. Material or aged exceptions are escalated.
+7. Recurring errors are monitored for root cause and control uplift.
+Red Flags (Weak Design)
+1. Reconciliation is ad hoc or inconsistently performed.
+2. Reviewer checks only high-level totals without record-level support where needed.
+3. Exceptions are not tracked to closure.
+4. No defined timeframe for review or resolution.
+5. Evidence is limited to a generic sign-off.
+6. Unexplained differences are accepted without investigation.
+7. Repeat issues are not escalated.
+Expected control nature:
+Detective
+CONTROL OBJECTIVE: CT3 - Duplicate interface and processing validation
+Obligations / Control Objectives:
+Previously processed batch files and transactions are prevented from being resubmitted
+Automated:
+Best control design principles
+1. System uses unique file, batch and transaction identifiers to prevent reprocessing.
+2. Previously processed files or transactions are automatically blocked.
+3. Hash totals, sequence numbers or reference checks validate uniqueness.
+4. Duplicate attempts generate alerts and exception records.
+5. Override capability is restricted, approved and logged.
+6. Duplicate prevention operates before value movement or posting.
+7. Duplicate exception trends are monitored and reported.
+Red Flags (Weak Design)
+1. Same batch or transaction can be resubmitted without detection.
+2. Duplicate checks occur only after processing is complete.
+3. No unique identifier or sequence validation exists.
+4. Overrides can be performed without approval or logging.
+5. Duplicate exceptions are not investigated.
+6. System alerts are absent or ignored.
+7. Repeat duplicate attempts are not monitored.
+Manual:
+Best control design principles
+1. Reviewer checks file names, batch IDs, sequence numbers and transaction references before release.
+2. Expected batch register or processing log is used to confirm uniqueness.
+3. Any suspected duplicates are stopped and investigated before processing.
+4. Duplicate checks are evidenced with reviewer sign-off.
+5. Exception handling and approval for reprocessing are documented.
+6. Review is performed before downstream posting or settlement.
+7. Repeat duplicate causes are tracked and escalated.
+Red Flags (Weak Design)
+1. Reviewer relies on memory or informal checks.
+2. No batch register, sequence log or reference listing is used.
+3. Duplicate review happens after processing.
+4. Reprocessing is allowed without documented approval.
+5. No evidence that duplicate checks were performed.
+6. Duplicate exceptions are corrected without root cause review.
+7. Same preparer performs the duplicate review without challenge.
+Expected control nature:
+Preventative
+CONTROL OBJECTIVE: CT4 - Payment processing interface and batch error resolution
+Obligations / Control Objectives:
+Interface / batch processing errors are investigated and resolved in a timely manner
+Automated:
+Best control design principles
+1. Validate file structure, record counts, and control totals before processing.
+2. Automatically reject incomplete or malformed files.
+3. Prevent duplicate file or transaction processing.
+4. Reconcile source-to-target counts and values automatically.
+5. Generate alerts for batch failures or exceptions.
+Maintain a complete audit trail.
+6. Support automatic retry or controlled recovery processes.
+7. Provide management reporting on processing success rates and recurring failures.
+Red Flags (Weak Design)
+1. Batch runs automatically but produces no exception reporting.
+2. Failures require users to manually discover issues.
+3. No duplicate prevention logic.
+4. No reconciliation between source and target systems.
+5. No automated alerting when processing fails.
+6. Processing continues despite critical validation failures.
+7. Limited logging or inability to trace transactions.
+Manual:
+Best control design principles
+1. Automated generation of the batch report, even if the review is manual.
+2. Review of record counts, value totals, rejects, exceptions, and duplicates.
+3. Evidence of reviewer challenge, not just a tick-and-flick sign-off.
+4. Investigation and closure of all exceptions.
+5. Completion within a defined SLA.
+6. Trend monitoring of recurring batch failures.
+Red Flags (Weak Design)
+Reviewer only checks that the job "completed successfully".
+No reconciliation to source records.
+No duplicate detection.
+Generic sign-off with no evidence.
+Same person prepares and reviews the batch.
+Exceptions are identified but not tracked to resolution.
+Expected control nature:
+Preventative
+CONTROL OBJECTIVE: CT5 - Incident response
+Obligations / Control Objectives:
+Payment incidents and errors are recovered on timely basis
+Automated:
+Best control design principles
+1. System detects payment incidents, failures or abnormal processing outcomes promptly.
+2. Automated alerts route incidents to defined support and business owners.
+3. Severity, impact, affected records and timestamps are captured automatically.
+4. Recovery, retry or rollback workflows are controlled and logged.
+5. Incident status, actions and closure evidence are tracked centrally.
+6. Escalation is triggered based on severity and elapsed time.
+7. Management reporting identifies recurring incidents and recovery performance.
+Red Flags (Weak Design)
+1. Incidents are identified only through customer complaints or manual monitoring.
+2. Alerts do not identify severity, impact or owner.
+3. Recovery actions are performed outside controlled workflow.
+4. No audit trail of incident actions and decisions.
+5. Escalations rely on individual judgement only.
+6. Incident closure is not evidenced.
+7. Repeat incidents are not analysed.
+Manual:
+Best control design principles
+1. Incident response procedure defines trigger, owner, severity, escalation and recovery steps.
+2. Incidents are logged with impact, affected transactions and action owner.
+3. Recovery actions are approved and independently checked where practical.
+4. Customer, operational and regulatory impacts are assessed.
+5. Closure requires evidence that payment impacts were resolved.
+6. Aged or material incidents are escalated within agreed timeframes.
+7. Post-incident review captures root cause and control improvements.
+Red Flags (Weak Design)
+1. No documented incident response process.
+2. Incidents are handled through informal messages only.
+3. Recovery is performed without approval or independent check.
+4. Impact assessment is incomplete or not retained.
+5. Closure occurs before all exceptions are resolved.
+6. Escalation criteria are unclear.
+7. Lessons learned are not captured.
+Expected control nature:
+Detective
+CONTROL OBJECTIVE: CT6 - Master/Reference data input validation
+Obligations / Control Objectives:
+Master and reference data is validated for accuracy and completeness during the  data input process
+Automated:
+Best control design principles
+1. System validates master and reference data against approved rules before use.
+2. Mandatory fields, data format, permissible values and effective dates are enforced.
+3. Changes require approved workflow with maker-checker or equivalent control.
+4. Unauthorised, incomplete or inconsistent reference data changes are rejected or blocked.
+5. Audit trail captures requester, approver, timestamp and changed fields.
+6. Periodic automated exception reports identify stale, duplicate or invalid records.
+7. Changes to validation rules are governed through change control.
+Red Flags (Weak Design)
+1. Invalid master data can be saved and used in processing.
+2. Reference data changes do not require approval.
+3. No audit trail of who changed what and when.
+4. Duplicate or stale records are not detected.
+5. Validation rules are not aligned to processing requirements.
+6. Users can bypass maker-checker control.
+7. Exception reports are not reviewed.
+Manual:
+Best control design principles
+1. Request and approval evidence supports all master or reference data changes.
+2. Reviewer checks change details against approved source documentation.
+3. Maker-checker review is performed before data becomes effective.
+4. Periodic review confirms key records remain accurate and complete.
+5. Exceptions are logged, corrected and approved.
+6. Access to amend reference data is limited and periodically reviewed.
+7. Evidence of review and sign-off is retained.
+Red Flags (Weak Design)
+1. Changes are made from verbal or informal requests.
+2. Same person requests, enters and approves the change.
+3. No comparison to approved source documentation.
+4. Periodic review is not performed.
+5. Exceptions are corrected without approval.
+6. Evidence does not show what was reviewed.
+7. Access to amend data is broad or not monitored.
+Expected control nature:
+Preventative
+CONTROL OBJECTIVE: CT14 - Logging and monitoring
+Obligations / Control Objectives:
+Unauthorised changes to reference data are detected and reported on a timely basis
+Automated:
+Best control design principles
+1. System logs key processing, access, change and exception events automatically.
+2. Logs capture user or system ID, timestamp, action, before-and-after values where relevant, and outcome.
+3. Monitoring rules flag unauthorised, unusual or high-risk activity promptly.
+4. Alerts are routed to accountable owners with severity and action requirements.
+5. Logs are protected from unauthorised amendment or deletion.
+6. Monitoring coverage is periodically reviewed for completeness.
+7. Exceptions are tracked to investigation and closure.
+Red Flags (Weak Design)
+1. Key activities are not logged.
+2. Logs exist but are not monitored.
+3. Alerts are generic and do not support action.
+4. Users can amend or delete logs.
+5. Monitoring rules are not reviewed or updated.
+6. Exceptions are not assigned or closed.
+7. Reporting does not identify recurring issues.
+Manual:
+Best control design principles
+1. Responsible owner reviews defined logs or monitoring reports at an agreed frequency.
+2. Review focuses on unauthorised changes, unusual activity and unresolved exceptions.
+3. Investigation outcome and action taken are documented.
+4. Evidence shows what report was reviewed and by whom.
+5. Material issues are escalated promptly.
+6. Trend analysis is performed for recurring exceptions.
+7. Monitoring procedure defines scope, frequency and escalation path.
+Red Flags (Weak Design)
+1. Log review is ad hoc or not evidenced.
+2. Reviewer only signs off without documenting challenge.
+3. Monitoring scope is unclear.
+4. Unusual activity is not investigated.
+5. Exceptions are not tracked to closure.
+6. Escalation criteria are not defined.
+7. Reports reviewed do not cover key risk events.
+Expected control nature:
+Preventative
+CONTROL OBJECTIVE: CT22 - Mistaken Internet Payment Reports
+Obligations / Control Objectives:
+Westpac must have an effective and convenient process for users to report mistaken internet payments and acknowledge receipt of every mistaken internet payment report.
+Automated:
+Best control design principles
+1. Customers can submit mistaken internet payment reports through controlled channels.
+2. System captures required information and generates acknowledgement promptly.
+3. Case workflow assigns owner, status, due date and required action.
+4. Duplicate reports and missing information are identified automatically.
+5. Timeframes and ageing are monitored with alerts for overdue actions.
+6. Case actions, communications and outcomes are retained in an audit trail.
+7. Management reporting tracks volumes, ageing, outcomes and recurring themes.
+Red Flags (Weak Design)
+1. Reports are received through unmanaged channels.
+2. Acknowledgement is not generated or evidenced.
+3. Cases are not assigned to an accountable owner.
+4. Missing information is not detected early.
+5. No monitoring of overdue cases.
+6. Case decisions and communications are not retained.
+7. Repeat issues are not reported.
+Manual:
+Best control design principles
+1. Staff follow a documented process for receiving and acknowledging reports.
+2. Required information is checked against a standard checklist.
+3. Each report is logged with owner, date received, acknowledgement and status.
+4. Follow-up actions and customer communications are evidenced.
+5. Aged or complex cases are escalated in line with procedure.
+6. Closure is supported by documented outcome and approval where required.
+7. Periodic review confirms cases are being managed within required timeframes.
+Red Flags (Weak Design)
+1. Reports are handled without a standard process.
+2. Acknowledgement is not evidenced.
+3. Case register is incomplete or not maintained.
+4. Staff rely on emails without central tracking.
+5. Escalation is informal.
+6. Closure rationale is not documented.
+7. No review of open or overdue reports.
+Expected control nature:
+Detective
+CONTROL OBJECTIVE: CT23 - Provision of Confirmations and Notifications
+Obligations / Control Objectives:
+Westpac as an issuer or seller of financial products must provide retail members with confirmation of transactions carried out for financial products. 
+Automated:
+Best control design principles
+1. System automatically triggers confirmations and notifications for relevant transactions.
+2. Confirmation content is generated from approved transaction records.
+3. Delivery status, failure and bounce-back outcomes are monitored.
+4. Suppression, amendment or cancellation of confirmations is restricted and logged.
+5. Exceptions are alerted and tracked to resolution.
+6. Templates and rules are version controlled and approved.
+7. Evidence of generation and delivery is retained.
+Red Flags (Weak Design)
+1. Confirmations rely on manual initiation without monitoring.
+2. Notification rules are incomplete or undocumented.
+3. Failed delivery is not identified.
+4. Staff can suppress or amend notices without approval.
+5. No audit trail of confirmation generation.
+6. Templates are changed without approval.
+7. Exceptions are not resolved or reported.
+Manual:
+Best control design principles
+1. Procedure defines when confirmations or notifications must be provided.
+2. Staff check transaction details against approved records before sending.
+3. Maker-checker review is applied for material or sensitive communications.
+4. Evidence of notice, recipient, date and content is retained.
+5. Failed or returned notices are followed up and tracked.
+6. Outstanding confirmations are monitored through a register or report.
+7. Exceptions are escalated and resolved within agreed timeframes.
+Red Flags (Weak Design)
+1. Staff rely on judgement without clear criteria.
+2. No evidence of what was sent and when.
+3. Transaction details are not checked before issue.
+4. Failed notifications are not followed up.
+5. No independent review for high-risk communications.
+6. Outstanding items are not monitored.
+7. Exceptions are closed without evidence.
+Expected control nature:
+Detective
+CONTROL OBJECTIVE: CT24 - Treatment of Unauthorised and Disputed Transactions / Dealing with Mistaken Internet Payments
+Obligations / Control Objectives:
+Westpac must have processes in place to manage unauthorised and disputed transactions in accordance with requirements set out in the ePayments code.
+Customers must only be liable for losses from disputed transactions or equipment malfunction as permitted by regulatory requirements.
+Automated:
+Best control design principles
+1. System captures unauthorised, disputed and mistaken payment cases in a controlled workflow.
+2. Case classification, mandatory fields, owner and due dates are enforced.
+3. Rules support eligibility, liability and required action checks based on approved criteria.
+4. Alerts identify overdue, high-risk or incomplete cases.
+5. Communications, decisions, approvals and outcomes are retained.
+6. Adjustments, refunds or reversals require approved workflow and audit trail.
+7. Management reporting monitors ageing, outcomes, breaches and recurring causes.
+Red Flags (Weak Design)
+1. Cases are managed outside a controlled workflow.
+2. Classification is inconsistent or not evidenced.
+3. Due dates and regulatory timeframes are not monitored.
+4. Refunds or reversals can be processed without approval.
+5. Customer communications and decisions are not retained.
+6. Overdue cases are not escalated.
+7. Recurring dispute causes are not analysed.
+Manual:
+Best control design principles
+1. Staff follow a documented process for unauthorised, disputed and mistaken transaction cases.
+2. Case assessment is supported by evidence, checklist and approved criteria.
+3. Liability, customer impact and required response are reviewed before outcome is finalised.
+4. Refunds, reversals or adjustments are independently checked and approved.
+5. Communications, decisions and closure evidence are retained.
+6. Open and aged cases are monitored and escalated.
+7. Quality review checks consistency of decisions and documentation.
+Red Flags (Weak Design)
+1. Decisions rely on individual judgement without documented criteria.
+2. Evidence supporting the outcome is incomplete.
+3. Adjustments are processed without independent review.
+4. Customer impact is not assessed.
+5. Open cases are not monitored.
+6. Closure occurs without proof of resolution.
+7. No quality review of case decisions.
+Expected control nature:
+Detective
+CONTROL OBJECTIVE: CT27 - Records retention
+Obligations / Control Objectives:
+High value records are classified and retained for the minimum period of time
+Automated:
+Best control design principles
+1. System classifies high value records and applies approved retention rules automatically.
+2. Retention period, record owner, source system and disposal date are captured.
+3. Records are protected from unauthorised amendment, deletion or loss.
+4. Disposal, archival or legal hold actions follow approved workflow.
+5. Exceptions such as missing classification or expired retention are reported.
+6. Audit trail records retention actions and approvals.
+7. Periodic reporting confirms retention compliance and outstanding exceptions.
+Red Flags (Weak Design)
+1. Records are not classified or retention rules are missing.
+2. Retention relies on manual user judgement only.
+3. Records can be deleted without approval or audit trail.
+4. Legal hold or archival requirements are not enforced.
+5. Expired or missing records are not reported.
+6. Ownership of records is unclear.
+7. No periodic monitoring of retention compliance.
+Manual:
+Best control design principles
+1. Record owner applies a documented retention schedule to high value records.
+2. Review confirms records are complete, classified and stored in approved locations.
+3. Disposal or archival is approved and evidenced.
+4. Exceptions such as missing, duplicate or unclassified records are logged and remediated.
+5. Access to retained records is restricted to approved users.
+6. Periodic review confirms records remain available for the required period.
+7. Evidence of review, approval and remediation is retained.
+Red Flags (Weak Design)
+1. Records are stored in uncontrolled locations.
+2. Retention period is unclear or inconsistently applied.
+3. Disposal occurs without approval.
+4. No evidence that records were reviewed.
+5. Missing or unclassified records are not remediated.
+6. Access to records is not controlled.
+7. Periodic review is not performed.
+Expected control nature:
+Preventative
 
-import argparse
-import json
-import logging
-import sys
-import time
-from datetime import datetime
-from pathlib import Path
-
-import httpx
-import numpy as np
-import pandas as pd
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from openai import AzureOpenAI
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  CONFIG
-# ─────────────────────────────────────────────────────────────────────────────
-
-OUTPUT_DIR      = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\ct")
-DIM1_OUTPUT_DIR = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
-
-AZURE_ENDPOINT  = "https://ai.eng.azure.srv.westpac.com.au"
-API_VERSION     = "2024-10-21"
-EMBEDDING_MODEL = "text-embedding-3-large"
-EMBEDDING_DIM   = 3072
-PROXY_URL       = "http://127.0.0.1:9000"
-CA_BUNDLE       = r"C:\Users\m061400\ai-test\cacert.pem"
-
-EMBED_BATCH  = 20
-EMBED_SLEEP  = 2.0
-
-EXPANDED_PARQUET   = OUTPUT_DIR / "expanded_ct_control_mapping.parquet"
-EMBEDDINGS_PARQUET = OUTPUT_DIR / "control_embeddings_ct.parquet"
-CAND_CT_PARQUET    = OUTPUT_DIR / "candidate_pairs_ct.parquet"
-SCOPE_CT_PARQUET   = OUTPUT_DIR / "scope_summary_ct.parquet"
-RUN_CONFIG         = OUTPUT_DIR / "run_config_ct.json"
-
-# Dimension 1 embeddings cache (reuse where possible)
-DIM1_EMBEDDINGS    = DIM1_OUTPUT_DIR / "control_embeddings.parquet"
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  LOGGING
-# ─────────────────────────────────────────────────────────────────────────────
-
-def get_logger():
-    logger = logging.getLogger("ctrl_rat_ct2")
-    if logger.handlers:
-        return logger
-    fh = logging.FileHandler(OUTPUT_DIR / "processing_log_ct.txt",
-                             encoding="utf-8")
-    ch = logging.StreamHandler(sys.stdout)
-    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s",
-                            datefmt="%Y-%m-%d %H:%M:%S")
-    fh.setFormatter(fmt); ch.setFormatter(fmt)
-    fh.setLevel(logging.DEBUG); ch.setLevel(logging.INFO)
-    logger.addHandler(fh); logger.addHandler(ch)
-    logger.setLevel(logging.DEBUG)
-    return logger
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  CLIENT
-# ─────────────────────────────────────────────────────────────────────────────
-
-def make_embed_client():
-    token_provider = get_bearer_token_provider(
-        DefaultAzureCredential(),
-        "https://cognitiveservices.azure.com/.default"
-    )
-    return AzureOpenAI(
-        azure_endpoint=AZURE_ENDPOINT,
-        api_version=API_VERSION,
-        azure_ad_token_provider=token_provider,
-        http_client=httpx.Client(
-            proxy=PROXY_URL,
-            verify=CA_BUNDLE,
-            timeout=httpx.Timeout(120.0, connect=30.0),
-            limits=httpx.Limits(
-                max_keepalive_connections=0, max_connections=1),
-        ),
-    )
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  EMBEDDINGS
-# ─────────────────────────────────────────────────────────────────────────────
-
-def generate_embeddings(texts, log):
-    client = make_embed_client()
-    all_embs = []
-    total = len(texts)
-    log.info(f"  Embedding {total:,} controls in batches of {EMBED_BATCH}...")
-    for i in range(0, total, EMBED_BATCH):
-        batch = [t[:24000] for t in texts[i:i+EMBED_BATCH]]
-        for attempt in range(4):
-            try:
-                resp = client.embeddings.create(
-                    model=EMBEDDING_MODEL, input=batch)
-                all_embs.extend([d.embedding for d in resp.data])
-                print(f"\r  {min(i+EMBED_BATCH,total):,}/{total:,}", end="")
-                time.sleep(EMBED_SLEEP)
-                break
-            except Exception as e:
-                if attempt == 3:
-                    raise
-                wait = min(5 * 2**attempt, 60)
-                log.warning(f"  Batch {i//EMBED_BATCH+1} attempt {attempt+1}: "
-                            f"{e}. Wait {wait}s...")
-                time.sleep(wait)
-    print(f"\r  {total:,}/{total:,} done        ")
-    return np.array(all_embs, dtype=np.float32)
+________________________________________
+Output requirements and example for Best of Breed:
+Apply this output format separately to:
+• Automated Controls Population
+• Manual / Manual-Automated Controls Population
+Automated Controls Output
+Present all automated controls in ranked order.
+Produce the output in the following structure:
+•	Rank
+•	Control ID
+•	Control Nature
+•	Design Strength
+•	Coverage
+•	Rationale
+•	Detailed Design Principles Evaluation
+•	Coverage Details
+________________________________________
+Best-of-Breed Summary
+Best-of-Breed Automated Control
+Provide:
+•	Control ID
+•	Design Strength
+•	Coverage
+•	Summary rationale
+Best-of-Breed Manual / Manual-Automated Control
+Provide:
+•	Control ID
+•	Design Strength
+•	Coverage
+•	Summary rationale
 
 
-def load_or_generate_embeddings(df, force, log):
-    """
-    Load cached embeddings where available, generate only what's new.
-    Tries Dimension 1 cache first, then local Dimension 2 cache.
-    """
-    if EMBEDDINGS_PARQUET.exists() and not force:
-        log.info(f"Loading cached embeddings: {EMBEDDINGS_PARQUET.name}")
-        emb_df = pd.read_parquet(EMBEDDINGS_PARQUET, engine="pyarrow")
-        log.info(f"  {len(emb_df):,} embeddings loaded")
-        return emb_df
-
-    unique = (df[["Control_ID","embedding_text"]]
-              .drop_duplicates(subset=["Control_ID"])
-              .reset_index(drop=True))
-    log.info(f"Preparing embeddings for {len(unique):,} unique controls...")
-
-    # Try to reuse Dimension 1 embeddings
-    cached = {}
-    if DIM1_EMBEDDINGS.exists():
-        dim1 = pd.read_parquet(DIM1_EMBEDDINGS, engine="pyarrow")
-        cached = {row["Control_ID"]: row["embedding"]
-                  for _, row in dim1.iterrows()}
-        log.info(f"  Dimension 1 cache available: {len(cached):,} embeddings")
-
-    need_new = unique[~unique["Control_ID"].isin(cached)]
-    log.info(f"  Already cached  : {len(unique)-len(need_new):,}")
-    log.info(f"  Need generation : {len(need_new):,}")
-
-    new_embs = {}
-    if len(need_new) > 0:
-        texts = need_new["embedding_text"].tolist()
-        embs  = generate_embeddings(texts, log)
-        for cid, emb in zip(need_new["Control_ID"].tolist(), embs):
-            new_embs[cid] = emb.tolist()
-
-    # Combine
-    all_embs = []
-    for _, row in unique.iterrows():
-        cid = row["Control_ID"]
-        if cid in new_embs:
-            all_embs.append({"Control_ID": cid, "embedding": new_embs[cid]})
-        elif cid in cached:
-            emb = cached[cid]
-            all_embs.append({"Control_ID": cid,
-                              "embedding": emb if isinstance(emb, list)
-                              else emb.tolist()})
-
-    emb_df = pd.DataFrame(all_embs)
-    emb_df.to_parquet(EMBEDDINGS_PARQUET, index=False, engine="pyarrow")
-    log.info(f"Embeddings saved: {EMBEDDINGS_PARQUET.name} ({len(emb_df):,} rows)")
-    return emb_df
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  COSINE SIMILARITY + BATCH ASSIGNMENT
-# ─────────────────────────────────────────────────────────────────────────────
-
-def cosine_sim(embs):
-    norms  = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-9
-    normed = embs / norms
-    return (normed @ normed.T).astype(np.float32)
+Example only for applying the methodology to Best of Breed
+Example below shows how the above methodology was manually applied to CT4 control objective which focuses on the timely investigation and resolution of payment processing and batch errors. This is example only. Please don’t use this as a precedence to determine your output.
+CT4 control population was assessed and ranked separately across the automated and manual populations.
+For the automated controls, CTL009174 ranked highest because it demonstrated strong design attributes and broad coverage across products, applications and processes.
+For the manual controls, CTL023150 was identified as the Best of Breed control. While other controls existed in the population, CTL023150 demonstrated the strongest preventative design through independent review, defined monitoring activities and clear evidence retention.
+This example illustrates the core principle of the methodology: we prioritise the quality of control design first, and then use coverage to differentiate controls with similar design strength."
+Analysis details:
+Automated:
+Rank 1 is CTL009174. The Control Nature is Preventative. The Design Strength is 🟢 Strong. Coverage is 64 Products • 137 Apps • 41 Processes. The indication from control documentation is: Documentation is comprehensive and clearly explains the interface, error triggers, investigation process, monitoring activities, evidence requirements, escalation path and ownership. Control performance is strong with Effective OE/DE ratings. Includes automated error generation, batch monitoring, alerting, reconciliation, rejection of unbalanced files, incident management and documented investigation/resolution activities. The rationale is: Documentation is comprehensive and clearly explains the interface, error triggers, investigation process, monitoring activities, evidence requirements, escalation path and ownership. Preventative, Automated, Daily and Key Control. Control performance is strong with Effective OE/DE ratings. Includes automated error generation, batch monitoring, alerting, reconciliation, rejection of unbalanced files, incident management and documented investigation/resolution activities. Strongest combination of prevention, detection, resolution and auditability. The number of Products tagged (out of 81 products) is 64. The number of Applications tagged is 137. The number of L3 Processes tagged is 41.
+2 Rank 2 is CTL000125796. The Control Nature is Preventative. The Design Strength is 🟢 Strong. Coverage is 18 Products • 77 Apps • 12 Processes. The indication from control documentation is: Well documented with clear objective, daily operation, owner accountability and defined error resolution process. Automated alerts are generated for batch failures and ownership for investigation is clearly assigned. Documentation is less detailed than CTL009174 regarding monitoring and escalation. The rationale is: Well documented with clear objective, daily operation, owner accountability and defined error resolution process. Preventative, Automated, Daily and Effective. Automated alerts are generated for batch failures and ownership for investigation is clearly assigned. Documentation is less detailed than CTL009174 regarding monitoring and escalation but still demonstrates strong CT4 alignment. The number of Products tagged (out of 81 products) is 18. The number of Applications tagged is 77. The number of L3 Processes tagged is 12.
+4 Rank 3 is CTL000160312. The Control Nature is Preventative. The Design Strength is 🟢 Strong. Coverage is 30 Products • 109 Apps • 29 Processes. The indication from control documentation is: Clearly documents exception queues, routing rules, monitoring through Splunk, incident management process and operational resolution activities. The rationale is: Strong control design and documentation. Preventative, Automated and operates multiple times per day. Clearly documents exception queues, routing rules, monitoring through Splunk, incident management process and operational resolution activities. Strong operational performance and good documentation quality. The number of Products tagged (out of 81 products) is 30. The number of Applications tagged is 109. The number of L3 Processes tagged is 29.
+6 Rank 4 is CTL004423. The Control Nature is Preventative. The Design Strength is 🟡 Moderate. Coverage is 7 Products • 29 Apps • 4 Processes. The indication from control documentation is: Documentation clearly describes interface processing, failure notifications and investigation responsibilities. Effective control performance but documentation provides less detail regarding monitoring, escalation and evidence. The rationale is: Preventative, Automated and Daily. Documentation clearly describes interface processing, failure notifications and investigation responsibilities. Effective control performance but documentation provides less detail regarding monitoring, escalation and evidence than the higher-ranked controls. The number of Products tagged (out of 81 products) is 7. The number of Applications tagged is 29. The number of L3 Processes tagged is 4.
+Manual/Manual-automated
+Rank 1 is CTL023150. The Control Nature is Preventative. The Design Strength is 🟢 Strong. The Extent of Coverage is 1 Product • 13 Apps • 1 Process. The Indication from control documentation is: Good documentation and clear maker-checker process. Daily operation, evidence retention and monitoring arrangements are documented. However, focus is overdue payment monitoring rather than direct batch/interface error detection and resolution. The Rationale is: Good documentation and clear maker-checker process. Daily operation, evidence retention and monitoring arrangements are documented. However, focus is overdue payment monitoring rather than direct batch/interface error detection and resolution. The No of Products tagged (out of 81 products) is 1. The No of applications tagged is 13. The No. of L3 processes tagged is 1.
+2 Rank 2 is CTL023275. The Control Nature is Preventative. The Design Strength is 🟢 Strong. The Extent of Coverage is 1 Product • 3 Apps • 1 Process. The Indication from control documentation is: Documentation clearly describes the monitoring performed and escalation requirements. Multiple daily reviews and manager sign-off provide good oversight. However, the control is highly manual and primarily focused on queue management rather than interface error prevention or automated resolution. The Rationale is: Documentation clearly describes the monitoring performed and escalation requirements. Multiple daily reviews and manager sign-off provide good oversight. However, the control is highly manual and primarily focused on queue management rather than interface error prevention or automated resolution. The No of Products tagged (out of 81 products) is 1. The No of applications tagged is 3. The No. of L3 processes tagged is 1.
+4 Rank 3 is CTL011131. The Control Nature is Detective. The Design Strength is 🟡 Moderate. The Extent of Coverage is 8 Products • 43 Apps • 2 Processes. The Indication from control documentation is: Daily monitoring, SLA management, escalation rules, exception tracking and audit trail are clearly described. The Rationale is: Very strong operational documentation. Daily monitoring, SLA management, escalation rules, exception tracking and audit trail are clearly described. However, control is primarily Detective and Manual-Automated rather than Preventative and Automated, reducing ranking. The No of Products tagged (out of 81 products) is 8. The No of applications tagged is 43. The No. of L3 processes tagged is 2.
+6 Rank 4 is CTL000082206. The Control Nature is Detective. The Design Strength is 🟡 Moderate. The Extent of Coverage is 19 Products • 81 Apps • 16 Processes. The Indication from control documentation is: Documentation clearly defines exception creation, ownership, investigation workflow, closure process and management reporting. However, the control is entirely retrospective and focused on investigation rather than prevention. The Rationale is: The control contains a well-defined investigation and closure process with clear ownership and reporting. However, the activity is entirely retrospective and focuses on identifying and resolving issues after occurrence rather than reducing the likelihood of occurrence. This limits overall design strength to Moderate. The No of Products tagged (out of 81 products) is 19. The No of applications tagged is 81. The No. of L3 processes tagged is 16.
+8 Rank 5 is CTL000156989. The Control Nature is Detective. The Design Strength is 🟡 Moderate. The Extent of Coverage is 7 Products • 25 Apps • 4 Processes. The Indication from control documentation is: Detailed documentation covering monitoring, root cause analysis, incident management, attestation and change management however payment-specific processing is not clearly described. The Rationale is: Strong technology control standard with detailed documentation covering monitoring, root cause analysis, incident management, attestation and change management. Well written and comprehensive. Ranking reduced because execution is Ad-hoc and payment-specific processing is not clearly described. The No of Products tagged (out of 81 products) is 7. The No of applications tagged is 25. The No. of L3 processes tagged is 4. Rank 6 is CTL000156634. The Control Nature is Detective. The Design Strength is 🟡 Moderate. The Extent of Coverage is 20 Products • 83 Apps • 20 Processes. The Indication from control documentation is: Documentation includes evidence, approval, monitoring and resolution activities. However, the control is generic batch governance rather than specific payment interface resolution. The Rationale is: Same enterprise standard design as CTL000156989. Documentation quality is high and includes evidence, approval, monitoring and resolution activities. However, the control is generic batch governance rather than specific payment interface resolution. The No of Products tagged (out of 81 products) is 20. The No of applications tagged is 83. The No. of L3 processes tagged is 20.
+12 Rank 7 is CTL000164842. The Control Nature is Detective. The Design Strength is 🟡 Moderate. The Extent of Coverage is 1 Product • 7 Apps • 1 Process. The Indication from control documentation is: Documented with clear fallback process when automation fails. Strong governance and testing arrangements. However, it relies on management reporting after failures occur and therefore operates as a secondary detective control rather than a primary CT4 interface control. The control is manual and detective. The Rationale is: Reasonably documented with clear fallback process when automation fails. Strong governance and testing arrangements. However, it relies on management reporting after failures occur and therefore operates as a secondary detective control rather than a primary CT4 interface control. The No of Products tagged (out of 81 products) is 1. The No of applications tagged is 7. The No. of L3 processes tagged is 1.
+14 Rank 8 is CTL011139. The Control Nature is Detective. The Design Strength is 🟡 Moderate. The Extent of Coverage is 2 Products • 23 Apps • 2 Processes. The Indication from control documentation is: Documentation is good, with clearly defined review process, escalation points and maker-checker model. However, focus is settlement reconciliation rather than interface or batch error management. The control is manual and detective. The Rationale is: Documentation quality is good, with clearly defined review process, escalation points and maker-checker model. However, focus is settlement reconciliation rather than interface or batch error management. The No of Products tagged (out of 81 products) is 2. The No of applications tagged is 23. The No. of L3 processes tagged is 2.
+16 Rank 9 is CTL000047625. The Control Nature is Detective. The Design Strength is 🟠 Basic. The Extent of Coverage is 2 Products • 10 Apps • 2 Processes. The Indication from control documentation is: Control documentation includes exception investigation and evidence retention. However, the control is fully manual, reactive and focused on failed payment review rather than upstream interface or batch controls. The control is manual and detective. The Rationale is: Control documentation is adequate and includes exception investigation and evidence retention. However, the control is fully manual, reactive and focused on failed payment review rather than upstream interface or batch controls. The No of Products tagged (out of 81 products) is 2. The No of applications tagged is 10. The No. of L3 processes tagged is 2.
+18 Rank 10 is CTL000143993. The Control Nature is Detective. The Design Strength is 🔴 Limited. The Extent of Coverage is 1 Product • 17 Apps • 1 Process. The Indication from control documentation is: Documentation describes the process clearly but the control is not automated, detective and rated as requires improvements. The Rationale is: Lowest ranking due to Requires Improvement assessment ratings and predominantly manual file comparison activities. Documentation describes the process clearly but the control is not automated, is reactive and lacks the sophistication of the higher-ranked CT4 candidates. The No of Products tagged (out of 81 products) is 1. The No of applications tagged is 17. The No. of L3 processes tagged is 1.
 
 
-def assign_batches(ctrl_ids, sim_mat, threshold, max_per_batch):
-    n = len(ctrl_ids)
-    neighbours = {
-        i: sorted(range(n), key=lambda j: -sim_mat[i][j])
-        for i in range(n)
-    }
-    assigned   = {}
-    unassigned = set(range(n))
-    batch_id   = 0
-
-    while unassigned:
-        def degree(i):
-            return sum(1 for j in neighbours[i]
-                       if j in unassigned and sim_mat[i][j] >= threshold)
-        seed  = max(unassigned, key=degree)
-        batch = [seed]
-        unassigned.discard(seed)
-        for j in neighbours[seed]:
-            if len(batch) >= max_per_batch:
-                break
-            if j in unassigned:
-                batch.append(j)
-                unassigned.discard(j)
-        for idx in batch:
-            assigned[ctrl_ids[idx]] = batch_id
-        batch_id += 1
-
-    return assigned
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  BUILD CANDIDATE PAIRS
-# ─────────────────────────────────────────────────────────────────────────────
-
-def build_candidates(df, emb_lookup, threshold, max_per_batch, log):
-    all_pairs  = []
-    all_scopes = []
-    n_large = n_small = n_single = 0
-
-    scopes = df.groupby("scope_id")
-    log.info(f"  Building candidates for {len(scopes):,} CT scopes...")
-
-    for scope_id, grp in scopes:
-        ctrl_ids = grp["Control_ID"].unique().tolist()
-        n        = len(ctrl_ids)
-
-        if n < 2:
-            n_single += 1
-            all_scopes.append({
-                "scope_id":    scope_id,
-                "ct_ref":      scope_id.replace("CT|",""),
-                "n_controls":  n,
-                "send_all":    True,
-                "n_batches":   1,
-                "skip_reason": "single_control",
-            })
-            continue
-
-        embs = np.array([
-            emb_lookup.get(cid, np.zeros(EMBEDDING_DIM, dtype=np.float32))
-            for cid in ctrl_ids
-        ], dtype=np.float32)
-        sim      = cosine_sim(embs)
-        send_all = (n <= max_per_batch)
-
-        if send_all:
-            n_small += 1
-            batch_map = {cid: 0 for cid in ctrl_ids}
-        else:
-            n_large += 1
-            batch_map = assign_batches(ctrl_ids, sim, threshold, max_per_batch)
-            log.info(f"    Large scope: {scope_id} "
-                     f"({n} controls, {max(batch_map.values())+1} batches)")
-
-        # Save ALL pairs (ensures no control is excluded)
-        for i in range(n):
-            for j in range(i+1, n):
-                sim_val = float(sim[i, j])
-                all_pairs.append({
-                    "scope_id":         scope_id,
-                    "control_id_a":     ctrl_ids[i],
-                    "control_id_b":     ctrl_ids[j],
-                    "cosine_similarity":sim_val,
-                    "above_threshold":  sim_val >= threshold,
-                    "batch_id":         batch_map.get(ctrl_ids[i], 0),
-                    "send_all":         send_all,
-                })
-
-        all_scopes.append({
-            "scope_id":    scope_id,
-            "ct_ref":      scope_id.replace("CT|",""),
-            "n_controls":  n,
-            "send_all":    send_all,
-            "n_batches":   max(batch_map.values()) + 1,
-            "skip_reason": "",
-        })
-
-    log.info(f"  Small scopes (send_all): {n_small:,} | "
-             f"Large (batched): {n_large:,} | Single: {n_single:,}")
-    return pd.DataFrame(all_pairs), pd.DataFrame(all_scopes)
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  MAIN
-# ─────────────────────────────────────────────────────────────────────────────
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--force", action="store_true",
-                        help="Regenerate embeddings and candidates.")
-    args = parser.parse_args()
-
-    log = get_logger()
-    log.info("=" * 70)
-    log.info("  Control Rationalisation — Step 2 (Dimension 2: Gold Controls)")
-    log.info(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    log.info("=" * 70)
-
-    if not EXPANDED_PARQUET.exists():
-        log.error("expanded_ct_control_mapping.parquet not found. "
-                  "Run Script 1 first.")
-        sys.exit(1)
-    if not RUN_CONFIG.exists():
-        log.error("run_config_ct.json not found. Run Script 1 first.")
-        sys.exit(1)
-
-    outputs_exist = all(p.exists() for p in
-                        [EMBEDDINGS_PARQUET, CAND_CT_PARQUET, SCOPE_CT_PARQUET])
-    if outputs_exist and not args.force:
-        log.info("All outputs exist. Use --force to regenerate.")
-        return
-
-    with open(RUN_CONFIG) as f:
-        config = json.load(f)
-    threshold     = config.get("similarity_threshold", 0.58)
-    max_per_batch = config.get("max_controls_per_llm_call", 20)
-
-    log.info("Loading expanded dataset...")
-    df = pd.read_parquet(EXPANDED_PARQUET, engine="pyarrow")
-    log.info(f"  {len(df):,} rows | {df['scope_id'].nunique():,} scopes | "
-             f"{df['Control_ID'].nunique():,} unique controls")
-
-    # Embeddings
-    emb_df = load_or_generate_embeddings(df, args.force, log)
-    emb_lookup = {
-        row["Control_ID"]: np.array(row["embedding"], dtype=np.float32)
-        for _, row in emb_df.iterrows()
-    }
-    log.info(f"Embedding lookup: {len(emb_lookup):,} controls")
-
-    # Candidate pairs
-    log.info("\nBuilding candidate pairs...")
-    pairs_df, scope_df = build_candidates(
-        df, emb_lookup, threshold, max_per_batch, log)
-
-    pairs_df.to_parquet(CAND_CT_PARQUET,  index=False, engine="pyarrow")
-    scope_df.to_parquet(SCOPE_CT_PARQUET, index=False, engine="pyarrow")
-    log.info(f"  Candidate pairs : {len(pairs_df):,}")
-    log.info(f"  Scope summary   : {len(scope_df):,} CT groups")
-
-    config["step2_completed_at"] = datetime.now().isoformat()
-    config["n_pairs"]  = len(pairs_df)
-    config["n_scopes"] = int(scope_df["scope_id"].nunique())
-    with open(RUN_CONFIG, "w") as f:
-        json.dump(config, f, indent=2)
-
-    log.info("=" * 70)
-    log.info("  Step 2 complete. Run 03_run_llm_ct.py next.")
-    log.info("=" * 70)
-
-if __name__ == "__main__":
-    main()
