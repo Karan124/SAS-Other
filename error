@@ -1,11 +1,31 @@
-# Window 1 — scopes 0 to 18 (19 scopes)
-python 03_run_llm_assessment.py --wp-range 0 19 --suffix _p1
+Ok back to Dimension One - Product
 
-# Window 2 — scopes 19 to 35 (17 scopes)
-python 03_run_llm_assessment.py --wp-range 19 36 --suffix _p2
+The SMEs have reviewed the sample output and below has been flagged:
 
-# Window 3 — scopes 36 to 55 (20 scopes)
-python 03_run_llm_assessment.py --wp-range 36 56 --suffix _p3
+1) Fragmented Control Grouping Distinction - I need you to look at the below example for the Product "Agency Service" - See that we have two groups below for the Process-Split Fragmentation ->
+CTL000041583; CTL000041584 and CTL011401; CTL023775, but both of them have been assigned P1. They need to be assigned P1 and P2. Note that this example only shows
+2 controls grouped together - there could be more than 2.
 
-# Window 4 — scopes 56 to 74 (19 scopes)
-python 03_run_llm_assessment.py --wp-range 56 75 --suffix _p4
+/* Not all columns shown */
+Product	Control ID Classification	Classification Group Key	Fragmented Group ID	Dual Classified	Redundant By Control IDs	Fragmented Control ID Group
+Agency Service	CTL000041583	Process-Split Fragmentation	P-1	P-1	FALSE		CTL000041583; CTL000041584
+Agency Service	CTL000041584	Process-Split Fragmentation	P-1	P-1	FALSE		CTL000041583; CTL000041584
+Agency Service	CTL011401	Process-Split Fragmentation	P-1	P-1	FALSE		CTL011401; CTL023775
+Agency Service	CTL023775	Process-Split Fragmentation	P-1	P-1	FALSE		CTL011401; CTL023775
+
+
+2) Common Control Grouping Distinction - I need you to look at the below example for the Product "Agency Service" - See that we have two groups shown below for the Common Control Opportunity ->
+CTL000041538, CTL000045174 and CTL000053254, CTL000140998, but both of them have been assigned CC1. They need to be grouped and assigned CC1 and CC2. Note that this example only shows
+2 controls grouped together - there could be more than 2.
+
+/* Not all columns shown */
+Product	Control ID	Classification	Classification Group Key	Fragmented Group ID	Dual Classified	Redundant By Control IDs	Fragmented Control ID Group	Rationale
+Agency Service	CTL000041538	Common Control Opportunity	CC-1		FALSE	This control is directly similar to CTL000045174 in underlying control design.....	
+Agency Service	CTL000045174	Common Control Opportunity	CC-1		FALSE	This control is directly similar to CTL000041538 in control mechanism and intended outcome. .....	
+Agency Service	CTL000053254	Common Control Opportunity	CC-1		FALSE	This control is directly related to CTL000140998 because both authenticate customer-originated manual payment...
+Agency Service	CTL000140998	Common Control Opportunity	CC-1		FALSE	This control is directly related to CTL000053254 because both are preventative.....
+
+3) Common Control Opportunity controls that have been grouped together aren't appearing in a separate column such as Process-Split Fragmentation. See in the above example, the Process-Split Fragmentation
+controls appear under the column "Fragmented Control ID Group", but the Common Control Opportunity controls that are grouped together do not appear in a separate and explicit column.
+
+
