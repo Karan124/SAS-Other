@@ -1,88 +1,68 @@
 """
-01_preprocess_ct.py
+02_generate_embeddings_ct.py
 ─────────────────────────────────────────────────────────────────────────────
-Control Rationalisation — Step 1 of 4 (Dimension 2: Gold Controls)
+Control Rationalisation — Step 2 of 4 (Dimension 2: Gold Controls)
 
-Scope: one scope per gold control group (CT|CT1, CT|CT2 ... CT|CT28).
-All 708 payment controls are included.
+Generates embeddings for all 708 controls and builds candidate pairs
+within each CT group scope.
 
-Reads:
-  ctrl_details.xlsx                    — 708 controls with gold_control mapping
-  consolidated_linkage_by_product.xlsx — control-to-process linkage for
-                                         best of breed enrichment
+Note: attempts to reuse embeddings from Dimension 1 cache
+(control_embeddings.parquet in the product output folder) where the same
+Control_ID exists. Only generates new embeddings for controls not already
+cached, saving time and API cost.
 
-Computes per-control linkage metrics (controls with no linkage get 0):
-  n_linked_processes — distinct count of l3_process_UUID
-  n_linked_products  — distinct count of product
-  n_linked_apps      — distinct count of Alfabet apps (semicolon-separated)
-
-Outputs:
-  expanded_ct_control_mapping.parquet
-  data_quality_report_ct.xlsx
-  processing_log_ct.txt
-  run_config_ct.json
-
-Run:
-  python 01_preprocess_ct.py
-  python 01_preprocess_ct.py --force
+Before running:
+  az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
+  python 02_generate_embeddings_ct.py
+  python 02_generate_embeddings_ct.py --force
 """
 
 import argparse
 import json
 import logging
-import re
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
+import httpx
+import numpy as np
 import pandas as pd
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from openai import AzureOpenAI
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 
-DATA_DIR   = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\ct\data")
-OUTPUT_DIR = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\ct")
+OUTPUT_DIR      = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\ct")
+DIM1_OUTPUT_DIR = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\product\output")
 
-FILE_CTRL_DETAILS = DATA_DIR / "ctrl_details.xlsx"
-FILE_LINKAGE      = DATA_DIR / "consolidated_linkage_by_product.xlsx"
+AZURE_ENDPOINT  = "https://ai.eng.azure.srv.westpac.com.au"
+API_VERSION     = "2024-10-21"
+EMBEDDING_MODEL = "text-embedding-3-large"
+EMBEDDING_DIM   = 3072
+PROXY_URL       = "http://127.0.0.1:9000"
+CA_BUNDLE       = r"C:\Users\m061400\ai-test\cacert.pem"
 
-SIMILARITY_THRESHOLD      = 0.58
-MAX_CONTROLS_PER_LLM_CALL = 20
-RETRY_COUNT               = 5
+EMBED_BATCH  = 20
+EMBED_SLEEP  = 2.0
 
-CTRL_OPTIONAL_COLS = [
-    "CTRL_NATRE", "CTRL_STUS", "CTRL_OWNER", "CTRL_FREQ",
-    "CTRL_KEY_CONTRL", "Control Objective", "CTRL_TYP",
-    "CTRL_ASSESS_RTNG", "CTRL_OE_RTNG", "CTRL_DE_RTNG",
-    "CTRL_CTGRY_1", "CTRL_CTGRY_2", "CTRL_LOC_LIST",
-    "CTRL_EVDNCD", "CTRL_MNTRD", "CTRL_CATEGORY",
-    "Control_Description", "CTRL_FLDR", "object_path_leaf",
-    "CTRL_FLDR_LVL_2(Division)", "gold_control",
-    "COMMON_CTRL_TYP", "COMMON_CTRL_REFERENCE",
-]
+EXPANDED_PARQUET   = OUTPUT_DIR / "expanded_ct_control_mapping.parquet"
+EMBEDDINGS_PARQUET = OUTPUT_DIR / "control_embeddings_ct.parquet"
+CAND_CT_PARQUET    = OUTPUT_DIR / "candidate_pairs_ct.parquet"
+SCOPE_CT_PARQUET   = OUTPUT_DIR / "scope_summary_ct.parquet"
+RUN_CONFIG         = OUTPUT_DIR / "run_config_ct.json"
+
+# Dimension 1 embeddings cache (reuse where possible)
+DIM1_EMBEDDINGS    = DIM1_OUTPUT_DIR / "control_embeddings.parquet"
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  HELPERS
+#  LOGGING
 # ─────────────────────────────────────────────────────────────────────────────
 
-def safe_str(val):
-    if pd.isna(val):
-        return ""
-    return re.sub(r"\s+", " ",
-                  str(val).replace("\t"," ").replace("\r"," ")
-                          .replace("\n"," ")).strip()
-
-def is_blank(val):
-    return safe_str(val) == ""
-
-def clean_cols(df):
-    df.columns = df.columns.str.strip()
-    return df
-
-def setup_logging():
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    logger = logging.getLogger("ctrl_rat_ct")
+def get_logger():
+    logger = logging.getLogger("ctrl_rat_ct2")
     if logger.handlers:
         return logger
     fh = logging.FileHandler(OUTPUT_DIR / "processing_log_ct.txt",
@@ -97,249 +77,218 @@ def setup_logging():
     return logger
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  LOAD
+#  CLIENT
 # ─────────────────────────────────────────────────────────────────────────────
 
-def load_inputs(log):
-    for f in [FILE_CTRL_DETAILS, FILE_LINKAGE]:
-        if not f.exists():
-            log.error(f"Not found: {f}")
-            sys.exit(1)
-
-    log.info(f"Loading ctrl_details...")
-    ctrl = clean_cols(pd.read_excel(FILE_CTRL_DETAILS, dtype=str,
-                                    engine="openpyxl"))
-    log.info(f"  {len(ctrl):,} rows")
-
-    log.info(f"Loading consolidated_linkage_by_product...")
-    linkage = clean_cols(pd.read_excel(FILE_LINKAGE, dtype=str,
-                                       engine="openpyxl"))
-    log.info(f"  {len(linkage):,} rows | "
-             f"{linkage.get('Control_ID', pd.Series()).nunique():,} unique controls")
-
-    # Validate required columns
-    if "Control_ID" not in ctrl.columns:
-        log.error("ctrl_details missing Control_ID")
-        sys.exit(1)
-    if "gold_control" not in ctrl.columns:
-        log.error("ctrl_details missing gold_control")
-        sys.exit(1)
-    if "Control_ID" not in linkage.columns:
-        log.error("consolidated_linkage missing Control_ID")
-        sys.exit(1)
-
-    missing_opt = [c for c in CTRL_OPTIONAL_COLS if c not in ctrl.columns]
-    if missing_opt:
-        log.warning(f"Optional columns not in ctrl_details: {missing_opt}")
-
-    return ctrl, linkage
+def make_embed_client():
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default"
+    )
+    return AzureOpenAI(
+        azure_endpoint=AZURE_ENDPOINT,
+        api_version=API_VERSION,
+        azure_ad_token_provider=token_provider,
+        http_client=httpx.Client(
+            proxy=PROXY_URL,
+            verify=CA_BUNDLE,
+            timeout=httpx.Timeout(120.0, connect=30.0),
+            limits=httpx.Limits(
+                max_keepalive_connections=0, max_connections=1),
+        ),
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  LINKAGE METRICS
+#  EMBEDDINGS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def compute_linkage_metrics(linkage, log):
+def generate_embeddings(texts, log):
+    client = make_embed_client()
+    all_embs = []
+    total = len(texts)
+    log.info(f"  Embedding {total:,} controls in batches of {EMBED_BATCH}...")
+    for i in range(0, total, EMBED_BATCH):
+        batch = [t[:24000] for t in texts[i:i+EMBED_BATCH]]
+        for attempt in range(4):
+            try:
+                resp = client.embeddings.create(
+                    model=EMBEDDING_MODEL, input=batch)
+                all_embs.extend([d.embedding for d in resp.data])
+                print(f"\r  {min(i+EMBED_BATCH,total):,}/{total:,}", end="")
+                time.sleep(EMBED_SLEEP)
+                break
+            except Exception as e:
+                if attempt == 3:
+                    raise
+                wait = min(5 * 2**attempt, 60)
+                log.warning(f"  Batch {i//EMBED_BATCH+1} attempt {attempt+1}: "
+                            f"{e}. Wait {wait}s...")
+                time.sleep(wait)
+    print(f"\r  {total:,}/{total:,} done        ")
+    return np.array(all_embs, dtype=np.float32)
+
+
+def load_or_generate_embeddings(df, force, log):
     """
-    For each Control_ID compute:
-      n_linked_processes — distinct l3_process_UUID values
-      n_linked_products  — distinct product values
-      n_linked_apps      — distinct Alfabet apps (semicolon-separated per row)
-    Controls absent from the linkage file get 0 for all metrics.
+    Load cached embeddings where available, generate only what's new.
+    Tries Dimension 1 cache first, then local Dimension 2 cache.
     """
-    log.info("Computing linkage metrics...")
+    if EMBEDDINGS_PARQUET.exists() and not force:
+        log.info(f"Loading cached embeddings: {EMBEDDINGS_PARQUET.name}")
+        emb_df = pd.read_parquet(EMBEDDINGS_PARQUET, engine="pyarrow")
+        log.info(f"  {len(emb_df):,} embeddings loaded")
+        return emb_df
 
-    linkage["Control_ID"] = linkage["Control_ID"].apply(safe_str)
+    unique = (df[["Control_ID","embedding_text"]]
+              .drop_duplicates(subset=["Control_ID"])
+              .reset_index(drop=True))
+    log.info(f"Preparing embeddings for {len(unique):,} unique controls...")
 
-    # 1. Distinct processes
-    proc = (linkage[linkage["l3_process_UUID"].apply(
-                lambda x: not is_blank(x))]
-            .groupby("Control_ID")["l3_process_UUID"]
-            .nunique()
-            .reset_index()
-            .rename(columns={"l3_process_UUID": "n_linked_processes"}))
+    # Try to reuse Dimension 1 embeddings
+    cached = {}
+    if DIM1_EMBEDDINGS.exists():
+        dim1 = pd.read_parquet(DIM1_EMBEDDINGS, engine="pyarrow")
+        cached = {row["Control_ID"]: row["embedding"]
+                  for _, row in dim1.iterrows()}
+        log.info(f"  Dimension 1 cache available: {len(cached):,} embeddings")
 
-    # 2. Distinct products
-    prod = (linkage[linkage["product"].apply(
-                lambda x: not is_blank(x))]
-            .groupby("Control_ID")["product"]
-            .nunique()
-            .reset_index()
-            .rename(columns={"product": "n_linked_products"}))
+    need_new = unique[~unique["Control_ID"].isin(cached)]
+    log.info(f"  Already cached  : {len(unique)-len(need_new):,}")
+    log.info(f"  Need generation : {len(need_new):,}")
 
-    # 3. Distinct Alfabet apps — split semicolons, explode, count distinct
-    app_rows = []
-    for _, row in linkage.iterrows():
-        ctrl_id  = row["Control_ID"]
-        apps_str = safe_str(row.get("alphabet_app", ""))
-        if apps_str:
-            for app in apps_str.split(";"):
-                app = app.strip()
-                if app:
-                    app_rows.append({"Control_ID": ctrl_id, "app": app})
+    new_embs = {}
+    if len(need_new) > 0:
+        texts = need_new["embedding_text"].tolist()
+        embs  = generate_embeddings(texts, log)
+        for cid, emb in zip(need_new["Control_ID"].tolist(), embs):
+            new_embs[cid] = emb.tolist()
 
-    if app_rows:
-        app_df = pd.DataFrame(app_rows)
-        apps = (app_df.groupby("Control_ID")["app"]
-                .nunique()
-                .reset_index()
-                .rename(columns={"app": "n_linked_apps"}))
-    else:
-        apps = pd.DataFrame(columns=["Control_ID", "n_linked_apps"])
-        log.warning("  No Alfabet app data found in linkage file")
+    # Combine
+    all_embs = []
+    for _, row in unique.iterrows():
+        cid = row["Control_ID"]
+        if cid in new_embs:
+            all_embs.append({"Control_ID": cid, "embedding": new_embs[cid]})
+        elif cid in cached:
+            emb = cached[cid]
+            all_embs.append({"Control_ID": cid,
+                              "embedding": emb if isinstance(emb, list)
+                              else emb.tolist()})
 
-    # Merge all metrics
-    metrics = (proc
-               .merge(prod,  on="Control_ID", how="outer")
-               .merge(apps,  on="Control_ID", how="outer")
-               .fillna(0))
-    for col in ["n_linked_processes", "n_linked_products", "n_linked_apps"]:
-        if col in metrics.columns:
-            metrics[col] = metrics[col].astype(int)
-
-    log.info(f"  Controls with linkage data : {len(metrics):,}")
-    log.info(f"  Max processes per control  : "
-             f"{metrics['n_linked_processes'].max()}")
-    log.info(f"  Max products per control   : "
-             f"{metrics['n_linked_products'].max()}")
-    log.info(f"  Max apps per control       : "
-             f"{metrics['n_linked_apps'].max()}")
-    return metrics
+    emb_df = pd.DataFrame(all_embs)
+    emb_df.to_parquet(EMBEDDINGS_PARQUET, index=False, engine="pyarrow")
+    log.info(f"Embeddings saved: {EMBEDDINGS_PARQUET.name} ({len(emb_df):,} rows)")
+    return emb_df
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  BUILD SCOPES
-# One scope per gold control group: CT|CT1, CT|CT2 etc.
+#  COSINE SIMILARITY + BATCH ASSIGNMENT
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_scopes(ctrl, log):
-    """
-    Normalise gold_control values and assign scope IDs.
-    Handles values like 'CT1', 'CT 1', 'ct1', '1' etc.
-    Controls with a blank gold_control are placed in scope CT|UNASSIGNED.
-    """
-    log.info("Building CT scopes...")
-
-    def norm_ct(val):
-        v = safe_str(val).upper().replace(" ", "")
-        if not v:
-            return "UNASSIGNED"
-        if not v.startswith("CT"):
-            v = "CT" + v
-        return v
-
-    ctrl["ct_ref_norm"] = ctrl["gold_control"].apply(norm_ct)
-    ctrl["scope_id"]    = "CT|" + ctrl["ct_ref_norm"]
-
-    scope_counts = ctrl["scope_id"].value_counts().sort_index()
-    log.info(f"  CT groups found: {len(scope_counts):,}")
-    for scope, n in scope_counts.items():
-        log.info(f"    {scope}: {n} controls")
-
-    return ctrl
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  TEXT PAYLOADS
-# ─────────────────────────────────────────────────────────────────────────────
-
-def build_embedding_text(row):
-    """Semantic text for embeddings — focuses on control content."""
-    def f(field, label):
-        val = safe_str(row.get(field, ""))
-        return f"{label}:\n{val}" if val else ""
-    parts = [
-        f("Control_ID",               "Control ID"),
-        f("CTRL_NAME",                "Control Name"),
-        f("Control Objective",        "Control Objective"),
-        f("Control_Description",      "Control Description"),
-        f("CTRL_NATRE",               "Nature"),
-        f("CTRL_FREQ",                "Frequency"),
-        f("CTRL_TYP",                 "Type"),
-        f("CTRL_KEY_CONTRL",          "Key Control"),
-        f("CTRL_CTGRY_1",             "Category 1"),
-        f("CTRL_CTGRY_2",             "Category 2"),
-        f("CTRL_EVDNCD",              "Evidence"),
-        f("CTRL_MNTRD",               "Monitoring"),
-        f("CTRL_CATEGORY",            "Control Category"),
-        f("CTRL_FLDR_LVL_2(Division)","Division"),
-        f("object_path_leaf",         "Business Area"),
-        f("gold_control",             "Gold Control"),
-    ]
-    return "\n\n".join(p for p in parts if p)
+def cosine_sim(embs):
+    norms  = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-9
+    normed = embs / norms
+    return (normed @ normed.T).astype(np.float32)
 
 
-def build_llm_text(row):
-    """Enriched text for LLM — includes linkage metrics for best of breed."""
-    def f(field, label):
-        val = safe_str(row.get(field, ""))
-        return f"{label}: {val}" if val else ""
-    lines = [
-        f("gold_control",             "Gold Control Group"),
-        f("ct_ref_norm",              "CT Reference"),
-        "",
-        f("Control_ID",               "Control ID"),
-        f("CTRL_NAME",                "Control Name"),
-        f("Control Objective",        "Control Objective"),
-        f("Control_Description",      "Control Description"),
-        f("CTRL_NATRE",               "Nature"),
-        f("CTRL_FREQ",                "Frequency"),
-        f("CTRL_TYP",                 "Type"),
-        f("CTRL_KEY_CONTRL",          "Key Control"),
-        f("CTRL_ASSESS_RTNG",         "Assessment Rating"),
-        f("CTRL_OE_RTNG",             "Operating Effectiveness Rating"),
-        f("CTRL_DE_RTNG",             "Design Effectiveness Rating"),
-        f("CTRL_CTGRY_1",             "Category 1"),
-        f("CTRL_CTGRY_2",             "Category 2"),
-        f("CTRL_EVDNCD",              "Evidence"),
-        f("CTRL_MNTRD",               "Monitoring"),
-        f("CTRL_CATEGORY",            "Control Category"),
-        f("COMMON_CTRL_TYP",          "Common Control Type"),
-        f("COMMON_CTRL_REFERENCE",    "Common Control Reference"),
-        f("CTRL_FLDR_LVL_2(Division)","Division"),
-        f("object_path_leaf",         "Business Area"),
-        "",
-        "=== LINKAGE METRICS (for best of breed assessment) ===",
-        f"Linked Holocentric Processes: {int(row.get('n_linked_processes', 0))}",
-        f"Linked Products: {int(row.get('n_linked_products', 0))}",
-        f"Linked Alfabet Applications: {int(row.get('n_linked_apps', 0))}",
-    ]
-    return "\n".join(l for l in lines if l != "" or l == "")
+def assign_batches(ctrl_ids, sim_mat, threshold, max_per_batch):
+    n = len(ctrl_ids)
+    neighbours = {
+        i: sorted(range(n), key=lambda j: -sim_mat[i][j])
+        for i in range(n)
+    }
+    assigned   = {}
+    unassigned = set(range(n))
+    batch_id   = 0
+
+    while unassigned:
+        def degree(i):
+            return sum(1 for j in neighbours[i]
+                       if j in unassigned and sim_mat[i][j] >= threshold)
+        seed  = max(unassigned, key=degree)
+        batch = [seed]
+        unassigned.discard(seed)
+        for j in neighbours[seed]:
+            if len(batch) >= max_per_batch:
+                break
+            if j in unassigned:
+                batch.append(j)
+                unassigned.discard(j)
+        for idx in batch:
+            assigned[ctrl_ids[idx]] = batch_id
+        batch_id += 1
+
+    return assigned
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  DATA QUALITY
+#  BUILD CANDIDATE PAIRS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def create_dq_report(ctrl_raw, metrics, expanded, log):
-    n_with_linkage = expanded["Control_ID"].isin(metrics["Control_ID"]).sum()
-    n_no_linkage   = len(expanded) - n_with_linkage
+def build_candidates(df, emb_lookup, threshold, max_per_batch, log):
+    all_pairs  = []
+    all_scopes = []
+    n_large = n_small = n_single = 0
 
-    dq = pd.DataFrame([
-        ("── INPUT ─────────────────────────────────────────────", ""),
-        ("ctrl_details rows",               len(ctrl_raw)),
-        ("ctrl_details unique Control_IDs", ctrl_raw["Control_ID"].nunique()),
-        ("Linkage file rows",               "see linkage file"),
-        ("Controls with linkage data",      n_with_linkage),
-        ("Controls with no linkage (0s)",   n_no_linkage),
-        ("── SCOPES ────────────────────────────────────────────", ""),
-        ("CT groups (scopes)",              expanded["scope_id"].nunique()),
-        ("Total control rows",              len(expanded)),
-        ("── DATA QUALITY ──────────────────────────────────────", ""),
-        ("Blank gold_control",
-         int(ctrl_raw["gold_control"].apply(is_blank).sum())
-         if "gold_control" in ctrl_raw.columns else "n/a"),
-        ("Blank Control Objective",
-         int(ctrl_raw["Control Objective"].apply(is_blank).sum())
-         if "Control Objective" in ctrl_raw.columns else "n/a"),
-        ("Blank Control_Description",
-         int(ctrl_raw["Control_Description"].apply(is_blank).sum())
-         if "Control_Description" in ctrl_raw.columns else "n/a"),
-        ("── LINKAGE METRICS ───────────────────────────────────", ""),
-        ("Max processes per control",
-         int(metrics["n_linked_processes"].max()) if len(metrics) else 0),
-        ("Max products per control",
-         int(metrics["n_linked_products"].max()) if len(metrics) else 0),
-        ("Max apps per control",
-         int(metrics["n_linked_apps"].max()) if len(metrics) else 0),
-    ], columns=["Metric","Value"])
-    return dq
+    scopes = df.groupby("scope_id")
+    log.info(f"  Building candidates for {len(scopes):,} CT scopes...")
+
+    for scope_id, grp in scopes:
+        ctrl_ids = grp["Control_ID"].unique().tolist()
+        n        = len(ctrl_ids)
+
+        if n < 2:
+            n_single += 1
+            all_scopes.append({
+                "scope_id":    scope_id,
+                "ct_ref":      scope_id.replace("CT|",""),
+                "n_controls":  n,
+                "send_all":    True,
+                "n_batches":   1,
+                "skip_reason": "single_control",
+            })
+            continue
+
+        embs = np.array([
+            emb_lookup.get(cid, np.zeros(EMBEDDING_DIM, dtype=np.float32))
+            for cid in ctrl_ids
+        ], dtype=np.float32)
+        sim      = cosine_sim(embs)
+        send_all = (n <= max_per_batch)
+
+        if send_all:
+            n_small += 1
+            batch_map = {cid: 0 for cid in ctrl_ids}
+        else:
+            n_large += 1
+            batch_map = assign_batches(ctrl_ids, sim, threshold, max_per_batch)
+            log.info(f"    Large scope: {scope_id} "
+                     f"({n} controls, {max(batch_map.values())+1} batches)")
+
+        # Save ALL pairs (ensures no control is excluded)
+        for i in range(n):
+            for j in range(i+1, n):
+                sim_val = float(sim[i, j])
+                all_pairs.append({
+                    "scope_id":         scope_id,
+                    "control_id_a":     ctrl_ids[i],
+                    "control_id_b":     ctrl_ids[j],
+                    "cosine_similarity":sim_val,
+                    "above_threshold":  sim_val >= threshold,
+                    "batch_id":         batch_map.get(ctrl_ids[i], 0),
+                    "send_all":         send_all,
+                })
+
+        all_scopes.append({
+            "scope_id":    scope_id,
+            "ct_ref":      scope_id.replace("CT|",""),
+            "n_controls":  n,
+            "send_all":    send_all,
+            "n_batches":   max(batch_map.values()) + 1,
+            "skip_reason": "",
+        })
+
+    log.info(f"  Small scopes (send_all): {n_small:,} | "
+             f"Large (batched): {n_large:,} | Single: {n_single:,}")
+    return pd.DataFrame(all_pairs), pd.DataFrame(all_scopes)
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  MAIN
@@ -347,95 +296,66 @@ def create_dq_report(ctrl_raw, metrics, expanded, log):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--force", action="store_true",
+                        help="Regenerate embeddings and candidates.")
     args = parser.parse_args()
 
-    log = setup_logging()
+    log = get_logger()
     log.info("=" * 70)
-    log.info("  Control Rationalisation — Step 1 (Dimension 2: Gold Controls)")
-    log.info("  Scope: CT|CT1 ... CT|CT28  (one scope per gold control group)")
+    log.info("  Control Rationalisation — Step 2 (Dimension 2: Gold Controls)")
     log.info(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     log.info("=" * 70)
 
-    output_parquet = OUTPUT_DIR / "expanded_ct_control_mapping.parquet"
-    if output_parquet.exists() and not args.force:
-        log.info("Output exists. Use --force to regenerate.")
+    if not EXPANDED_PARQUET.exists():
+        log.error("expanded_ct_control_mapping.parquet not found. "
+                  "Run Script 1 first.")
+        sys.exit(1)
+    if not RUN_CONFIG.exists():
+        log.error("run_config_ct.json not found. Run Script 1 first.")
+        sys.exit(1)
+
+    outputs_exist = all(p.exists() for p in
+                        [EMBEDDINGS_PARQUET, CAND_CT_PARQUET, SCOPE_CT_PARQUET])
+    if outputs_exist and not args.force:
+        log.info("All outputs exist. Use --force to regenerate.")
         return
 
-    ctrl_raw, linkage = load_inputs(log)
+    with open(RUN_CONFIG) as f:
+        config = json.load(f)
+    threshold     = config.get("similarity_threshold", 0.58)
+    max_per_batch = config.get("max_controls_per_llm_call", 20)
 
-    # Clean ctrl_details
-    ctrl = ctrl_raw.copy()
-    ctrl["Control_ID"] = ctrl["Control_ID"].apply(safe_str)
-    for col in ctrl.columns:
-        ctrl[col] = ctrl[col].apply(safe_str)
-    ctrl = ctrl.drop_duplicates(subset=["Control_ID"], keep="first")
-    log.info(f"Unique controls after dedup: {len(ctrl):,}")
+    log.info("Loading expanded dataset...")
+    df = pd.read_parquet(EXPANDED_PARQUET, engine="pyarrow")
+    log.info(f"  {len(df):,} rows | {df['scope_id'].nunique():,} scopes | "
+             f"{df['Control_ID'].nunique():,} unique controls")
 
-    # Linkage metrics
-    metrics = compute_linkage_metrics(linkage, log)
-
-    # Merge metrics onto ctrl (0 for controls with no linkage)
-    ctrl = ctrl.merge(metrics, on="Control_ID", how="left")
-    for col in ["n_linked_processes","n_linked_products","n_linked_apps"]:
-        ctrl[col] = ctrl[col].fillna(0).astype(int)
-
-    # Build scopes
-    ctrl = build_scopes(ctrl, log)
-
-    # Text payloads
-    log.info("Building text payloads...")
-    ctrl["embedding_text"]   = ctrl.apply(build_embedding_text, axis=1)
-    ctrl["llm_payload_text"] = ctrl.apply(build_llm_text, axis=1)
-
-    # Save parquet
-    ctrl.to_parquet(output_parquet, index=False, engine="pyarrow")
-    log.info(f"Saved: {output_parquet.name} ({len(ctrl):,} rows)")
-
-    # DQ report
-    dq = create_dq_report(ctrl_raw, metrics, ctrl, log)
-    dq_path = OUTPUT_DIR / "data_quality_report_ct.xlsx"
-    with pd.ExcelWriter(dq_path, engine="openpyxl") as w:
-        dq.to_excel(w, index=False, sheet_name="summary")
-        # Per-CT breakdown
-        ct_breakdown = (ctrl.groupby("scope_id")
-                        .agg(
-                            n_controls         =("Control_ID","count"),
-                            avg_processes      =("n_linked_processes","mean"),
-                            avg_products       =("n_linked_products","mean"),
-                            avg_apps           =("n_linked_apps","mean"),
-                            controls_no_linkage=("n_linked_processes",
-                                                 lambda x: (x==0).sum()),
-                        )
-                        .round(1)
-                        .reset_index()
-                        .sort_values("n_controls", ascending=False))
-        ct_breakdown.to_excel(w, index=False, sheet_name="by_ct_group")
-    log.info(f"DQ report: {dq_path.name}")
-
-    # Config
-    config = {
-        "dimension":           2,
-        "scope_definition":    "One scope per gold control group (CT|CT1 etc.)",
-        "run_at":              datetime.now().isoformat(),
-        "file_ctrl_details":   str(FILE_CTRL_DETAILS),
-        "file_linkage":        str(FILE_LINKAGE),
-        "output_dir":          str(OUTPUT_DIR),
-        "similarity_threshold":      SIMILARITY_THRESHOLD,
-        "max_controls_per_llm_call": MAX_CONTROLS_PER_LLM_CALL,
-        "retry_count":               RETRY_COUNT,
-        "total_controls":            len(ctrl),
-        "total_scopes":              int(ctrl["scope_id"].nunique()),
+    # Embeddings
+    emb_df = load_or_generate_embeddings(df, args.force, log)
+    emb_lookup = {
+        row["Control_ID"]: np.array(row["embedding"], dtype=np.float32)
+        for _, row in emb_df.iterrows()
     }
-    with open(OUTPUT_DIR / "run_config_ct.json", "w") as f:
+    log.info(f"Embedding lookup: {len(emb_lookup):,} controls")
+
+    # Candidate pairs
+    log.info("\nBuilding candidate pairs...")
+    pairs_df, scope_df = build_candidates(
+        df, emb_lookup, threshold, max_per_batch, log)
+
+    pairs_df.to_parquet(CAND_CT_PARQUET,  index=False, engine="pyarrow")
+    scope_df.to_parquet(SCOPE_CT_PARQUET, index=False, engine="pyarrow")
+    log.info(f"  Candidate pairs : {len(pairs_df):,}")
+    log.info(f"  Scope summary   : {len(scope_df):,} CT groups")
+
+    config["step2_completed_at"] = datetime.now().isoformat()
+    config["n_pairs"]  = len(pairs_df)
+    config["n_scopes"] = int(scope_df["scope_id"].nunique())
+    with open(RUN_CONFIG, "w") as f:
         json.dump(config, f, indent=2)
 
-    for _, r in dq.iterrows():
-        if not str(r["Metric"]).startswith("──"):
-            log.info(f"  {r['Metric']}: {r['Value']}")
-
     log.info("=" * 70)
-    log.info("  Step 1 complete. Run 02_generate_embeddings_ct.py next.")
+    log.info("  Step 2 complete. Run 03_run_llm_ct.py next.")
     log.info("=" * 70)
 
 if __name__ == "__main__":
