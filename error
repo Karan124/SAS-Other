@@ -1,14 +1,75 @@
-# Window 1 — scopes 0 to 18
-python 03_run_llm_assessment.py --wp-range 0 19 --suffix _p1
+Ok so now we come to Dimenion number 2 - Gold Controls (or Control Objectives)
+Folder path - C:\Users\M061400\ai-test\big_table\duplicates\ct
+Data Path - C:\Users\M061400\ai-test\big_table\duplicates\ct\data
 
-# Window 2 — scopes 19 to 35
-python 03_run_llm_assessment.py --wp-range 19 36 --suffix _p2
+Datasets available - ctrl_details.xlsx and consolidated_linkage_by_product.xlsx
 
-# Window 3 — scopes 36 to 55
-python 03_run_llm_assessment.py --wp-range 36 56 --suffix _p3
+We will primarily be using the ctrl_details.xlsx which has all control details inclding mapping to the gold control, but we are required to add the following details to identift
+the best of breed controls: 
+1) Number of linked holocentric processes (distinct count of column l3_process_UUID)
+2) Number of linked products (distinct count of column product)
+3) Number of linked Alfabet Apps (distinct count of column alphabet_app)
 
-# Window 4 — scopes 56 to 74
-python 03_run_llm_assessment.py --wp-range 56 75 --suffix _p4
+To do so, we will be using the file consolidated_linkage_by_product.xlsx, which has control to process linkage. 1) and 2) should be straightfoward as the data is cut by product
+and each row has a product -> control -> l3_activity_ID, but 3) may not be that simple as
+the alfabet applications appear as the following in each row:
 
+10x BaaS Platform;ATM Host Application;Automated Disbursement System;Branch Registers;Bulk File Processing;Corporate Online - External;Data Capture System;Electronic Remittance Payment And Capture System(ERPACS);Financial Transaction Hub;iLink;LOAN IQ;Managed File Transfer;Oracle Revenue Management and Billing;Payment Processing Service (PPS);Payments System - Mainframe;PayWay;Point Of Sale (POS) Host Application;Qvalent Gateway Proxy;Sterling Business integration;Term Deposits (Australia);Trading Bank;Vector 5 - Exception Processing;Vector Funnel;VisionPlus;Westpac Integrated Banking Service;Westpac Mortgage Servicing System;XCOM Data Transport
 
-python 04_postprocess_outputs.py
+** Each app is separated by a semi colon
+
+Schema for the dataset consolidated_linkage_by_product.xlsx
+
+product
+linkage_source - Dterministic or Multi Signal LLM (LLM recommended)
+confidence
+link_type - L3 Direct or LLM recommended
+primary_signal - l3 match, product match, app match, activity alignment
+llm_rationale
+requires_sme_review
+Control_ID
+CTRL_NAME
+gold_control_code
+gold_control_title
+l3_process_UUID
+l3_activity_id
+l3_activity_name
+l2_process_id
+l2_process_name
+process_category
+process_lifecycle_stage
+final_product
+CTRL_NATRE
+CTRL_STUS
+CTRL_OWNER
+CTRL_FREQ
+CTRL_KEY_CONTRL
+CTRL_DESC
+CTRL_TYP
+CTRL_ASSESS_RTNG
+CTRL_CTGRY_1
+CTRL_CTGRY_2
+CTRL_OE_RTNG
+CTRL_DE_RTNG
+CTRL_LOC_LIST
+CTRL_EVDNCD
+CTRL_MNTRD
+CTRL_CATEGORY
+COMMON_CTRL_REFERENCE
+COMMON_CTRL_TYP
+CTRL_DESC_OF_CTRL
+CTRL_FLDR
+object_path_leaf
+CTRL_FLDR_LVL_2
+gold_control
+l3_activity_description
+l3_activity_channels
+l3_activity_customer_segments
+l2_process_description
+value_stream_name
+vcm_library_name
+payment_rationale
+alphabet_app
+
+Any questions - please let me know!
+
