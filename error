@@ -1,882 +1,100 @@
 """
-03_run_llm_ct.py
+04_postprocess_ct.py
 ─────────────────────────────────────────────────────────────────────────────
-Control Rationalisation — Step 3 of 4 (Dimension 2: Gold Controls)
+Control Rationalisation — Step 4 of 4 (Dimension 2: Gold Controls)
 
-Two-pass LLM assessment per CT group:
+Reads Pass 1 and Pass 2 checkpoint files, merges the results, and produces
+the SME-ready Excel workbook.
 
-  Pass 1 — per-control assessment (sub-batches of 5):
-    Determines population (Automated vs Manual/Manual-Automated)
-    Evaluates each control against CT-specific design principles
-    Assigns design strength (Strong / Moderate / Basic / Limited)
-    Records coverage from linkage metrics
+Output: ct_assessment{suffix}.xlsx
+  One sheet per CT group (e.g. CT4, CT1, CT2 ...)
+  Each sheet contains:
+    - Best-of-Breed summary (Automated and Manual populations)
+    - All controls ranked within each population
+    - Fragmentation findings
+    - Redundancy findings
+  Plus a summary sheet across all CT groups.
 
-  Pass 2 — ranking and rationalisation (all pass-1 results in one call):
-    Ranks controls within each population (Automated and Manual)
-    Identifies Best-of-Breed for each population
-    Assesses Process-Split Fragmentation
-    Assesses Common Control Opportunities
-    Assesses Redundant Controls
-
-The best-of-breed control is NOT eligible for elimination as redundant.
-
-Before running:
-  az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
-  python 03_run_llm_ct.py --sample              # CT4 only (~15 min)
-  python 03_run_llm_ct.py                       # all CT groups, resume
-  python 03_run_llm_ct.py --force               # clear checkpoints, restart
-  python 03_run_llm_ct.py --ct-range 0 5 --suffix _p1
+Run:
+  python 04_postprocess_ct.py --suffix _sample   # sample only
+  python 04_postprocess_ct.py                    # full run
 """
 
 import argparse
 import json
 import logging
-import random
-import re
 import sys
-import time
 from datetime import datetime
 from pathlib import Path
 
-import httpx
 import pandas as pd
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from openai import AzureOpenAI
+
+try:
+    from openpyxl import Workbook
+    from openpyxl.styles import (Font, PatternFill, Alignment, Border, Side)
+    from openpyxl.utils import get_column_letter
+    HAS_OPENPYXL = True
+except ImportError:
+    HAS_OPENPYXL = False
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 
-OUTPUT_DIR     = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\ct")
-AZURE_ENDPOINT = "https://ai.eng.azure.srv.westpac.com.au"
-API_VERSION    = "2024-10-21"
-LLM_MODEL      = "gpt-5.4"
-PROXY_URL      = "http://127.0.0.1:9000"
-CA_BUNDLE      = r"C:\Users\m061400\ai-test\cacert.pem"
+OUTPUT_DIR   = Path(r"C:\Users\M061400\ai-test\big_table\duplicates\ct")
+EXPANDED     = OUTPUT_DIR / "expanded_ct_control_mapping.parquet"
 
-SUB_BATCH_SIZE        = 5
-RETRY_COUNT           = 5
-RETRY_BASE_SECS       = 5
-CONNECTION_SLEEP_SECS = 90
-SLEEP_BETWEEN         = 1.0
-MAX_COMPLETION_TOKENS = 16000
-HTTP_TIMEOUT          = 180.0
-PROMPT_VERSION        = "2026-08-20-nature-gated-v1"
+ALL_P1_FILES = [
+    "llm_checkpoint_ct_pass1.jsonl",
+    "llm_checkpoint_ct_pass1_sample.jsonl",
+    "llm_checkpoint_ct_pass1_p1.jsonl",
+    "llm_checkpoint_ct_pass1_p2.jsonl",
+    "llm_checkpoint_ct_pass1_p3.jsonl",
+]
+ALL_P2_FILES = [
+    "llm_checkpoint_ct_pass2.jsonl",
+    "llm_checkpoint_ct_pass2_sample.jsonl",
+    "llm_checkpoint_ct_pass2_p1.jsonl",
+    "llm_checkpoint_ct_pass2_p2.jsonl",
+    "llm_checkpoint_ct_pass2_p3.jsonl",
+]
 
-INPUT_PRICE_PER_M  = 1.75
-OUTPUT_PRICE_PER_M = 14.00
-AUD_USD_RATE       = 0.65
-
-# Sample: only these CT groups for fast SME validation
-SAMPLE_CT = ["CT4"]
-
-EXPANDED_PARQUET  = OUTPUT_DIR / "expanded_ct_control_mapping.parquet"
-SCOPE_CT_PARQUET  = OUTPUT_DIR / "scope_summary_ct.parquet"
-CAND_CT_PARQUET   = OUTPUT_DIR / "candidate_pairs_ct.parquet"
-RUN_CONFIG        = OUTPUT_DIR / "run_config_ct.json"
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  CT DESIGN PRINCIPLES
-#  Provided by SME for CT1, CT2, CT3, CT4, CT5, CT6, CT14, CT22, CT23, CT24, CT27
-# ─────────────────────────────────────────────────────────────────────────────
-
-CT_PRINCIPLES = {
-"CT1": {
-"objective": "Errors, duplication, and/or omission arising from human input are detected as part of the data input process",
-"expected_nature": "Preventative",
-"automated": {
-"principles": [
-"1. System validates mandatory fields, file format, data type and value ranges before processing.",
-"2. Invalid, incomplete or duplicate inputs are automatically rejected or quarantined before release.",
-"3. Input source, user ID, timestamp and validation outcome are captured in system logs.",
-"4. Control totals, record counts and key field validations are checked automatically.",
-"5. Exception alerts are generated promptly for failed validations.",
-"6. Only approved users or interfaces can submit or amend input data.",
-"7. Validation rules are version controlled and subject to change approval.",
-],
-"red_flags": [
-"1. System accepts incomplete or malformed input records.",
-"2. Validation rules are not documented or not consistently applied.",
-"3. Duplicate or amended inputs can be processed without warning.",
-"4. Exceptions are not automatically flagged or reported.",
-"5. No audit trail of input submission, amendment or validation outcome.",
-"6. Users can bypass validation controls.",
-"7. Changes to validation rules are not governed.",
-]},
-"manual": {
-"principles": [
-"1. Predefined checklist confirms mandatory fields, approvals, record counts and totals before processing.",
-"2. Review is performed by an independent person where practical.",
-"3. Reviewer checks source records against input file details.",
-"3a. The reviewer independently inputs key data to validate the maker's entry, with discrepancies identified and resolved before processing.",
-"4. Errors, omissions or duplicates are recorded and corrected before release.",
-"5. Evidence of review, challenge and sign-off is retained.",
-"6. Review is completed before downstream processing.",
-"7. Recurring input errors are tracked and escalated for remediation.",
-],
-"red_flags": [
-"1. Reviewer only confirms that data was received.",
-"2. No check against source records or expected totals.",
-"3. Same person prepares and approves the input without compensating review.",
-"4. No evidence of review or reviewer challenge.",
-"5. Errors are corrected informally without tracking.",
-"6. Review occurs after processing has already completed.",
-"7. Recurring input errors are not monitored.",
-]}},
-"CT2": {
-"objective": "Payments processing activities are reconciled on a defined frequency to identify any errors",
-"expected_nature": "Detective",
-"automated": {
-"principles": [
-"1. System performs scheduled reconciliation between source, processing and target records.",
-"2. Record counts, values, status codes and control totals are compared automatically.",
-"3. Tolerances and exception thresholds are clearly configured.",
-"4. Failed, missing, duplicated or unmatched records are automatically flagged.",
-"5. Alerts and exception reports are generated for responsible teams.",
-"6. Reconciliation outcomes and exception actions are captured in an audit trail.",
-"7. Unresolved exceptions are aged, tracked and escalated.",
-],
-"red_flags": [
-"1. Reconciliation is not performed at a defined frequency.",
-"2. System only reports successful completion and not processing accuracy.",
-"3. Missing or unmatched records are not automatically identified.",
-"4. Tolerances are unclear or too broad.",
-"5. Exceptions require manual discovery by users.",
-"6. No evidence of reconciliation outcome or resolution.",
-"7. Recurring processing errors are not reported.",
-]},
-"manual": {
-"principles": [
-"1. Reconciliation is performed on a defined frequency using approved reports.",
-"2. Reviewer compares source records, processed records, values and totals.",
-"3. Exceptions are documented with owner, action and closure status.",
-"4. Review is completed within a defined SLA.",
-"5. Evidence of reconciliation and sign-off is retained.",
-"6. Material or aged exceptions are escalated.",
-"7. Recurring errors are monitored for root cause and control uplift.",
-],
-"red_flags": [
-"1. Reconciliation is ad hoc or inconsistently performed.",
-"2. Reviewer checks only high-level totals without record-level support where needed.",
-"3. Exceptions are not tracked to closure.",
-"4. No defined timeframe for review or resolution.",
-"5. Evidence is limited to a generic sign-off.",
-"6. Unexplained differences are accepted without investigation.",
-"7. Repeat issues are not escalated.",
-]}},
-"CT3": {
-"objective": "Previously processed batch files and transactions are prevented from being resubmitted",
-"expected_nature": "Preventative",
-"automated": {
-"principles": [
-"1. System uses unique file, batch and transaction identifiers to prevent reprocessing.",
-"2. Previously processed files or transactions are automatically blocked.",
-"3. Hash totals, sequence numbers or reference checks validate uniqueness.",
-"4. Duplicate attempts generate alerts and exception records.",
-"5. Override capability is restricted, approved and logged.",
-"6. Duplicate prevention operates before value movement or posting.",
-"7. Duplicate exception trends are monitored and reported.",
-],
-"red_flags": [
-"1. Same batch or transaction can be resubmitted without detection.",
-"2. Duplicate checks occur only after processing is complete.",
-"3. No unique identifier or sequence validation exists.",
-"4. Overrides can be performed without approval or logging.",
-"5. Duplicate exceptions are not investigated.",
-"6. System alerts are absent or ignored.",
-"7. Repeat duplicate attempts are not monitored.",
-]},
-"manual": {
-"principles": [
-"1. Reviewer checks file names, batch IDs, sequence numbers and transaction references before release.",
-"2. Expected batch register or processing log is used to confirm uniqueness.",
-"3. Any suspected duplicates are stopped and investigated before processing.",
-"4. Duplicate checks are evidenced with reviewer sign-off.",
-"5. Exception handling and approval for reprocessing are documented.",
-"6. Review is performed before downstream posting or settlement.",
-"7. Repeat duplicate causes are tracked and escalated.",
-],
-"red_flags": [
-"1. Reviewer relies on memory or informal checks.",
-"2. No batch register, sequence log or reference listing is used.",
-"3. Duplicate review happens after processing.",
-"4. Reprocessing is allowed without documented approval.",
-"5. No evidence that duplicate checks were performed.",
-"6. Duplicate exceptions are corrected without root cause review.",
-"7. Same preparer performs the duplicate review without challenge.",
-]}},
-"CT4": {
-"objective": "Interface / batch processing errors are investigated and resolved in a timely manner",
-"expected_nature": "Preventative",
-"automated": {
-"principles": [
-"1. Validate file structure, record counts, and control totals before processing.",
-"2. Automatically reject incomplete or malformed files.",
-"3. Prevent duplicate file or transaction processing.",
-"4. Reconcile source-to-target counts and values automatically.",
-"5. Generate alerts for batch failures or exceptions.",
-"6. Maintain a complete audit trail. Support automatic retry or controlled recovery processes.",
-"7. Provide management reporting on processing success rates and recurring failures.",
-],
-"red_flags": [
-"1. Batch runs automatically but produces no exception reporting.",
-"2. Failures require users to manually discover issues.",
-"3. No duplicate prevention logic.",
-"4. No reconciliation between source and target systems.",
-"5. No automated alerting when processing fails.",
-"6. Processing continues despite critical validation failures.",
-"7. Limited logging or inability to trace transactions.",
-]},
-"manual": {
-"principles": [
-"1. Automated generation of the batch report, even if the review is manual.",
-"2. Review of record counts, value totals, rejects, exceptions, and duplicates.",
-"3. Evidence of reviewer challenge, not just a tick-and-flick sign-off.",
-"4. Investigation and closure of all exceptions.",
-"5. Completion within a defined SLA.",
-"6. Trend monitoring of recurring batch failures.",
-],
-"red_flags": [
-"1. Reviewer only checks that the job completed successfully.",
-"2. No reconciliation to source records.",
-"3. No duplicate detection.",
-"4. Generic sign-off with no evidence.",
-"5. Same person prepares and reviews the batch.",
-"6. Exceptions are identified but not tracked to resolution.",
-]}},
-"CT5": {
-"objective": "Payment incidents and errors are recovered on timely basis",
-"expected_nature": "Detective",
-"automated": {
-"principles": [
-"1. System detects payment incidents, failures or abnormal processing outcomes promptly.",
-"2. Automated alerts route incidents to defined support and business owners.",
-"3. Severity, impact, affected records and timestamps are captured automatically.",
-"4. Recovery, retry or rollback workflows are controlled and logged.",
-"5. Incident status, actions and closure evidence are tracked centrally.",
-"6. Escalation is triggered based on severity and elapsed time.",
-"7. Management reporting identifies recurring incidents and recovery performance.",
-],
-"red_flags": [
-"1. Incidents are identified only through customer complaints or manual monitoring.",
-"2. Alerts do not identify severity, impact or owner.",
-"3. Recovery actions are performed outside controlled workflow.",
-"4. No audit trail of incident actions and decisions.",
-"5. Escalations rely on individual judgement only.",
-"6. Incident closure is not evidenced.",
-"7. Repeat incidents are not analysed.",
-]},
-"manual": {
-"principles": [
-"1. Incident response procedure defines trigger, owner, severity, escalation and recovery steps.",
-"2. Incidents are logged with impact, affected transactions and action owner.",
-"3. Recovery actions are approved and independently checked where practical.",
-"4. Customer, operational and regulatory impacts are assessed.",
-"5. Closure requires evidence that payment impacts were resolved.",
-"6. Aged or material incidents are escalated within agreed timeframes.",
-"7. Post-incident review captures root cause and control improvements.",
-],
-"red_flags": [
-"1. No documented incident response process.",
-"2. Incidents are handled through informal messages only.",
-"3. Recovery is performed without approval or independent check.",
-"4. Impact assessment is incomplete or not retained.",
-"5. Closure occurs before all exceptions are resolved.",
-"6. Escalation criteria are unclear.",
-"7. Lessons learned are not captured.",
-]}},
-"CT6": {
-"objective": "Master and reference data is validated for accuracy and completeness during the data input process",
-"expected_nature": "Preventative",
-"automated": {
-"principles": [
-"1. System validates master and reference data against approved rules before use.",
-"2. Mandatory fields, data format, permissible values and effective dates are enforced.",
-"3. Changes require approved workflow with maker-checker or equivalent control.",
-"4. Unauthorised, incomplete or inconsistent reference data changes are rejected or blocked.",
-"5. Audit trail captures requester, approver, timestamp and changed fields.",
-"6. Periodic automated exception reports identify stale, duplicate or invalid records.",
-"7. Changes to validation rules are governed through change control.",
-],
-"red_flags": [
-"1. Invalid master data can be saved and used in processing.",
-"2. Reference data changes do not require approval.",
-"3. No audit trail of who changed what and when.",
-"4. Duplicate or stale records are not detected.",
-"5. Validation rules are not aligned to processing requirements.",
-"6. Users can bypass maker-checker control.",
-"7. Exception reports are not reviewed.",
-]},
-"manual": {
-"principles": [
-"1. Request and approval evidence supports all master or reference data changes.",
-"2. Reviewer checks change details against approved source documentation.",
-"3. Maker-checker review is performed before data becomes effective.",
-"4. Periodic review confirms key records remain accurate and complete.",
-"5. Exceptions are logged, corrected and approved.",
-"6. Access to amend reference data is limited and periodically reviewed.",
-"7. Evidence of review and sign-off is retained.",
-],
-"red_flags": [
-"1. Changes are made from verbal or informal requests.",
-"2. Same person requests, enters and approves the change.",
-"3. No comparison to approved source documentation.",
-"4. Periodic review is not performed.",
-"5. Exceptions are corrected without approval.",
-"6. Evidence does not show what was reviewed.",
-"7. Access to amend data is broad or not monitored.",
-]}},
-"CT14": {
-"objective": "Unauthorised changes to reference data are detected and reported on a timely basis",
-"expected_nature": "Preventative",
-"automated": {
-"principles": [
-"1. System logs key processing, access, change and exception events automatically.",
-"2. Logs capture user or system ID, timestamp, action, before-and-after values where relevant, and outcome.",
-"3. Monitoring rules flag unauthorised, unusual or high-risk activity promptly.",
-"4. Alerts are routed to accountable owners with severity and action requirements.",
-"5. Logs are protected from unauthorised amendment or deletion.",
-"6. Monitoring coverage is periodically reviewed for completeness.",
-"7. Exceptions are tracked to investigation and closure.",
-],
-"red_flags": [
-"1. Key activities are not logged.",
-"2. Logs exist but are not monitored.",
-"3. Alerts are generic and do not support action.",
-"4. Users can amend or delete logs.",
-"5. Monitoring rules are not reviewed or updated.",
-"6. Exceptions are not assigned or closed.",
-"7. Reporting does not identify recurring issues.",
-]},
-"manual": {
-"principles": [
-"1. Responsible owner reviews defined logs or monitoring reports at an agreed frequency.",
-"2. Review focuses on unauthorised changes, unusual activity and unresolved exceptions.",
-"3. Investigation outcome and action taken are documented.",
-"4. Evidence shows what report was reviewed and by whom.",
-"5. Material issues are escalated promptly.",
-"6. Trend analysis is performed for recurring exceptions.",
-"7. Monitoring procedure defines scope, frequency and escalation path.",
-],
-"red_flags": [
-"1. Log review is ad hoc or not evidenced.",
-"2. Reviewer only signs off without documenting challenge.",
-"3. Monitoring scope is unclear.",
-"4. Unusual activity is not investigated.",
-"5. Exceptions are not tracked to closure.",
-"6. Escalation criteria are not defined.",
-"7. Reports reviewed do not cover key risk events.",
-]}},
-"CT22": {
-"objective": "Westpac must have an effective and convenient process for users to report mistaken internet payments and acknowledge receipt of every mistaken internet payment report.",
-"expected_nature": "Detective",
-"automated": {
-"principles": [
-"1. Customers can submit mistaken internet payment reports through controlled channels.",
-"2. System captures required information and generates acknowledgement promptly.",
-"3. Case workflow assigns owner, status, due date and required action.",
-"4. Duplicate reports and missing information are identified automatically.",
-"5. Timeframes and ageing are monitored with alerts for overdue actions.",
-"6. Case actions, communications and outcomes are retained in an audit trail.",
-"7. Management reporting tracks volumes, ageing, outcomes and recurring themes.",
-],
-"red_flags": [
-"1. Reports are received through unmanaged channels.",
-"2. Acknowledgement is not generated or evidenced.",
-"3. Cases are not assigned to an accountable owner.",
-"4. Missing information is not detected early.",
-"5. No monitoring of overdue cases.",
-"6. Case decisions and communications are not retained.",
-"7. Repeat issues are not reported.",
-]},
-"manual": {
-"principles": [
-"1. Staff follow a documented process for receiving and acknowledging reports.",
-"2. Required information is checked against a standard checklist.",
-"3. Each report is logged with owner, date received, acknowledgement and status.",
-"4. Follow-up actions and customer communications are evidenced.",
-"5. Aged or complex cases are escalated in line with procedure.",
-"6. Closure is supported by documented outcome and approval where required.",
-"7. Periodic review confirms cases are being managed within required timeframes.",
-],
-"red_flags": [
-"1. Reports are handled without a standard process.",
-"2. Acknowledgement is not evidenced.",
-"3. Case register is incomplete or not maintained.",
-"4. Staff rely on emails without central tracking.",
-"5. Escalation is informal.",
-"6. Closure rationale is not documented.",
-"7. No review of open or overdue reports.",
-]}},
-"CT23": {
-"objective": "Westpac as an issuer or seller of financial products must provide retail members with confirmation of transactions carried out for financial products.",
-"expected_nature": "Detective",
-"automated": {
-"principles": [
-"1. System automatically triggers confirmations and notifications for relevant transactions.",
-"2. Confirmation content is generated from approved transaction records.",
-"3. Delivery status, failure and bounce-back outcomes are monitored.",
-"4. Suppression, amendment or cancellation of confirmations is restricted and logged.",
-"5. Exceptions are alerted and tracked to resolution.",
-"6. Templates and rules are version controlled and approved.",
-"7. Evidence of generation and delivery is retained.",
-],
-"red_flags": [
-"1. Confirmations rely on manual initiation without monitoring.",
-"2. Notification rules are incomplete or undocumented.",
-"3. Failed delivery is not identified.",
-"4. Staff can suppress or amend notices without approval.",
-"5. No audit trail of confirmation generation.",
-"6. Templates are changed without approval.",
-"7. Exceptions are not resolved or reported.",
-]},
-"manual": {
-"principles": [
-"1. Procedure defines when confirmations or notifications must be provided.",
-"2. Staff check transaction details against approved records before sending.",
-"3. Maker-checker review is applied for material or sensitive communications.",
-"4. Evidence of notice, recipient, date and content is retained.",
-"5. Failed or returned notices are followed up and tracked.",
-"6. Outstanding confirmations are monitored through a register or report.",
-"7. Exceptions are escalated and resolved within agreed timeframes.",
-],
-"red_flags": [
-"1. Staff rely on judgement without clear criteria.",
-"2. No evidence of what was sent and when.",
-"3. Transaction details are not checked before issue.",
-"4. Failed notifications are not followed up.",
-"5. No independent review for high-risk communications.",
-"6. Outstanding items are not monitored.",
-"7. Exceptions are closed without evidence.",
-]}},
-"CT24": {
-"objective": "Westpac must have processes in place to manage unauthorised and disputed transactions in accordance with requirements set out in the ePayments code.",
-"expected_nature": "Detective",
-"automated": {
-"principles": [
-"1. System captures unauthorised, disputed and mistaken payment cases in a controlled workflow.",
-"2. Case classification, mandatory fields, owner and due dates are enforced.",
-"3. Rules support eligibility, liability and required action checks based on approved criteria.",
-"4. Alerts identify overdue, high-risk or incomplete cases.",
-"5. Communications, decisions, approvals and outcomes are retained.",
-"6. Adjustments, refunds or reversals require approved workflow and audit trail.",
-"7. Management reporting monitors ageing, outcomes, breaches and recurring causes.",
-],
-"red_flags": [
-"1. Cases are managed outside a controlled workflow.",
-"2. Classification is inconsistent or not evidenced.",
-"3. Due dates and regulatory timeframes are not monitored.",
-"4. Refunds or reversals can be processed without approval.",
-"5. Customer communications and decisions are not retained.",
-"6. Overdue cases are not escalated.",
-"7. Recurring dispute causes are not analysed.",
-]},
-"manual": {
-"principles": [
-"1. Staff follow a documented process for unauthorised, disputed and mistaken transaction cases.",
-"2. Case assessment is supported by evidence, checklist and approved criteria.",
-"3. Liability, customer impact and required response are reviewed before outcome is finalised.",
-"4. Refunds, reversals or adjustments are independently checked and approved.",
-"5. Communications, decisions and closure evidence are retained.",
-"6. Open and aged cases are monitored and escalated.",
-"7. Quality review checks consistency of decisions and documentation.",
-],
-"red_flags": [
-"1. Decisions rely on individual judgement without documented criteria.",
-"2. Evidence supporting the outcome is incomplete.",
-"3. Adjustments are processed without independent review.",
-"4. Customer impact is not assessed.",
-"5. Open cases are not monitored.",
-"6. Closure occurs without proof of resolution.",
-"7. No quality review of case decisions.",
-]}},
-"CT27": {
-"objective": "High value records are classified and retained for the minimum period of time",
-"expected_nature": "Preventative",
-"automated": {
-"principles": [
-"1. System classifies high value records and applies approved retention rules automatically.",
-"2. Retention period, record owner, source system and disposal date are captured.",
-"3. Records are protected from unauthorised amendment, deletion or loss.",
-"4. Disposal, archival or legal hold actions follow approved workflow.",
-"5. Exceptions such as missing classification or expired retention are reported.",
-"6. Audit trail records retention actions and approvals.",
-"7. Periodic reporting confirms retention compliance and outstanding exceptions.",
-],
-"red_flags": [
-"1. Records are not classified or retention rules are missing.",
-"2. Retention relies on manual user judgement only.",
-"3. Records can be deleted without approval or audit trail.",
-"4. Legal hold or archival requirements are not enforced.",
-"5. Expired or missing records are not reported.",
-"6. Ownership of records is unclear.",
-"7. No periodic monitoring of retention compliance.",
-]},
-"manual": {
-"principles": [
-"1. Record owner applies a documented retention schedule to high value records.",
-"2. Review confirms records are complete, classified and stored in approved locations.",
-"3. Disposal or archival is approved and evidenced.",
-"4. Exceptions such as missing, duplicate or unclassified records are logged and remediated.",
-"5. Access to retained records is restricted to approved users.",
-"6. Periodic review confirms records remain available for the required period.",
-"7. Evidence of review, approval and remediation is retained.",
-],
-"red_flags": [
-"1. Records are stored in uncontrolled locations.",
-"2. Retention period is unclear or inconsistently applied.",
-"3. Disposal occurs without approval.",
-"4. No evidence that records were reviewed.",
-"5. Missing or unclassified records are not remediated.",
-"6. Access to records is not controlled.",
-"7. Periodic review is not performed.",
-]}},
+DESIGN_STRENGTH_EMOJI = {
+    "Strong": "🟢 Strong",
+    "Moderate": "🟡 Moderate",
+    "Basic": "🟠 Basic",
+    "Limited": "🔴 Limited",
 }
 
-FALLBACK_PRINCIPLES = {
-"objective": "See gold control documentation for control objective details.",
-"expected_nature": "Not specified",
-"automated": {
-"principles": ["Specific design principles for this control objective have not been provided. Apply general automated control design best practices."],
-"red_flags": ["Absence of expected automated control design features."]},
-"manual": {
-"principles": ["Specific design principles for this control objective have not been provided. Apply general manual control design best practices."],
-"red_flags": ["Absence of expected manual control design features."]}
+CT4_DESIGN_PRINCIPLES = {
+    "Automated": {
+        "1": "Validate file structure, record counts, and control totals before processing.",
+        "2": "Automatically reject incomplete or malformed files.",
+        "3": "Prevent duplicate file or transaction processing.",
+        "4": "Reconcile source-to-target counts and values automatically.",
+        "5": "Generate alerts for batch failures or exceptions.",
+        "6": "Maintain a complete audit trail. Support automatic retry or controlled recovery processes.",
+        "7": "Provide management reporting on processing success rates and recurring failures.",
+    },
+    "Manual": {
+        "1": "Automated generation of the batch report, even if the review is manual.",
+        "2": "Review of record counts, value totals, rejects, exceptions, and duplicates.",
+        "3": "Evidence of reviewer challenge, not just a tick-and-flick sign-off.",
+        "4": "Investigation and closure of all exceptions.",
+        "5": "Completion within a defined SLA.",
+        "6": "Trend monitoring of recurring batch failures.",
+    },
 }
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  CLIENT
-# ─────────────────────────────────────────────────────────────────────────────
-
-def make_client():
-    token_provider = get_bearer_token_provider(
-        DefaultAzureCredential(),
-        "https://cognitiveservices.azure.com/.default"
-    )
-    return AzureOpenAI(
-        azure_endpoint=AZURE_ENDPOINT,
-        api_version=API_VERSION,
-        azure_ad_token_provider=token_provider,
-        http_client=httpx.Client(
-            proxy=PROXY_URL, verify=CA_BUNDLE,
-            timeout=httpx.Timeout(HTTP_TIMEOUT, connect=30.0),
-            limits=httpx.Limits(max_keepalive_connections=0, max_connections=1),
-        ),
-    )
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  PROMPTS
-# ─────────────────────────────────────────────────────────────────────────────
-
-SYSTEM_PROMPT = """
-You are an experienced Operational Risk Manager assessing payment controls.
-You follow the provided methodology precisely and base all assessments solely
-on information explicitly contained in the control documentation.
-Do not infer or assume activities not explicitly stated.
-Return valid JSON only. No markdown. No text outside the JSON.
-""".strip()
-
-
-def get_principles_text(ct_ref, population):
-    """Return formatted design principles for a CT group and population."""
-    ct_data  = CT_PRINCIPLES.get(ct_ref, FALLBACK_PRINCIPLES)
-    pop_data = ct_data.get(population, ct_data.get("manual", {}))
-    principles = pop_data.get("principles", [])
-    red_flags  = pop_data.get("red_flags", [])
-    obj  = ct_data.get("objective", "")
-    nat  = ct_data.get("expected_nature", "")
-
-    lines = [
-        f"CONTROL OBJECTIVE: {ct_ref}",
-        f"Objective: {obj}",
-        f"Expected Control Nature: {nat}",
-        "",
-        f"BEST CONTROL DESIGN PRINCIPLES ({population.upper()} POPULATION):",
-    ]
-    for p in principles:
-        lines.append(f"  {p}")
-    lines += ["", "RED FLAGS (Weak Design):"]
-    for r in red_flags:
-        lines.append(f"  {r}")
-    return "\n".join(lines)
-
-
-def build_pass1_prompt(scope_id, ct_ref, batch_key, sub_controls):
-    """
-    Pass 1: assess each control individually.
-    Determine population, evaluate design principles, assign design strength.
-    """
-    n = len(sub_controls)
-
-    lines = [
-        f"SCOPE: {scope_id}  |  BATCH: {batch_key}",
-        f"CT GROUP: {ct_ref}",
-        "",
-        "TASK — PASS 1: INDIVIDUAL CONTROL ASSESSMENT",
-        f"Assess each of the {n} controls below.",
-        "For each control:",
-        "  1. Read the source fields exactly as provided:",
-        "     - Nature (CTRL_NATRE) is the control nature, such as Preventative",
-        "       or Detective.",
-        "     - Type (CTRL_TYP) is the control type: Automated, Manual, or",
-        "       Manual-Automated.",
-        "     - Population is Automated only when Type is Automated; otherwise it",
-        "       is Manual.",
-        "  2. Evaluate the control against the applicable design principles.",
-        "  3. Assign a Design Strength rating: Strong / Moderate / Basic / Limited.",
-        "  4. Record coverage from the linkage metrics in the control text.",
-        "",
-        "ASSESSMENT RULES:",
-        "  - Base assessments solely on information explicitly in the control documentation.",
-        "  - Do not infer activities not explicitly stated.",
-        "  - If evidence is absent, record: Not Evidenced in Control Documentation.",
-        "  - Do not consider effectiveness ratings, testing results or operating performance.",
-        "  - Assess design only.",
-        "",
-        "STEP 1A — DIRECT ALIGNMENT TO CONTROL OBJECTIVE:",
-        "  Assess how directly the control performs the activity required by the control objective.",
-        "  Assign one of: High / Moderate / Low",
-        "  High alignment — control directly performs the core activity:",
-        "    Prevent, Validate, Reconcile, Detect, Reject, Resolve, Recover",
-        "  Low alignment — control primarily performs a secondary activity:",
-        "    Monitor, Report, Investigate, Escalate, Attest, Oversee, Govern",
-        "  Moderate — some direct activity but mixed with secondary activities.",
-        "",
-        "EXPECTED CONTROL NATURE ALIGNMENT:",
-        "  Compare the source Nature field against the expected nature for this CT group.",
-        "  Do not infer or substitute a different control nature from the activity text.",
-        "  A Preventative control operating in a Preventative CT group = Aligned.",
-        "  A Detective control operating in a Preventative CT group = Not Aligned.",
-        "",
-        "DESIGN STRENGTH GUIDANCE:",
-        "  Strong  — Most design principles are met. Few or no material gaps.",
-        "  Moderate — Several principles are met but some gaps exist.",
-        "  Basic   — Some principles are met but significant gaps exist.",
-        "  Limited — Few principles are met. Significant weaknesses identified.",
-        "",
-    ]
-
-    # Add principles for both populations (LLM determines which applies per control)
-    lines += ["AUTOMATED POPULATION DESIGN PRINCIPLES:"]
-    auto_data = CT_PRINCIPLES.get(ct_ref, FALLBACK_PRINCIPLES).get(
-        "automated", FALLBACK_PRINCIPLES["automated"])
-    for p in auto_data.get("principles", []):
-        lines.append(f"  {p}")
-    lines += ["Red Flags:"]
-    for r in auto_data.get("red_flags", []):
-        lines.append(f"  {r}")
-
-    lines += ["", "MANUAL / MANUAL-AUTOMATED POPULATION DESIGN PRINCIPLES:"]
-    man_data = CT_PRINCIPLES.get(ct_ref, FALLBACK_PRINCIPLES).get(
-        "manual", FALLBACK_PRINCIPLES["manual"])
-    for p in man_data.get("principles", []):
-        lines.append(f"  {p}")
-    lines += ["Red Flags:"]
-    for r in man_data.get("red_flags", []):
-        lines.append(f"  {r}")
-
-    lines += ["", f"CONTROLS TO ASSESS ({n}):", ""]
-
-    for _, row in sub_controls.iterrows():
-        lines.append("─" * 60)
-        lines.append(str(row.get("llm_payload_text", "") or
-                         f"Control_ID: {row['Control_ID']}"))
-        lines.append("")
-
-    lines += [
-        "─" * 60, "",
-        "RESPONSE FORMAT — return this JSON exactly. No markdown.",
-        "",
-        '{',
-        '  "scope_id": "<scope_id>",',
-        '  "batch_key": "<batch_key>",',
-        '  "pass": 1,',
-        '  "control_assessments": [',
-        '    {',
-        '      "control_id": "<Control_ID>",',
-        '      "control_name": "<CTRL_NAME>",',
-        '      "control_nature": "<Preventative|Detective|other value from Nature / CTRL_NATRE field>",',
-        '      "control_type": "<Automated|Manual|Manual-Automated — from Type / CTRL_TYP field>",',
-        '      "population": "<Automated|Manual>",',
-        '      "objective_alignment": "<High|Moderate|Low — how directly does the control perform the CT activity>",',
-        '      "nature_alignment": "<Aligned|Partially Aligned|Not Aligned — vs expected CT nature>",',
-        '      "design_strength": "<Strong|Moderate|Basic|Limited>",',
-        '      "design_principles_evaluation": [',
-        '        {"principle": "1", "met": "<Met|Partially Met|Not Met|Not Evidenced>", "note": "..."}',
-        '      ],',
-        '      "red_flags_identified": ["<red flag text if present>"],',
-        '      "n_linked_products": <integer from linkage metrics>,',
-        '      "n_linked_apps": <integer from linkage metrics>,',
-        '      "n_linked_processes": <integer from linkage metrics>,',
-        '      "rationale": "<2-3 sentences citing specific evidence>"',
-        '    }',
-        '  ]',
-        '}',
-        "",
-        f'Use scope_id: "{scope_id}" and batch_key: "{batch_key}".',
-    ]
-    return "\n".join(lines)
-
-
-def build_pass2_prompt(scope_id, ct_ref, pass1_summaries):
-    """
-    Pass 2: ranking, best of breed, fragmentation, redundancy.
-    Receives compact summaries of all pass-1 assessments.
-    """
-    ct_data  = CT_PRINCIPLES.get(ct_ref, FALLBACK_PRINCIPLES)
-    obj      = ct_data.get("objective", "")
-    nat      = ct_data.get("expected_nature", "")
-    n_total  = len(pass1_summaries)
-
-    # Build compact summary table
-    summary_lines = []
-    for a in pass1_summaries:
-        cid  = a.get("control_id","")
-        name = a.get("control_name","")[:60]
-        pop  = a.get("population","")
-        ds   = a.get("design_strength","")
-        prods= a.get("n_linked_products", 0)
-        apps = a.get("n_linked_apps", 0)
-        procs= a.get("n_linked_processes", 0)
-        rat  = (a.get("rationale","") or "")[:200]
-        obj_align = a.get("objective_alignment","")
-        nat_align = a.get("nature_alignment","")
-        ctrl_type = a.get("control_type","") or a.get("control_nature","")
-        ctrl_nature = a.get("control_nature","")
-        summary_lines.append(
-            f"  {cid} | Type:{ctrl_type} | Population:{pop} | SourceNature:{ctrl_nature} | "
-            f"ObjAlign:{obj_align} | NatAlign:{nat_align} | {ds} | "
-            f"{prods} Products, {apps} Apps, {procs} Processes | {name}"
-        )
-        summary_lines.append(f"    Rationale: {rat}")
-
-    lines = [
-        f"SCOPE: {scope_id}  |  CT GROUP: {ct_ref}",
-        f"Control Objective: {obj}",
-        f"Expected Nature: {nat}",
-        "",
-        f"TOTAL CONTROLS IN GROUP: {n_total}",
-        "",
-        "PASS 1 ASSESSMENT RESULTS SUMMARY:",
-        "(Control ID | Type | Population | Source Nature | Alignments | Design Strength | Coverage | Name)",
-    ] + summary_lines + [
-        "",
-        "TASK — PASS 2: RANKING, BEST OF BREED, FRAGMENTATION AND REDUNDANCY",
-        "",
-        "Step 1: IDENTIFY BEST OF BREED",
-        "  - Assess each population (Automated and Manual) INDEPENDENTLY.",
-        "  - Do NOT compare automated controls against manual controls.",
-        "  - Rank controls within each population using the following criteria",
-        "    IN ORDER OF IMPORTANCE:",
-        "",
-        "  1. EXPECTED BEST-OF-DESIGN ATTRIBUTES (Primary)",
-        "     Include alignment to the expected control nature (Preventative or",
-        "     Detective) for this CT group when assessing design attributes.",
-        "     Controls demonstrating stronger design attributes and alignment to",
-        "     the expected control nature should generally rank higher.",
-        "     Treat SourceNature and NatAlign in the assessment summary as",
-        "     authoritative; do not reclassify a control's nature.",
-        "     If any control in a population has NatAlign:Aligned, a control with",
-        "     NatAlign:Partially Aligned or NatAlign:Not Aligned MUST NOT be",
-        "     ranked first or selected as Best-of-Breed for that population.",
-        "     Only if no aligned control exists may the strongest non-aligned",
-        "     control be selected; explicitly state that exception in its rationale.",
-        "",
-        "  2. ALIGNMENT TO CONTROL OBJECTIVE (Secondary)",
-        "     Controls that directly Prevent, Validate, Reconcile, Detect, Reject,",
-        "     Resolve or Recover the relevant payment risk rank higher than controls",
-        "     that primarily Monitor, Report, Investigate, Escalate, Attest or Oversee.",
-        "",
-        "  3. EXTENT OF COVERAGE (Third)",
-        "     Use coverage (products, apps, processes) to differentiate controls",
-        "     after considering design attributes and alignment to the control objective.",
-        "     Coverage alone must NOT outweigh stronger design or objective alignment.",
-        "",
-        "  - The highest-ranked control is the Best-of-Breed for that population.",
-        "  - The Best-of-Breed control is NOT eligible for elimination as",
-        "    redundant or fragmented.",
-        "",
-        "Step 2: PROCESS-SPLIT FRAGMENTATION",
-        "  Identify controls that form different stages of one end-to-end",
-        "  control activity. Look for: sequential operation, split across",
-        "  systems/teams, manual and automated parts of same activity.",
-        "",
-        "Step 3: COMMON CONTROL OPPORTUNITIES",
-        "  Identify similar controls independently repeated across products,",
-        "  systems, channels or business units achieving the same outcome.",
-        "",
-        "Step 4: REDUNDANT CONTROLS",
-        "  Identify controls that provide little or no incremental risk",
-        "  mitigation beyond what other controls already cover.",
-        "  Best-of-Breed controls are NEVER redundant.",
-        "",
-        "RESPONSE FORMAT — return this JSON exactly. No markdown.",
-        "",
-        '{',
-        '  "scope_id": "<scope_id>",',
-        '  "ct_ref": "<ct_ref>",',
-        '  "pass": 2,',
-        '  "automated_population": {',
-        '    "ranked_controls": [',
-        '      {',
-        '        "rank": 1,',
-        '        "control_id": "<Control_ID>",',
-        '        "control_type": "<Automated|Manual|Manual-Automated>",',
-        '        "objective_alignment": "<High|Moderate|Low>",',
-        '        "nature_alignment": "<Aligned|Partially Aligned|Not Aligned>",',
-        '        "design_strength": "<Strong|Moderate|Basic|Limited>",',
-        '        "coverage_summary": "<N Products • N Apps • N Processes>",',
-        '        "ranking_rationale": "<cite design strength and nature alignment, objective alignment, and coverage>",',
-        '        "is_best_of_breed": true',
-        '      }',
-        '    ],',
-        '    "best_of_breed": {',
-        '      "control_id": "<Control_ID>",',
-        '      "design_strength": "<Strong|Moderate|Basic|Limited>",',
-        '      "coverage_summary": "<N Products • N Apps • N Processes>",',
-        '      "rationale": "<why this is best of breed>"',
-        '    }',
-        '  },',
-        '  "manual_population": {',
-        '    "ranked_controls": [ ... same structure ... ],',
-        '    "best_of_breed": { ... same structure ... }',
-        '  },',
-        '  "fragmentation": [',
-        '    {',
-        '      "group_id": "P-1",',
-        '      "type": "<Process-Split Fragmentation|Common Control Opportunity>",',
-        '      "control_ids": ["<CTL...>"],',
-        '      "rationale": "<plain English>",',
-        '      "end_to_end_description": "<for Process-Split only>",',
-        '      "confidence": "<High|Medium|Low>"',
-        '    }',
-        '  ],',
-        '  "redundancy": [',
-        '    {',
-        '      "control_id": "<CTL...>",',
-        '      "covered_by_control_ids": ["<CTL...>"],',
-        '      "rationale": "<plain English>",',
-        '      "confidence": "<High|Medium|Low>"',
-        '    }',
-        '  ]',
-        '}',
-        "",
-        f'Use scope_id: "{scope_id}" and ct_ref: "{ct_ref}".',
-        "If a population has no controls, omit its ranked_controls list and set best_of_breed to null.",
-        "If no fragmentation or redundancy found, return empty lists [].",
-    ]
-    return "\n".join(lines)
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  LOGGING
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_logger(suffix=""):
-    name = f"ctrl_rat_ct3{suffix}"
-    logger = logging.getLogger(name)
+def setup_logging():
+    logger = logging.getLogger("ctrl_rat_ct4")
     if logger.handlers:
         return logger
-    fh = logging.FileHandler(OUTPUT_DIR / f"processing_log_ct{suffix}.txt",
+    fh = logging.FileHandler(OUTPUT_DIR / "processing_log_ct.txt",
                              encoding="utf-8")
     ch = logging.StreamHandler(sys.stdout)
     fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s",
@@ -888,260 +106,520 @@ def get_logger(suffix=""):
     return logger
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  CHECKPOINT
+#  LOAD CHECKPOINTS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def load_checkpoint(path):
-    done = {}
-    if not path.exists():
-        return done
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-                key = rec.get("batch_key") or rec.get("scope_id","")
-                if key:
-                    done[key] = rec
-            except json.JSONDecodeError:
-                continue
-    return done
-
-
-def write_checkpoint(rec, path):
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(rec, ensure_ascii=True) + "\n")
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  LLM CALL
-# ─────────────────────────────────────────────────────────────────────────────
-
-def parse_response(text):
-    text = re.sub(r'^```(?:json)?\s*', '', (text or "").strip())
-    text = re.sub(r'\s*```$', '', text).strip()
-    if not text:
-        raise ValueError("Empty response")
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        m = re.search(r'\{.*\}', text, re.DOTALL)
-        if m:
-            return json.loads(m.group(0))
-        raise
-
-
-def call_llm(prompt, batch_key, log):
-    usage = {"input_tokens": 0, "output_tokens": 0}
-    for attempt in range(1, RETRY_COUNT + 1):
-        try:
-            client = make_client()
-            resp   = client.chat.completions.create(
-                model=LLM_MODEL,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user",   "content": prompt},
-                ],
-                reasoning_effort="low",
-                max_completion_tokens=MAX_COMPLETION_TOKENS,
-            )
-            text = resp.choices[0].message.content or ""
-            u    = getattr(resp, "usage", None)
-            if u:
-                usage["input_tokens"]  = getattr(u, "prompt_tokens", 0)
-                usage["output_tokens"] = getattr(u, "completion_tokens", 0)
-            return parse_response(text), usage
-        except Exception as exc:
-            is_conn = any(w in str(exc).lower()
-                          for w in ["connection","timed out","timeout","proxy"])
-            if attempt < RETRY_COUNT:
-                wait = CONNECTION_SLEEP_SECS if is_conn else min(
-                    RETRY_BASE_SECS * 2**(attempt-1) + random.uniform(0,2), 60)
-                log.warning(f"  Attempt {attempt} [{batch_key}]: {exc}. "
-                            f"Wait {wait:.0f}s...")
-                time.sleep(wait)
-            else:
-                log.error(f"  All retries failed [{batch_key}]: {exc}")
-                return None, usage
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  SCOPE DATA
-# ─────────────────────────────────────────────────────────────────────────────
-
-def get_scope_controls(scope_id, pairs_df, expanded_df):
-    return (expanded_df[expanded_df["scope_id"] == scope_id]
-            .drop_duplicates(subset=["Control_ID"])
-            .reset_index(drop=True))
-
-
-def get_batch_controls(scope_id, batch_id, send_all, pairs_df, expanded_df):
-    all_in = (expanded_df[expanded_df["scope_id"] == scope_id]
-              .drop_duplicates(subset=["Control_ID"]))
-    if send_all:
-        return all_in.reset_index(drop=True)
-    sp        = pairs_df[pairs_df["scope_id"] == scope_id]
-    batch_ids = set(sp[sp["batch_id"].astype(int)==batch_id]["control_id_a"].dropna())
-    if batch_id == 0:
-        paired   = set(sp["control_id_a"].dropna())
-        orphans  = set(all_in["Control_ID"]) - paired
-        batch_ids = batch_ids | orphans
-    return (all_in[all_in["Control_ID"].isin(batch_ids)]
-            .reset_index(drop=True))
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  PROCESSING
-# ─────────────────────────────────────────────────────────────────────────────
-
-def process_scope(scope_id, scope_row, pairs_df, expanded_df,
-                  ck1_path, ck2_path, done_p1, done_p2, log):
-    """Run Pass 1 + Pass 2 for one CT scope."""
-    ct_ref    = scope_id.replace("CT|","")
-    send_all  = bool(getattr(scope_row, "send_all", True))
-    n_batches = int(getattr(scope_row, "n_batches", 1))
-    n_ctrls   = int(getattr(scope_row, "n_controls", 0))
-
-    all_scope = get_scope_controls(scope_id, pairs_df, expanded_df)
-    if n_ctrls < 1:
-        log.info(f"  {scope_id}: no controls, skipping")
-        return 0, 0
-
-    log.info(f"\n  Processing {scope_id} ({n_ctrls} controls, "
-             f"{ct_ref} principles {'provided' if ct_ref in CT_PRINCIPLES else 'not provided'})")
-
-    total_in = total_out = 0
-
-    # ── Pass 1: per-control assessment ───────────────────────────────────────
-    for batch_id in (range(n_batches) if not send_all else [0]):
-        batch = get_batch_controls(
-            scope_id, batch_id, send_all, pairs_df, expanded_df)
-        if len(batch) == 0:
+def load_pass1(files, log):
+    """Load all Pass 1 assessments keyed by (scope_id, control_id)."""
+    p1 = {}
+    for fname in files:
+        path = OUTPUT_DIR / fname
+        if not path.exists():
             continue
+        log.info(f"  Loading P1: {fname}")
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("error"):
+                    continue
+                scope_id = rec.get("scope_id","")
+                for a in rec.get("control_assessments", []):
+                    cid = a.get("control_id","")
+                    if cid:
+                        key = (scope_id, cid)
+                        if key not in p1:
+                            p1[key] = a
+                        else:
+                            # Keep most recent (later file wins)
+                            p1[key] = a
+    log.info(f"  Pass 1 assessments: {len(p1):,}")
+    return p1
 
-        n_sub = max(1, (len(batch) + SUB_BATCH_SIZE - 1) // SUB_BATCH_SIZE)
-        for sub_idx in range(n_sub):
-            sub = batch.iloc[
-                sub_idx*SUB_BATCH_SIZE:(sub_idx+1)*SUB_BATCH_SIZE
-            ].reset_index(drop=True)
-            if len(sub) == 0:
-                continue
 
-            bk = f"p1::{scope_id}::{batch_id}::{sub_idx}"
-            if bk in done_p1:
-                continue
+def load_pass2(files, log):
+    """Load all Pass 2 results keyed by scope_id."""
+    p2 = {}
+    for fname in files:
+        path = OUTPUT_DIR / fname
+        if not path.exists():
+            continue
+        log.info(f"  Loading P2: {fname}")
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("error"):
+                    continue
+                scope_id = rec.get("scope_id","")
+                if scope_id:
+                    # Later checkpoint entries supersede prior reruns for a CT group.
+                    p2[scope_id] = rec
+    log.info(f"  Pass 2 results: {len(p2):,} CT groups")
+    return p2
 
-            prompt = build_pass1_prompt(scope_id, ct_ref, bk, sub)
-            result, usage = call_llm(prompt, bk, log)
-            total_in  += usage.get("input_tokens", 0)
-            total_out += usage.get("output_tokens", 0)
+# ─────────────────────────────────────────────────────────────────────────────
+#  BUILD PER-CT DATA
+# ─────────────────────────────────────────────────────────────────────────────
 
-            if result is None:
-                write_checkpoint({
-                    "batch_key": bk, "scope_id": scope_id,
-                    "pass": 1, "error": True,
-                    "control_assessments": [],
-                    "control_ids_in_batch": sub["Control_ID"].tolist(),
-                }, ck1_path)
-            else:
-                result.update({
-                    "batch_key":   bk,
-                    "scope_id":    scope_id,
-                    "ct_ref":      ct_ref,
-                    "pass":        1,
-                    "error":       False,
-                    "control_ids_in_batch": sub["Control_ID"].tolist(),
-                    "input_tokens":  usage.get("input_tokens",0),
-                    "output_tokens": usage.get("output_tokens",0),
-                    "prompt_version": PROMPT_VERSION,
+def build_ct_data(scope_id, p1_data, p2_data, ctrl_lookup):
+    """
+    Build structured data for one CT group from pass-1 and pass-2 results.
+    Returns a dict with all the data needed to write the Excel sheet.
+    """
+    ct_ref = scope_id.replace("CT|","")
+    p2     = p2_data.get(scope_id, {})
+
+    # All pass-1 control assessments for this scope
+    ctrl_assessments = {
+        cid: a for (sid, cid), a in p1_data.items()
+        if sid == scope_id
+    }
+
+    # Enrich with control details from expanded parquet
+    def enrich(a):
+        cid = a.get("control_id","")
+        ctx = ctrl_lookup.get(cid, {})
+        control_type = ctx.get("CTRL_TYP","") or a.get("control_type","")
+        return {
+            **a,
+            "control_name":      a.get("control_name","") or ctx.get("CTRL_NAME",""),
+            "control_objective": a.get("control_objective","") or ctx.get("Control Objective",""),
+            "control_nature":    ctx.get("CTRL_NATRE","") or a.get("control_nature",""),
+            "control_type":      control_type,
+            "population":        a.get("population","") or (
+                "Automated" if control_type == "Automated" else "Manual"
+            ),
+            "ctrl_nature":       ctx.get("CTRL_NATRE",""),
+            "ctrl_assess_rtng":  ctx.get("CTRL_ASSESS_RTNG",""),
+            "ctrl_oe_rtng":      ctx.get("CTRL_OE_RTNG",""),
+            "ctrl_de_rtng":      ctx.get("CTRL_DE_RTNG",""),
+            "division":          ctx.get("CTRL_FLDR_LVL_2(Division)",""),
+            "business_area":     ctx.get("object_path_leaf",""),
+        }
+
+    ctrl_assessments = {cid: enrich(a)
+                        for cid, a in ctrl_assessments.items()}
+
+    # Ranked controls from Pass 2
+    auto_ranked = []
+    man_ranked  = []
+    auto_bob    = None
+    man_bob     = None
+
+    if p2:
+        auto_pop = p2.get("automated_population") or {}
+        man_pop  = p2.get("manual_population") or {}
+
+        auto_ranked = auto_pop.get("ranked_controls") or []
+        man_ranked  = man_pop.get("ranked_controls") or []
+        auto_bob    = auto_pop.get("best_of_breed")
+        man_bob     = man_pop.get("best_of_breed")
+
+        # Enrich ranked controls with pass-1 details
+        def enrich_ranked(ranked):
+            out = []
+            for r in ranked:
+                cid = r.get("control_id","")
+                a   = ctrl_assessments.get(cid, {})
+                out.append({
+                    "rank":             r.get("rank",""),
+                    "control_id":       cid,
+                    "control_name":     a.get("control_name",""),
+                    "control_nature":   a.get("control_nature","") or a.get("ctrl_nature",""),
+                    "design_strength":  r.get("design_strength","") or a.get("design_strength",""),
+                    "coverage_summary": r.get("coverage_summary","") or
+                                        f"{a.get('n_linked_products',0)} Products • "
+                                        f"{a.get('n_linked_apps',0)} Apps • "
+                                        f"{a.get('n_linked_processes',0)} Processes",
+                    "objective_alignment": r.get("objective_alignment",""),
+                    "nature_alignment":   r.get("nature_alignment",""),
+                    "control_type":       a.get("control_type","") or r.get("control_type",""),
+                    "population":         a.get("population",""),
+                    "ranking_rationale":  r.get("ranking_rationale",""),
+                    "is_best_of_breed":   bool(r.get("is_best_of_breed",False)),
+                    "rationale":        a.get("rationale",""),
+                    "design_principles_evaluation":
+                        a.get("design_principles_evaluation",[]),
+                    "red_flags_identified":
+                        a.get("red_flags_identified",[]),
+                    "n_products":   a.get("n_linked_products",0),
+                    "n_apps":       a.get("n_linked_apps",0),
+                    "n_processes":  a.get("n_linked_processes",0),
+                    "ctrl_assess_rtng": a.get("ctrl_assess_rtng",""),
+                    "ctrl_oe_rtng":     a.get("ctrl_oe_rtng",""),
+                    "ctrl_de_rtng":     a.get("ctrl_de_rtng",""),
+                    "division":         a.get("division",""),
+                    "business_area":    a.get("business_area",""),
                 })
-                write_checkpoint(result, ck1_path)
-                done_p1[bk] = result
+            return out
 
-            time.sleep(SLEEP_BETWEEN)
+        auto_ranked = enrich_ranked(auto_ranked)
+        man_ranked  = enrich_ranked(man_ranked)
 
-    # ── Gather all pass-1 assessments for this scope ─────────────────────────
-    pass1_summaries = []
-    expected_nature = CT_PRINCIPLES.get(
-        ct_ref, FALLBACK_PRINCIPLES
-    ).get("expected_nature", "")
-    for key, rec in done_p1.items():
-        if (f"p1::{scope_id}::" in key and
-                not rec.get("error") and rec.get("pass") == 1):
-            for a in rec.get("control_assessments", []):
-                # Enrich with linkage metrics from expanded_df if LLM missed them
-                cid = a.get("control_id","")
-                row = all_scope[all_scope["Control_ID"]==cid]
-                if not row.empty:
-                    r = row.iloc[0]
-                    a.setdefault("n_linked_products",
-                                 int(r.get("n_linked_products", 0)))
-                    a.setdefault("n_linked_apps",
-                                 int(r.get("n_linked_apps", 0)))
-                    a.setdefault("n_linked_processes",
-                                 int(r.get("n_linked_processes", 0)))
-                    source_nature = r.get("CTRL_NATRE", "")
-                    source_type = r.get("CTRL_TYP", "")
-                    source_nature = (
-                        "" if pd.isna(source_nature) else str(source_nature).strip()
-                    )
-                    source_type = (
-                        "" if pd.isna(source_type) else str(source_type).strip()
-                    )
-                    a["control_nature"] = source_nature
-                    a["control_type"] = source_type
-                    a["population"] = (
-                        "Automated"
-                        if source_type.casefold() == "automated"
-                        else "Manual"
-                    )
-                    if source_nature and expected_nature:
-                        a["nature_alignment"] = (
-                            "Aligned"
-                            if source_nature.casefold() == expected_nature.casefold()
-                            else "Not Aligned"
-                        )
-                # Ensure new fields present with defaults
-                a.setdefault("objective_alignment", "")
-                a.setdefault("nature_alignment", "")
-                a.setdefault("control_type", a.get("control_nature",""))
-                pass1_summaries.append(a)
+        def enrich_best_of_breed(best_of_breed):
+            if not best_of_breed:
+                return best_of_breed
+            assessment = ctrl_assessments.get(
+                best_of_breed.get("control_id", ""), {}
+            )
+            return {
+                **best_of_breed,
+                "control_nature": assessment.get("control_nature", ""),
+            }
 
-    if not pass1_summaries:
-        log.warning(f"  {scope_id}: no pass-1 results, skipping pass 2")
-        return total_in, total_out
+        auto_bob = enrich_best_of_breed(auto_bob)
+        man_bob = enrich_best_of_breed(man_bob)
 
-    # ── Pass 2: ranking + rationalisation ────────────────────────────────────
-    p2_key = f"p2::{scope_id}"
-    if p2_key not in done_p2:
-        log.info(f"  {scope_id}: running Pass 2 with "
-                 f"{len(pass1_summaries)} assessed controls")
-        prompt = build_pass2_prompt(scope_id, ct_ref, pass1_summaries)
-        result, usage = call_llm(prompt, p2_key, log)
-        total_in  += usage.get("input_tokens", 0)
-        total_out += usage.get("output_tokens", 0)
+    fragmentation = p2.get("fragmentation") or []
+    redundancy    = p2.get("redundancy") or []
 
-        if result is None:
-            write_checkpoint({
-                "batch_key": p2_key, "scope_id": scope_id,
-                "pass": 2, "error": True,
-            }, ck2_path)
-        else:
-            result.update({
-                "batch_key":    p2_key,
-                "scope_id":     scope_id,
-                "ct_ref":       ct_ref,
-                "pass":         2,
-                "error":        False,
-                "n_controls":   len(pass1_summaries),
-                "input_tokens": usage.get("input_tokens",0),
-                "output_tokens":usage.get("output_tokens",0),
-                "prompt_version": PROMPT_VERSION,
-            })
-            write_checkpoint(result, ck2_path)
-            done_p2[p2_key] = result
-        time.sleep(SLEEP_BETWEEN)
+    return {
+        "ct_ref":           ct_ref,
+        "scope_id":         scope_id,
+        "n_controls":       len(ctrl_assessments),
+        "auto_ranked":      auto_ranked,
+        "man_ranked":       man_ranked,
+        "auto_bob":         auto_bob,
+        "man_bob":          man_bob,
+        "fragmentation":    fragmentation,
+        "redundancy":       redundancy,
+        "ctrl_assessments": ctrl_assessments,
+    }
 
-    return total_in, total_out
+# ─────────────────────────────────────────────────────────────────────────────
+#  WRITE EXCEL — one sheet per CT group
+# ─────────────────────────────────────────────────────────────────────────────
+
+def write_excel(ct_results, output_path, log):
+    wb = Workbook()
+    wb.remove(wb.active)  # remove default sheet
+
+    # Colours
+    BLUE_FILL   = PatternFill("solid", fgColor="1F4E79")
+    GREEN_FILL  = PatternFill("solid", fgColor="375623")
+    ORANGE_FILL = PatternFill("solid", fgColor="BF5B20")
+    GREY_FILL   = PatternFill("solid", fgColor="D6DCE4")
+    LIGHT_BLUE  = PatternFill("solid", fgColor="DEEAF1")
+    LIGHT_GREEN = PatternFill("solid", fgColor="E2EFDA")
+    WHITE_FONT  = Font(bold=True, color="FFFFFF")
+    BOLD        = Font(bold=True)
+    WRAP        = Alignment(wrap_text=True, vertical="top")
+    CENTER      = Alignment(horizontal="center", vertical="top")
+    THIN        = Border(
+        left=Side(style="thin"), right=Side(style="thin"),
+        top=Side(style="thin"), bottom=Side(style="thin")
+    )
+
+    def hdr(ws, row, col, text, fill=BLUE_FILL, font=WHITE_FONT):
+        c = ws.cell(row=row, column=col, value=text)
+        c.fill = fill; c.font = font; c.alignment = CENTER
+        c.border = THIN
+        return c
+
+    def cell(ws, row, col, text, fill=None, bold=False, wrap=True):
+        c = ws.cell(row=row, column=col, value=str(text) if text is not None else "")
+        if fill: c.fill = fill
+        if bold: c.font = BOLD
+        c.alignment = WRAP if wrap else Alignment(vertical="top")
+        c.border = THIN
+        return c
+
+    def ds_emoji(ds):
+        return DESIGN_STRENGTH_EMOJI.get(str(ds), str(ds))
+
+    summary_rows = []
+
+    for ct_data in sorted(ct_results, key=lambda x: x["ct_ref"]):
+        ct_ref = ct_data["ct_ref"]
+        ws     = wb.create_sheet(title=ct_ref[:31])
+        row    = 1
+
+        # ── Title ─────────────────────────────────────────────────────────────
+        ws.merge_cells(start_row=row, start_column=1,
+                       end_row=row, end_column=13)
+        c = ws.cell(row=row, column=1,
+                    value=f"CONTROL OBJECTIVE GROUP: {ct_ref}")
+        c.font = Font(bold=True, size=14, color="1F4E79")
+        c.alignment = Alignment(horizontal="left")
+        ws.row_dimensions[row].height = 25
+        row += 1
+
+        c2 = ws.cell(row=row, column=1,
+                     value=f"Total controls assessed: {ct_data['n_controls']}")
+        c2.font = Font(italic=True, color="595959")
+        row += 2
+
+        # ── Best of Breed Summary ─────────────────────────────────────────────
+        ws.merge_cells(start_row=row, start_column=1,
+                       end_row=row, end_column=10)
+        c = ws.cell(row=row, column=1, value="BEST-OF-BREED SUMMARY")
+        c.font = Font(bold=True, size=12, color="FFFFFF")
+        c.fill = GREEN_FILL
+        c.alignment = CENTER
+        ws.row_dimensions[row].height = 18
+        row += 1
+
+        for label, bob in [
+            ("Automated Population", ct_data.get("auto_bob")),
+            ("Manual / Manual-Automated Population", ct_data.get("man_bob")),
+        ]:
+            hdr(ws, row, 1, label, GREY_FILL, BOLD)
+            for col in range(2, 11):
+                ws.cell(row=row, column=col).fill = GREY_FILL
+            ws.merge_cells(start_row=row, start_column=1,
+                           end_row=row, end_column=10)
+            row += 1
+
+            if bob:
+                hdr(ws, row, 1, "Control ID", LIGHT_BLUE, BOLD)
+                hdr(ws, row, 2, "Control Nature", LIGHT_BLUE, BOLD)
+                hdr(ws, row, 3, "Design Strength", LIGHT_BLUE, BOLD)
+                hdr(ws, row, 4, "Coverage", LIGHT_BLUE, BOLD)
+                hdr(ws, row, 5, "Rationale", LIGHT_BLUE, BOLD)
+                ws.merge_cells(start_row=row, start_column=5,
+                               end_row=row, end_column=10)
+                row += 1
+                cell(ws, row, 1, bob.get("control_id",""))
+                cell(ws, row, 2, bob.get("control_nature",""))
+                cell(ws, row, 3, ds_emoji(bob.get("design_strength","")))
+                cell(ws, row, 4, bob.get("coverage_summary",""))
+                cell(ws, row, 5, bob.get("rationale",""))
+                ws.merge_cells(start_row=row, start_column=5,
+                               end_row=row, end_column=10)
+                ws.row_dimensions[row].height = 60
+            else:
+                ws.cell(row=row, column=1,
+                        value="No controls in this population")
+            row += 2
+
+        # ── Ranked Controls ───────────────────────────────────────────────────
+        for pop_label, ranked, fill in [
+            ("AUTOMATED POPULATION — RANKED CONTROLS", ct_data["auto_ranked"], LIGHT_BLUE),
+            ("MANUAL / MANUAL-AUTOMATED POPULATION — RANKED CONTROLS",
+             ct_data["man_ranked"], LIGHT_GREEN),
+        ]:
+            if not ranked:
+                continue
+
+            ws.merge_cells(start_row=row, start_column=1,
+                           end_row=row, end_column=10)
+            c = ws.cell(row=row, column=1, value=pop_label)
+            c.font = Font(bold=True, size=11, color="FFFFFF")
+            c.fill = BLUE_FILL
+            c.alignment = CENTER
+            ws.row_dimensions[row].height = 18
+            row += 1
+
+            cols = ["Rank","Control ID","Control Name","Control Type",
+                    "Control Nature","Obj. Alignment","Nature Alignment",
+                    "Design Strength","Coverage","Best of Breed?",
+                    "Ranking Rationale","Rationale","Effectiveness Ratings"]
+            for ci, col_name in enumerate(cols, 1):
+                hdr(ws, row, ci, col_name, GREY_FILL, BOLD)
+            row += 1
+
+            for r in ranked:
+                ds       = ds_emoji(r.get("design_strength",""))
+                is_bob   = "✓ Best of Breed" if r.get("is_best_of_breed") else ""
+                rtgs     = (f"Assess: {r.get('ctrl_assess_rtng','')} | "
+                            f"OE: {r.get('ctrl_oe_rtng','')} | "
+                            f"DE: {r.get('ctrl_de_rtng','')}")
+                ctrl_type  = r.get("control_type","") or r.get("control_nature","")
+                obj_align  = r.get("objective_alignment","")
+                nat_align  = r.get("nature_alignment","")
+                row_fill   = fill if r.get("is_best_of_breed") else None
+
+                cell(ws, row, 1,  r.get("rank",""),         row_fill)
+                cell(ws, row, 2,  r.get("control_id",""),   row_fill, bold=True)
+                cell(ws, row, 3,  r.get("control_name",""), row_fill)
+                cell(ws, row, 4,  ctrl_type,                row_fill)
+                cell(ws, row, 5,  r.get("control_nature",""), row_fill)
+                cell(ws, row, 6,  obj_align,                row_fill)
+                cell(ws, row, 7,  nat_align,                row_fill)
+                cell(ws, row, 8,  ds,                       row_fill)
+                cell(ws, row, 9,  r.get("coverage_summary",""), row_fill)
+                cell(ws, row, 10, is_bob,                   row_fill, bold=bool(is_bob))
+                cell(ws, row, 11, r.get("ranking_rationale",""), row_fill)
+                cell(ws, row, 12, r.get("rationale",""),    row_fill)
+                cell(ws, row, 13, rtgs,                     row_fill)
+                ws.row_dimensions[row].height = 80
+                row += 1
+
+            row += 1
+
+        # ── Design Principles Detail ──────────────────────────────────────────
+        design_principle_columns = set()
+        overall_comments_columns = set()
+        for population, label, ranked in [
+            ("Automated", "AUTOMATED", ct_data["auto_ranked"]),
+            ("Manual", "MANUAL / MANUAL-AUTOMATED", ct_data["man_ranked"]),
+        ]:
+            controls = [
+                control for control in ranked
+                if control.get("design_principles_evaluation")
+            ]
+            if not controls:
+                continue
+
+            principle_headers = []
+            principle_columns = {}
+            for control in controls:
+                for dp in control["design_principles_evaluation"]:
+                    principle = str(dp.get("principle", "")).strip()
+                    principle_name = CT4_DESIGN_PRINCIPLES.get(
+                        population, {}
+                    ).get(principle, principle)
+                    if principle_name and principle_name not in principle_columns:
+                        principle_columns[principle_name] = len(principle_headers) + 2
+                        principle_headers.append(principle_name)
+
+            end_column = len(principle_headers) + 2
+            ws.merge_cells(start_row=row, start_column=1,
+                           end_row=row, end_column=end_column)
+            c = ws.cell(
+                row=row, column=1,
+                value=f"DESIGN PRINCIPLES EVALUATION DETAIL — {label}"
+            )
+            c.font = Font(bold=True, size=11, color="FFFFFF")
+            c.fill = ORANGE_FILL
+            c.alignment = CENTER
+            row += 1
+
+            hdr(ws, row, 1, "Control ID", GREY_FILL, BOLD)
+            for principle_name, column in principle_columns.items():
+                hdr(ws, row, column, principle_name, GREY_FILL, BOLD)
+            hdr(ws, row, end_column, "Overall Comments", GREY_FILL, BOLD)
+            design_principle_columns.update(principle_columns.values())
+            overall_comments_columns.add(end_column)
+            row += 1
+
+            for control in controls:
+                cell(ws, row, 1, control.get("control_id", ""), bold=True)
+                comments = []
+                for dp in control["design_principles_evaluation"]:
+                    principle = str(dp.get("principle", "")).strip()
+                    principle_name = CT4_DESIGN_PRINCIPLES.get(
+                        population, {}
+                    ).get(principle, principle)
+                    column = principle_columns.get(principle_name)
+                    if column:
+                        cell(ws, row, column, dp.get("met", ""))
+                    note = str(dp.get("note", "")).strip()
+                    if note:
+                        comments.append(f"{principle_name}: {note}")
+                red_flags = control.get("red_flags_identified") or []
+                if red_flags:
+                    comments.append(f"Red flags: {'; '.join(red_flags)}")
+                cell(ws, row, end_column, "\n".join(comments))
+                ws.row_dimensions[row].height = 90
+                row += 1
+            row += 1
+
+        # ── Fragmentation ─────────────────────────────────────────────────────
+        if ct_data["fragmentation"]:
+            ws.merge_cells(start_row=row, start_column=1,
+                           end_row=row, end_column=7)
+            c = ws.cell(row=row, column=1, value="FRAGMENTATION FINDINGS")
+            c.font = Font(bold=True, size=11, color="FFFFFF")
+            c.fill = ORANGE_FILL
+            c.alignment = CENTER
+            row += 1
+
+            for ci, col_name in enumerate(
+                ["Group ID","Type","Control IDs","Rationale",
+                 "End-to-End Description","Confidence"], 1):
+                hdr(ws, row, ci, col_name, GREY_FILL, BOLD)
+            row += 1
+
+            for fg in ct_data["fragmentation"]:
+                cell(ws, row, 1, fg.get("group_id",""))
+                cell(ws, row, 2, fg.get("type",""))
+                cell(ws, row, 3, "; ".join(fg.get("control_ids") or []))
+                cell(ws, row, 4, fg.get("rationale",""))
+                cell(ws, row, 5, fg.get("end_to_end_description",""))
+                cell(ws, row, 6, fg.get("confidence",""))
+                ws.row_dimensions[row].height = 80
+                row += 1
+            row += 1
+
+        # ── Redundancy ────────────────────────────────────────────────────────
+        if ct_data["redundancy"]:
+            ws.merge_cells(start_row=row, start_column=1,
+                           end_row=row, end_column=5)
+            c = ws.cell(row=row, column=1, value="REDUNDANCY FINDINGS")
+            c.font = Font(bold=True, size=11, color="FFFFFF")
+            c.fill = BLUE_FILL
+            c.alignment = CENTER
+            row += 1
+
+            for ci, col_name in enumerate(
+                ["Control ID","Covered By Control IDs",
+                 "Rationale","Confidence"], 1):
+                hdr(ws, row, ci, col_name, GREY_FILL, BOLD)
+            row += 1
+
+            for rd in ct_data["redundancy"]:
+                cell(ws, row, 1, rd.get("control_id",""))
+                cell(ws, row, 2,
+                     "; ".join(rd.get("covered_by_control_ids") or []))
+                cell(ws, row, 3, rd.get("rationale",""))
+                cell(ws, row, 4, rd.get("confidence",""))
+                ws.row_dimensions[row].height = 60
+                row += 1
+
+        # Set column widths
+        col_widths = [6,16,28,18,18,16,18,18,28,14,35,35,22]
+        for i, w in enumerate(col_widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+        for column in design_principle_columns:
+            ws.column_dimensions[get_column_letter(column)].width = 24
+        for column in overall_comments_columns:
+            ws.column_dimensions[get_column_letter(column)].width = 45
+
+        # Summary row
+        summary_rows.append({
+            "CT Group":           ct_ref,
+            "Controls Assessed":  ct_data["n_controls"],
+            "Auto Best-of-Breed": ct_data.get("auto_bob",{}).get("control_id","") if ct_data.get("auto_bob") else "",
+            "Manual Best-of-Breed": ct_data.get("man_bob",{}).get("control_id","") if ct_data.get("man_bob") else "",
+            "Fragmentation Groups": len(ct_data["fragmentation"]),
+            "Redundant Controls":   len(ct_data["redundancy"]),
+        })
+
+    # ── Summary sheet ─────────────────────────────────────────────────────────
+    if summary_rows:
+        ws_sum = wb.create_sheet(title="Summary", index=0)
+        ws_sum.sheet_view.showGridLines = False
+        ws_sum.merge_cells("A1:F1")
+        c = ws_sum.cell(row=1, column=1,
+                        value="CONTROL RATIONALISATION — DIMENSION 2 SUMMARY")
+        c.font = Font(bold=True, size=14, color="1F4E79")
+        c.alignment = Alignment(horizontal="left")
+
+        headers = list(summary_rows[0].keys())
+        for ci, h in enumerate(headers, 1):
+            hdr(ws_sum, 2, ci, h)
+        for ri, row_data in enumerate(summary_rows, 3):
+            for ci, key in enumerate(headers, 1):
+                cell(ws_sum, ri, ci, row_data[key])
+
+        for i, w in enumerate([12,20,25,25,22,22], 1):
+            ws_sum.column_dimensions[get_column_letter(i)].width = w
+
+    wb.save(output_path)
+    log.info(f"Saved: {output_path.name} "
+             f"({len(wb.sheetnames)} sheets)")
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  MAIN
@@ -1149,110 +627,72 @@ def process_scope(scope_id, scope_row, pairs_df, expanded_df,
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--force",    action="store_true",
-                        help="Clear checkpoints and restart.")
-    parser.add_argument("--sample",   action="store_true",
-                        help=f"Run sample only: {SAMPLE_CT}")
-    parser.add_argument("--ct-range", nargs=2, type=int,
-                        metavar=("START","END"),
-                        help="Process CT scopes[START:END] only.")
-    parser.add_argument("--suffix",   default="",
-                        help="Checkpoint/log suffix for parallel runs.")
+    parser.add_argument("--suffix", default="",
+                        help="Process checkpoints with this suffix. "
+                             "e.g. --suffix _sample")
     args = parser.parse_args()
 
-    log = get_logger(args.suffix)
+    log = setup_logging()
     log.info("=" * 70)
-    log.info("  Control Rationalisation — Step 3 (Dimension 2: Gold Controls)")
-    log.info(f"  Model         : {LLM_MODEL} (low reasoning)")
-    log.info(f"  Sub-batch     : {SUB_BATCH_SIZE} controls per Pass 1 call")
-    log.info(f"  Sample mode   : {args.sample}"
-             + (f" → {SAMPLE_CT}" if args.sample else ""))
-    log.info(f"  Started       : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    log.info("  Control Rationalisation — Step 4 (Dimension 2: Gold Controls)")
+    log.info(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     log.info("=" * 70)
 
-    for f in [EXPANDED_PARQUET, SCOPE_CT_PARQUET, CAND_CT_PARQUET, RUN_CONFIG]:
-        if not f.exists():
-            log.error(f"Required input not found: {f.name}. "
-                      f"Run Scripts 1 and 2 first.")
-            sys.exit(1)
-
-    ck1_path = OUTPUT_DIR / f"llm_checkpoint_ct_pass1{args.suffix}.jsonl"
-    ck2_path = OUTPUT_DIR / f"llm_checkpoint_ct_pass2{args.suffix}.jsonl"
-
-    if args.force:
-        for ck in [ck1_path, ck2_path]:
-            if ck.exists():
-                ck.unlink()
-                log.info(f"Checkpoint cleared: {ck.name}")
-
-    log.info("Loading data...")
-    expanded = pd.read_parquet(EXPANDED_PARQUET, engine="pyarrow")
-    scope_df = pd.read_parquet(SCOPE_CT_PARQUET, engine="pyarrow")
-    pairs_df = pd.read_parquet(CAND_CT_PARQUET,  engine="pyarrow")
-    log.info(f"  {len(expanded):,} controls | "
-             f"{scope_df['scope_id'].nunique():,} CT scopes")
-
-    # Apply filters
-    if args.sample:
-        scope_df = scope_df[
-            scope_df["ct_ref"].isin(SAMPLE_CT)
-        ].reset_index(drop=True)
-        log.info(f"  Sample: {len(scope_df):,} scopes → {SAMPLE_CT}")
-    elif args.ct_range:
-        s, e = args.ct_range
-        scope_df = scope_df.iloc[s:e].reset_index(drop=True)
-        log.info(f"  Range [{s}:{e}]: {len(scope_df):,} scopes")
-
-    log.info("Verifying connectivity...")
-    try:
-        make_client()
-        log.info("  OK.")
-    except Exception as e:
-        log.error(f"  Failed: {e}")
+    if not HAS_OPENPYXL:
+        log.error("openpyxl not installed. Run: pip install openpyxl")
+        sys.exit(1)
+    if not EXPANDED.exists():
+        log.error("expanded_ct_control_mapping.parquet not found.")
         sys.exit(1)
 
-    done_p1 = load_checkpoint(ck1_path)
-    done_p2 = load_checkpoint(ck2_path)
-    done_p1 = {
-        key: record for key, record in done_p1.items()
-        if record.get("prompt_version") == PROMPT_VERSION
-    }
-    done_p2 = {
-        key: record for key, record in done_p2.items()
-        if record.get("prompt_version") == PROMPT_VERSION
-    }
-    log.info(f"  Pass 1 done keys: {len(done_p1):,}")
-    log.info(f"  Pass 2 done keys: {len(done_p2):,}")
+    # Checkpoint files to read
+    if args.suffix:
+        p1_files = [f"llm_checkpoint_ct_pass1{args.suffix}.jsonl"]
+        p2_files = [f"llm_checkpoint_ct_pass2{args.suffix}.jsonl"]
+    else:
+        p1_files = ALL_P1_FILES
+        p2_files = ALL_P2_FILES
 
-    total_in = total_out = 0
-    for row_num, sr in enumerate(scope_df.itertuples(index=False), 1):
-        scope_id = sr.scope_id
-        pct = row_num / len(scope_df) * 100
-        cost = ((total_in/1e6*INPUT_PRICE_PER_M +
-                 total_out/1e6*OUTPUT_PRICE_PER_M) / AUD_USD_RATE)
-        print(f"\r  [{pct:5.1f}%] {scope_id:<30} A${cost:.2f}", end="")
+    output_path = OUTPUT_DIR / f"ct_assessment{args.suffix}.xlsx"
 
-        in_t, out_t = process_scope(
-            scope_id, sr, pairs_df, expanded,
-            ck1_path, ck2_path, done_p1, done_p2, log)
-        total_in  += in_t
-        total_out += out_t
+    # Load expanded parquet for control details
+    log.info("Loading control details...")
+    expanded = pd.read_parquet(EXPANDED, engine="pyarrow")
+    ctrl_lookup = (
+        expanded.drop_duplicates(subset=["Control_ID"], keep="first")
+        .set_index("Control_ID")
+        .to_dict("index")
+    )
+    log.info(f"  {len(ctrl_lookup):,} unique controls loaded")
 
-    print()
-    cost = ((total_in/1e6*INPUT_PRICE_PER_M +
-             total_out/1e6*OUTPUT_PRICE_PER_M) / AUD_USD_RATE)
-    log.info(f"  Total cost: A${cost:.2f}")
+    # Load checkpoints
+    log.info("Loading checkpoints...")
+    p1_data = load_pass1(p1_files, log)
+    p2_data = load_pass2(p2_files, log)
 
-    with open(RUN_CONFIG) as f:
-        config = json.load(f)
-    config[f"step3{args.suffix}_completed_at"]   = datetime.now().isoformat()
-    config[f"step3{args.suffix}_total_cost_aud"] = round(cost, 2)
-    with open(RUN_CONFIG, "w") as f:
-        json.dump(config, f, indent=2)
+    if not p2_data:
+        log.error("No Pass 2 results found. Ensure Script 3 completed.")
+        sys.exit(1)
+
+    # Build per-CT data
+    log.info("Building CT assessment data...")
+    ct_results = []
+    for scope_id, p2_rec in p2_data.items():
+        ct_data = build_ct_data(scope_id, p1_data, p2_data, ctrl_lookup)
+        ct_results.append(ct_data)
+        log.info(f"  {scope_id}: "
+                 f"auto={len(ct_data['auto_ranked'])} ranked, "
+                 f"manual={len(ct_data['man_ranked'])} ranked, "
+                 f"frag={len(ct_data['fragmentation'])}, "
+                 f"redundant={len(ct_data['redundancy'])}")
+
+    # Write Excel
+    log.info(f"\nWriting Excel: {output_path.name}")
+    write_excel(ct_results, output_path, log)
 
     log.info("=" * 70)
-    log.info(f"  Step 3 complete. Cost: A${cost:.2f}")
-    log.info("  Run 04_postprocess_ct.py next.")
+    log.info(f"  Step 4 complete.")
+    log.info(f"  Output: {output_path}")
     log.info("=" * 70)
 
 if __name__ == "__main__":
