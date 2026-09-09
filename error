@@ -1,14 +1,501 @@
-Three files is workable, and the missing gold standard changes the design less than you might think. Two adjustments:
+# Enterprise Controls Research Dataset
 
-Bucketing comes from metadata and process linkage instead of SME buckets. Candidates: same CTRL_CATEGORY, same COMMON_CTRL_TYP, or linked to the same process or parent process. At 7,500 controls, full pairwise cosine is also fine in memory, so buckets become a scoring feature rather than a hard constraint.
-The CT1 to CT28 payments mapping becomes your evaluation slice. It covers a subset, but it is real SME judgement. Run the pipeline over all 7,500, then measure precision and recall on the payments controls where the answer is known. That gives a number without waiting for new SME reviews.
+## Objective
 
-What I need from you to start
+The goal is to evaluate the capabilities of embedding models and large reasoning models against an enterprise controls dataset and associated process metadata.
 
-Column metadata for both files. Column name, data type, a one-line description, and ideally fill rate (percentage non-blank). For text columns, a rough sense of typical length helps.
-Which columns are free text versus coded. Title, description, objective, "how it operates" and similar are what get embedded. Everything coded is for scoring and slicing.
-Structure of the linkage file. Column names, whether a control can link to many processes, whether a link type or strength field exists, and roughly what proportion of controls have at least one link.
-Whether processes have a hierarchy. Parent process ID or level field. Same-parent linkage is a useful duplicate signal.
-A handful of example rows, masked or paraphrased if the real text cannot leave the environment. Ten rows per file is enough to see how the text is written and whether IDs leak into descriptions.
-The CT1 to CT28 mapping file structure, so I can design the evaluation join.
-Confirmation of where the code runs. I assume you run Python locally with the OpenAI key and I write the code; if so, tell me your Python version and whether pandas, scikit-learn and openai are already installed.
+This is primarily a research and experimentation exercise rather than a production solution build.
+
+Potential research areas include:
+
+- Control clustering
+- Duplicate control detection
+- Semantic similarity analysis
+- Taxonomy discovery
+- Control quality assessment
+- Relationship prediction
+- Control coverage analysis
+- Enterprise knowledge graph reconstruction
+- Obligation-control mapping
+- Embedding model benchmarking
+- Hallucination benchmarking
+
+The objective is to maximise learning during a temporary access window to embedding models and large reasoning models.
+
+---
+
+# Physical Data Sources
+
+The datasets are available locally and should be treated as the primary source files for experimentation.
+
+## Controls
+
+```text
+C:\Users\M061400\ai-test\experiments\data\juno_controls.xlsx
+```
+
+## Processes
+
+```text
+C:\Users\M061400\ai-test\experiments\data\holocentric_processes.xlsx
+```
+
+## Control-to-Process Linkages
+
+```text
+C:\Users\M061400\ai-test\experiments\data\ctl_holo_linkage.xlsx
+```
+
+Python scripts should assume these locations as the initial defaults but remain configurable through parameters where practical.
+
+---
+
+# Dataset Summary
+
+Available datasets:
+
+1. Controls
+2. Processes (Holocentric L2/L3 activities)
+3. Control-to-Process Linkages
+
+Potentially available later:
+
+- Obligations
+- Issues
+- Incidents
+- Applications
+- Additional object relationships
+
+---
+
+# Dataset Volumes
+
+## Controls
+
+Approximate population:
+
+```text
+~6,996 active controls
+```
+
+This should be treated as the primary control corpus.
+
+---
+
+## Processes
+
+Approximate population:
+
+```text
+~10,000 active L3 activities
+```
+
+The process hierarchy includes:
+
+```text
+L2 Process
+    ↓
+L3 Activity
+```
+
+Each L3 activity has an associated parent L2 process.
+
+---
+
+## Control-to-Process Linkages
+
+Approximate population:
+
+```text
+~36,000 linkage rows
+```
+
+Average linkage density:
+
+```text
+36,000
+÷
+6,996
+
+≈ 5.1 process links per control
+```
+
+The actual distribution should be profiled.
+
+The dataset should be treated as a many-to-many relationship structure.
+
+---
+
+# Controls Dataset
+
+## Controls Fields
+
+| Column | Type | Description | Example |
+|----------|----------|----------|----------|
+| CTRL_ID | Text | Control ID | CTL000093364 |
+| CTRL_NAME | Text | Control Name | Various |
+| CTRL_NATRE | Text | Nature of Control | Detective, Preventative |
+| CTRL_STUS | Text | Control Status | Assessed, Awaiting Assessment |
+| CTRL_FREQ | Text | Frequency | Daily, Weekly, Ad-hoc |
+| CTRL_KEY_CONTRL | Text | Key Control Indicator | Yes, No |
+| CTRL_DESC | Text | Control Objective | Free text |
+| CTRL_TYP | Text | Control Type | Manual, Automated, Manual-Automated |
+| CTRL_ASSESS_DT | Date | Last Assessment Date | Various |
+| CTRL_ASSESS_RTNG | Text | Assessment Rating | Effective, Requires Improvement |
+| CTRL_CTGRY_1 | Text | Control Category 1 | Data Validation, Assessment Activities |
+| CTRL_CTGRY_2 | Text | Control Category 2 | Workflow Management, Employee Due Diligence |
+| CTRL_OE_RTNG | Text | Operational Effectiveness Rating | Effective, Requires Improvement |
+| CTRL_DE_RTNG | Text | Design Effectiveness Rating | Effective, Requires Improvement |
+| CTRL_EVDNCD | Rich Text | How Control is Evidenced | Free text, hyperlinks |
+| CTRL_MNTRD | Rich Text | How Control is Monitored | Free text, hyperlinks |
+| CTRL_CATEGORY | Text | Control Category | Unique, Centralised, Common |
+| COMMON_CTRL_REFERENCE | Text | Related Common Control(s) | Control IDs |
+| COMMON_CTRL_TYP | Text | Common Control Type | Master, Instance |
+| CTRL_DESC_OF_CTRL | Text | Detailed Control Description | Free text |
+| CTRL_FLDR | Text | Organisational Hierarchy | /Westpac Group/Data Digital and AI/... |
+
+---
+
+# Important Control Observations
+
+## Common Control Structure
+
+The following fields appear to represent an existing relationship model:
+
+```text
+COMMON_CTRL_REFERENCE
+COMMON_CTRL_TYP
+```
+
+Possible examples:
+
+```text
+Master Control
+    ↓
+Instance Controls
+```
+
+Potential research uses:
+
+- Duplicate detection benchmark
+- Similarity benchmarking
+- Relationship prediction
+- Embedding validation
+- Ground-truth relationship testing
+
+This may become one of the highest-value evaluation datasets available.
+
+---
+
+## Potential Embedding Fields
+
+Initial candidates:
+
+```text
+CTRL_NAME
+CTRL_DESC
+CTRL_DESC_OF_CTRL
+```
+
+Potential secondary candidates:
+
+```text
+CTRL_EVDNCD
+CTRL_MNTRD
+```
+
+However data quality and sparsity should first be profiled before inclusion.
+
+---
+
+## Potential Structured Metadata Features
+
+These may be more useful as non-embedded features:
+
+```text
+CTRL_NATRE
+CTRL_TYP
+CTRL_FREQ
+CTRL_KEY_CONTRL
+CTRL_CTGRY_1
+CTRL_CTGRY_2
+CTRL_CATEGORY
+COMMON_CTRL_TYP
+CTRL_STUS
+CTRL_OE_RTNG
+CTRL_DE_RTNG
+```
+
+---
+
+# Process Dataset
+
+The process dataset contains active Holocentric process information.
+
+## Process Fields
+
+| Column | Type | Description |
+|----------|----------|----------|
+| l3_activity_uuid | Text | L3 Activity UUID |
+| l3_activity_id | Text | L3 Activity ID |
+| l3_activity_name | Text | L3 Activity Name |
+| l3_activity_description | Text | L3 Activity Description |
+| l3_activity_applications | Text | Linked Applications |
+| l3_activity_component_name | Text | Component Name |
+| l3_activity_component_description | Text | Component Description |
+| l3_activity_component_channels | Text | Associated Channels |
+| l3_activity_component_customer_segments | Text | Customer Segments |
+| l3_activity_component_products | Text | Products |
+| l2_process_uuid | Text | L2 Process UUID |
+| l2_process_id | Text | L2 Process ID |
+| l2_process_name | Text | L2 Process Name |
+| l2_process_description | Text | L2 Process Description |
+| value_stream_name | Text | Value Stream |
+| vcm_library_name | Text | VCM Library |
+| vcm_library_type | Text | VCM Library Type |
+| Value Chain | Text | Value Chain |
+| Business Capability Name (BCM) | Text | Business Capability |
+| Application Name | Text | Linked Applications |
+| Task Name | Text | Linked Tasks |
+| l3_activity_product/service | Text | Product/Service |
+
+---
+
+# Process Hierarchy
+
+Available hierarchy:
+
+```text
+L2 Process
+    ↓
+L3 Activity
+```
+
+Join fields:
+
+```text
+l2_process_uuid
+l2_process_id
+
+l3_activity_uuid
+l3_activity_id
+```
+
+Potential research uses:
+
+- Relationship prediction
+- Coverage analysis
+- Process clustering
+- Semantic similarity analysis
+- Graph reconstruction
+
+---
+
+# Control-to-Process Linkages
+
+## Fields
+
+| Column | Type | Description |
+|----------|----------|----------|
+| L3_Activity_UUID | Text | L3 Activity UUID |
+| Control_ID | Text | Control ID |
+
+---
+
+## Important Data Rule
+
+The L3_Activity_UUID field contains mixed values.
+
+Only values containing a UUID suffix should be used for joins.
+
+Example:
+
+### Valid
+
+```text
+Equipment Finance - 02.02.04.01 - Establish Channel KPIs - Regional Australian Location - {1054C67B-5480-401C-AF86-F5EC62590267}
+```
+
+### Invalid
+
+```text
+Consumer Finance - 05.01.09 - Collections Management
+```
+
+Rows without UUIDs should be ignored.
+
+---
+
+# Join Keys
+
+## Controls
+
+```text
+CTRL_ID
+```
+
+## Processes
+
+```text
+l3_activity_uuid
+```
+
+## Linkage Table
+
+```text
+Control_ID
+L3_Activity_UUID
+```
+
+---
+
+# Known Research Assets
+
+## Asset 1: Master / Instance Relationships
+
+Source fields:
+
+```text
+COMMON_CTRL_REFERENCE
+COMMON_CTRL_TYP
+```
+
+Potential use:
+
+- Similarity ground truth
+- Duplicate detection benchmark
+- Relationship recovery benchmark
+
+---
+
+## Asset 2: Control ↔ Process Relationships
+
+Potential use:
+
+- Link prediction
+- Coverage analysis
+- Process-control clustering
+- Embedding validation
+- Knowledge graph reconstruction
+
+---
+
+## Asset 3: Process Hierarchy
+
+Potential use:
+
+- Hierarchical clustering
+- Process reconstruction
+- Graph analytics
+
+---
+
+## Asset 4: Application Metadata
+
+Available via process metadata.
+
+Potential use:
+
+- Application-process-control graph creation
+- Semantic mapping
+- Coverage analysis
+
+---
+
+# CT1–CT28 Payments Controls PoC
+
+The full CT1–CT28 control taxonomy is not available.
+
+However:
+
+- A Payments Controls PoC subset remains available.
+- This subset contains SME-reviewed mappings.
+- It should be treated as a validation dataset.
+- It should not be considered representative of the entire control population.
+
+---
+
+# Execution Environment
+
+Execution is performed locally.
+
+Current authentication and execution process:
+
+```powershell
+az login
+
+az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
+
+cd C:\Users\m061400\ai-test
+
+$env:REQUESTS_CA_BUNDLE="C:\Users\m061400\ai-test\cacert.pem"
+$env:SSL_CERT_FILE="C:\Users\m061400\ai-test\cacert.pem"
+
+Remove-Item Env:AZURE_CA_BUNDLE -ErrorAction SilentlyContinue
+
+python .\run_payment_relevance_and_category_llm_uuid_v2.py
+```
+
+Available capabilities:
+
+- OpenAI Embedding Models
+- OpenAI Large Reasoning Models
+- Python
+- Local file processing
+- Azure-authenticated execution environment
+
+---
+
+# Research Preference
+
+The objective is NOT to build:
+
+- A chatbot
+- A Copilot Studio solution
+- A production deployment
+
+The objective IS to maximise learning from the available model access.
+
+Preference should be given to experiments that:
+
+- Produce measurable outcomes
+- Create reusable benchmarks
+- Discover previously unknown patterns
+- Evaluate limitations of embeddings
+- Evaluate limitations of reasoning models
+- Compare AI methods against classical analytical approaches
+- Produce visual artefacts and research findings
+
+The objective is to determine what embeddings and reasoning models are genuinely capable of within an enterprise controls ecosystem.
+
+---
+
+# Information Available Later
+
+The following can be supplied if required:
+
+- Column fill rates
+- Average text lengths
+- Sample controls
+- CT1–CT28 mapping structure
+- Python version
+- Installed packages
+
+Do not block initial experiment planning on these items.
+
+---
+
+# Request
+
+Using the datasets described above:
+
+1. Refine existing experiment ideas.
+2. Propose additional experiments.
+3. Build a prioritised research roadmap.
+4. Design evaluation methodologies.
+5. Identify reusable benchmarks.
+6. Produce implementation plans.
+7. Generate Python solutions where appropriate.
+8. Maximise learning value rather than deployment value.
+9. Challenge assumptions.
+10. Recommend experiments that should NOT be pursued and explain why.
