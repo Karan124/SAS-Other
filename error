@@ -1,238 +1,49 @@
-"""
-STEP 3: Benchmark every arm against the declared master/instance families. No API calls.
+C:\Users\M061400\ai-test\experiments\code> python .\03_benchmark.py                                       
+controls 6913
+families 108  controls in families 1098  ground-truth pairs 7465
+embed_name               AP 0.848  MRR 0.985  R@1 0.976  R@10 0.998  R@10 macro 0.998
+tfidf_name               AP 0.844  MRR 0.982  R@1 0.971  R@10 0.997  R@10 macro 0.997
+embed_name_desc          AP 0.943  MRR 0.997  R@1 0.996  R@10 1.000  R@10 macro 1.000
+tfidf_name_desc          AP 0.958  MRR 0.998  R@1 0.997  R@10 1.000  R@10 macro 1.000
+embed_name_desc_detail   AP 0.990  MRR 1.000  R@1 1.000  R@10 1.000  R@10 macro 1.000
+tfidf_name_desc_detail   AP 0.994  MRR 1.000  R@1 1.000  R@10 1.000  R@10 macro 1.000
+embed_all_text           AP 0.952  MRR 0.999  R@1 0.999  R@10 1.000  R@10 macro 1.000
+tfidf_all_text           AP 0.957  MRR 0.999  R@1 0.998  R@10 1.000  R@10 macro 1.000
+exact CTRL_NAME: {'groups': 168, 'controls_in_groups': 908, 'pairs': 3894, 'pairs_that_are_family': 3731, 'pair_precision': np.float64(0.958), 'family_pairs_recovered': np.float64(0.5), 'groups_entirely_outside_families': 38, 'controls_in_those_groups': 88}
+exact CTRL_DESC: {'groups': 161, 'controls_in_groups': 1245, 'pairs': 7993, 'pairs_that_are_family': 7417, 'pair_precision': np.float64(0.928), 'family_pairs_recovered': np.float64(0.994), 'groups_entirely_outside_families': 58, 'controls_in_those_groups': 134}
 
-Arms
-  exact_name   controls sharing a normalised CTRL_NAME
-  exact_desc   controls sharing a normalised CTRL_DESC
-  tfidf_<v>    TF-IDF (1-2 grams) cosine over the cleaned text of variant v
-  embed_<v>    text-embedding-3-large cosine over variant v
+                                            metric                 value
+     family pairs with tfidf > 0.9 (near-verbatim)                 0.987
+                     family pairs with tfidf > 0.7                 0.999
+             family pairs with embed cosine > 0.95                 0.859
+             family pairs with embed cosine > 0.90                 0.991
+            family pair embed cosine: median / p10         0.996 / 0.942
+non-family pair embed cosine: median / p99 / p99.9 0.440 / 0.617 / 0.710
+         non-family pairs with embed cosine > 0.90                   527
+         non-family pairs with embed cosine > 0.95                   154
 
-Ground truth: unordered pairs of controls sharing a family (COMMON_CTRL_REFERENCE).
+nearest-neighbour cosine by category
+                count   mean    std    min    10%    50%    90%    max  share_nn_above_0.90  share_in_declared_family
+CTRL_CATEGORY                                                                                                        
+Centralised    1080.0  0.773  0.081  0.560  0.673  0.765  0.886  0.993                0.082                     0.000
+Common         1105.0  0.992  0.020  0.686  0.972  1.000  1.000  1.000                0.995                     0.994
+Unique         4728.0  0.768  0.081  0.464  0.670  0.763  0.878  1.000                0.066                     0.000
 
-Metrics
-  per control : for each control in a family, rank of its nearest family member -> recall@k, MRR
-  per family  : same, averaged within family first so large families do not dominate
-  all pairs   : average precision over all ~24M unordered pairs (positive = same family)
+nearest-neighbour category (row = control category, col = its NN's category)
+nn_category    Centralised  Common  Unique
+CTRL_CATEGORY                             
+Centralised          0.597   0.045   0.357
+Common               0.000   0.996   0.004
+Unique               0.090   0.023   0.886
 
-Also reports ground-truth hardness, exact-match groups outside any family, similarity
-by CTRL_CATEGORY, nearest-neighbour category crosstab, and template marker prevalence.
+                       marker  share_of_controls
+                        [WHY]              0.013
+                        [WHO]              0.022
+                      [WHERE]              0.009
+                        [HOW]              0.018
+                       [WHAT]              0.021
+                       [WHEN]              0.021
+                   [EVIDENCE]              0.005
+WHY+WHO+WHERE+HOW all present              0.000
 
-Run:  python 03_benchmark.py
-Out:  experiments\\output\\benchmark\\benchmark.xlsx, pr_curves.png, nn_by_category.png
-"""
-import html
-import re
-from pathlib import Path
-
-import numpy as np
-import pandas as pd
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from sklearn.feature_extraction.text import TfidfVectorizer
-
-DATA_DIR = Path(r"C:\Users\M061400\ai-test\experiments\data")
-EMB_DIR = Path(r"C:\Users\M061400\ai-test\experiments\output\embeddings")
-OUT_DIR = Path(r"C:\Users\M061400\ai-test\experiments\output\benchmark")
-OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-VARIANTS = ["name", "name_desc", "name_desc_detail", "all_text"]
-MAIN_VARIANT = "name_desc_detail"
-KS = [1, 5, 10, 20]
-CTRL_ID_RE = re.compile(r"\bCTL\d{6,}\b")
-HTML_RE = re.compile(r"<[^>]+>")
-
-
-def norm_text(v):
-    if not isinstance(v, str):
-        return ""
-    t = html.unescape(HTML_RE.sub(" ", v)).lower()
-    t = CTRL_ID_RE.sub(" ", t)
-    t = re.sub(r"[^a-z0-9 ]+", " ", t)
-    return re.sub(r"\s+", " ", t).strip()
-
-
-# ------------------------------------------------------------------ load
-controls = pd.read_excel(DATA_DIR / "juno_controls.xlsx", dtype=str)
-controls.columns = [c.strip() for c in controls.columns]
-controls["CTRL_ID"] = controls["CTRL_ID"].str.strip()
-controls = controls.drop_duplicates("CTRL_ID").reset_index(drop=True)
-ids = controls["CTRL_ID"].tolist()
-idx = {c: i for i, c in enumerate(ids)}
-n = len(ids)
-print(f"controls {n}")
-
-# families -> boolean pair matrix
-fam_edges = []
-for cid, ref in zip(controls["CTRL_ID"], controls["COMMON_CTRL_REFERENCE"]):
-    for r in (set(CTRL_ID_RE.findall(ref)) if isinstance(ref, str) else []):
-        if r in idx and r != cid:
-            fam_edges.append((cid, r))
-family_of = {}
-for cid, master in fam_edges:
-    family_of.setdefault(master, {master}).add(cid)
-F = np.zeros((n, n), dtype=bool)
-for members in family_of.values():
-    m = [idx[c] for c in members]
-    F[np.ix_(m, m)] = True
-np.fill_diagonal(F, False)
-in_family = F.any(axis=1)
-queries = np.where(in_family)[0]
-fam_id = np.full(n, -1)
-for k, members in enumerate(family_of.values()):
-    for c in members:
-        fam_id[idx[c]] = k
-iu = np.triu_indices(n, k=1)
-labels = F[iu]
-n_pos = int(labels.sum())
-print(f"families {len(family_of)}  controls in families {len(queries)}  ground-truth pairs {n_pos}")
-
-
-# ------------------------------------------------------------------ metrics
-def rank_metrics(sim):
-    """Rank of the nearest family member for each control in a family."""
-    ranks = np.empty(len(queries))
-    for qi, i in enumerate(queries):
-        row = sim[i].copy(); row[i] = -np.inf
-        best_fam = row[F[i]].max()
-        ranks[qi] = 1 + np.sum(row > best_fam)
-    per_control = {"mrr": float(np.mean(1 / ranks)), **{f"recall@{k}": float(np.mean(ranks <= k)) for k in KS}}
-    fam_df = pd.DataFrame({"fam": fam_id[queries], "rr": 1 / ranks, **{f"r{k}": ranks <= k for k in KS}})
-    by_fam = fam_df.groupby("fam").mean()
-    per_family = {"mrr_macro": float(by_fam["rr"].mean()), **{f"recall@{k}_macro": float(by_fam[f"r{k}"].mean()) for k in KS}}
-    return {**per_control, **per_family}, ranks
-
-
-def pair_pr(sim, step=2000):
-    """Average precision over all unordered pairs plus a downsampled PR curve."""
-    scores = sim[iu]
-    order = np.argsort(-scores, kind="stable")
-    hits = labels[order]
-    cum = np.cumsum(hits)
-    pos = np.arange(1, len(hits) + 1)
-    precision = cum / pos
-    ap = float(precision[hits].sum() / n_pos)
-    sel = np.arange(0, len(hits), step)
-    return ap, precision[sel], cum[sel] / n_pos, scores[order][sel]
-
-
-def cosine(X):
-    X = X / np.linalg.norm(X, axis=1, keepdims=True).clip(min=1e-9)
-    return (X @ X.T).astype(np.float32)
-
-
-def exact_groups(col):
-    key = controls[col].map(norm_text)
-    groups = controls.groupby(key)["CTRL_ID"].apply(list)
-    groups = groups[(groups.index != "") & (groups.map(len) > 1)]
-    pairs = set()
-    for members in groups:
-        m = sorted(idx[c] for c in members)
-        for a in range(len(m)):
-            for b in range(a + 1, len(m)):
-                pairs.add((m[a], m[b]))
-    tp = sum(F[a, b] for a, b in pairs)
-    outside = [g for g in groups if not any(in_family[idx[c]] for c in g)]
-    return {"groups": len(groups), "controls_in_groups": int(groups.map(len).sum()), "pairs": len(pairs),
-            "pairs_that_are_family": int(tp), "pair_precision": round(tp / max(len(pairs), 1), 3),
-            "family_pairs_recovered": round(tp / n_pos, 3),
-            "groups_entirely_outside_families": len(outside),
-            "controls_in_those_groups": int(sum(len(g) for g in outside))}, outside
-
-
-# ------------------------------------------------------------------ run arms
-metrics, curves, sims = [], {}, {}
-for v in VARIANTS:
-    df = pd.read_parquet(EMB_DIR / f"controls_{v}.parquet")
-    assert df["CTRL_ID"].tolist() == ids, "embedding order differs from controls file"
-    texts = df["text"].tolist()
-    X = np.vstack(df["vector"].values).astype(np.float32)
-    for arm, sim in [("embed", cosine(X)),
-                     ("tfidf", cosine(TfidfVectorizer(ngram_range=(1, 2), min_df=2, sublinear_tf=True,
-                                                      stop_words="english").fit_transform([t or " " for t in texts]).toarray()))]:
-        m, ranks = rank_metrics(sim)
-        ap, p, r, s = pair_pr(sim)
-        metrics.append({"arm": f"{arm}_{v}", "average_precision": round(ap, 4), **{k: round(x, 4) for k, x in m.items()}})
-        curves[f"{arm}_{v}"] = (p, r)
-        print(f"{arm}_{v:18s} AP {ap:.3f}  MRR {m['mrr']:.3f}  R@1 {m['recall@1']:.3f}  R@10 {m['recall@10']:.3f}  "
-              f"R@10 macro {m['recall@10_macro']:.3f}")
-        if v == MAIN_VARIANT:
-            sims[arm] = sim
-        del sim
-    del X
-
-# exact-match arms
-exact_rows, outside_groups = [], {}
-for col in ["CTRL_NAME", "CTRL_DESC"]:
-    stats, outside = exact_groups(col)
-    exact_rows.append({"field": col, **stats})
-    outside_groups[col] = outside
-    print(f"exact {col}: {stats}")
-exact_df = pd.DataFrame(exact_rows)
-
-# ------------------------------------------------------------------ hardness of ground truth
-sim_t, sim_e = sims["tfidf"], sims["embed"]
-fam_t = sim_t[F & np.triu(np.ones((n, n), bool), 1)]
-fam_e = sim_e[F & np.triu(np.ones((n, n), bool), 1)]
-non_e = sim_e[iu][~labels]
-hardness = pd.DataFrame([
-    ("family pairs with tfidf > 0.9 (near-verbatim)", round(float((fam_t > 0.9).mean()), 3)),
-    ("family pairs with tfidf > 0.7", round(float((fam_t > 0.7).mean()), 3)),
-    ("family pairs with embed cosine > 0.95", round(float((fam_e > 0.95).mean()), 3)),
-    ("family pairs with embed cosine > 0.90", round(float((fam_e > 0.90).mean()), 3)),
-    ("family pair embed cosine: median / p10", f"{np.median(fam_e):.3f} / {np.percentile(fam_e, 10):.3f}"),
-    ("non-family pair embed cosine: median / p99 / p99.9",
-     f"{np.median(non_e):.3f} / {np.percentile(non_e, 99):.3f} / {np.percentile(non_e, 99.9):.3f}"),
-    ("non-family pairs with embed cosine > 0.90", int((non_e > 0.90).sum())),
-    ("non-family pairs with embed cosine > 0.95", int((non_e > 0.95).sum())),
-], columns=["metric", "value"])
-print("\n" + hardness.to_string(index=False))
-
-# ------------------------------------------------------------------ category behaviour (embed, main variant)
-sim_nn = sim_e.copy(); np.fill_diagonal(sim_nn, -np.inf)
-nn_idx = sim_nn.argmax(axis=1)
-nn_score = sim_nn[np.arange(n), nn_idx]
-cat = controls["CTRL_CATEGORY"].fillna("<blank>").values
-cat_df = pd.DataFrame({"CTRL_CATEGORY": cat, "nn_cosine": nn_score, "nn_category": cat[nn_idx],
-                       "nn_same_family": F[np.arange(n), nn_idx], "in_family": in_family})
-category_stats = cat_df.groupby("CTRL_CATEGORY")["nn_cosine"].describe(percentiles=[.1, .5, .9]).round(3)
-category_stats["share_nn_above_0.90"] = cat_df.groupby("CTRL_CATEGORY")["nn_cosine"].apply(lambda s: round((s > 0.9).mean(), 3))
-category_stats["share_in_declared_family"] = cat_df.groupby("CTRL_CATEGORY")["in_family"].mean().round(3)
-nn_crosstab = pd.crosstab(cat_df["CTRL_CATEGORY"], cat_df["nn_category"], normalize="index").round(3)
-print("\nnearest-neighbour cosine by category\n" + category_stats.to_string())
-print("\nnearest-neighbour category (row = control category, col = its NN's category)\n" + nn_crosstab.to_string())
-
-# ------------------------------------------------------------------ template markers
-t = controls["CTRL_DESC_OF_CTRL"].fillna("")
-tags = ["[WHY]", "[WHO]", "[WHERE]", "[HOW]", "[WHAT]", "[WHEN]", "[EVIDENCE]"]
-template = pd.DataFrame([{"marker": g, "share_of_controls": round(t.str.contains(re.escape(g), case=False).mean(), 3)} for g in tags])
-all4 = (t.str.contains(r"\[WHY\]", case=False) & t.str.contains(r"\[WHO\]", case=False)
-        & t.str.contains(r"\[WHERE\]", case=False) & t.str.contains(r"\[HOW\]", case=False))
-template.loc[len(template)] = {"marker": "WHY+WHO+WHERE+HOW all present", "share_of_controls": round(all4.mean(), 3)}
-print("\n" + template.to_string(index=False))
-
-# ------------------------------------------------------------------ write
-outside_rows = [{"field": f, "group_size": len(g), "members": ", ".join(g),
-                 "name": controls.loc[idx[g[0]], "CTRL_NAME"]} for f, gs in outside_groups.items() for g in gs]
-with pd.ExcelWriter(OUT_DIR / "benchmark.xlsx", engine="openpyxl") as xw:
-    pd.DataFrame(metrics).to_excel(xw, sheet_name="metrics", index=False)
-    exact_df.to_excel(xw, sheet_name="exact_match", index=False)
-    hardness.to_excel(xw, sheet_name="hardness", index=False)
-    category_stats.to_excel(xw, sheet_name="category_nn")
-    nn_crosstab.to_excel(xw, sheet_name="nn_category_crosstab")
-    template.to_excel(xw, sheet_name="template", index=False)
-    pd.DataFrame(outside_rows).to_excel(xw, sheet_name="exact_groups_outside_families", index=False)
-
-plt.figure(figsize=(7, 5.5))
-for name, (p, r) in curves.items():
-    plt.plot(r, p, label=name, lw=1.4, ls="-" if name.startswith("embed") else "--")
-plt.xlabel("recall of declared family pairs"); plt.ylabel("precision"); plt.ylim(0, 1.02)
-plt.title("Family pair recovery, all unordered pairs"); plt.legend(fontsize=7); plt.grid(alpha=.3)
-plt.tight_layout(); plt.savefig(OUT_DIR / "pr_curves.png", dpi=130); plt.close()
-
-plt.figure(figsize=(7, 4))
-for c, s in cat_df.groupby("CTRL_CATEGORY")["nn_cosine"]:
-    plt.hist(s, bins=60, alpha=.5, label=f"{c} (n={len(s)})", density=True)
-plt.xlabel("cosine to nearest neighbour (embed, main variant)"); plt.legend(); plt.grid(alpha=.3)
-plt.tight_layout(); plt.savefig(OUT_DIR / "nn_by_category.png", dpi=130)
-print(f"\nwritten -> {OUT_DIR}")
+written -> C:\Users\M061400\ai-test\experiments\output\benchmark
