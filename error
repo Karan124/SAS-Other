@@ -1,214 +1,32 @@
-"""
-STEP 4: Build the candidate pair set for reasoning-model and SME review. No API calls.
+PS C:\Users\M061400\ai-test\experiments\code> python 04_candidates.py 
+                                               metric  value
+                                      discovery pairs   2063
+                 distinct controls in discovery pairs   1481
+pairs found by embed only (embed >= min, tfidf < min)   1285
+                            pairs found by tfidf only    183
+                                  pairs found by both    595
+                       calibration known-family pairs     60
+                           calibration negative pairs     60
+                         current ID length (dominant)     12
 
-Discovery pairs: non-family pairs with embed cosine >= EMBED_MIN or TF-IDF cosine >= TFIDF_MIN
-(name_desc_detail variant). Each pair gets a band describing which method found it:
+               pairs  controls  exact_desc  id_format_mismatch  id_adjacent  same_folder  same_category  shared_l2  mutual_nn  median_embed  median_tfidf
+band                                                                                                                                                    
+both            743       729         208                  66           64          316            509        165        201         0.891         0.729
+lexical_only    173       187          14                  29           21           65            160         32         34         0.814         0.772
+paraphrase      960       580          33                  54           18          157            771         96        112         0.881         0.427
+verbatim        187       200          92                  15           25           73            141         33         60         0.942         0.948
 
-  verbatim        tfidf >= 0.90                      near-identical text; SQL finds these
-  both            embed >= EMBED_MIN and 0.50 <= tfidf < 0.90   both methods agree
-  paraphrase      embed >= EMBED_MIN and tfidf < 0.50           only embeddings surface these
-  lexical_only    tfidf >= TFIDF_MIN and embed < EMBED_MIN      shared vocabulary, weaker meaning match
+ cosine_tfidf  <0.30  0.30-0.50  0.50-0.70  0.70-0.90  >=0.90   All
+cosine_embed                                                      
+<0.80             0          0          0         58       3    61
+0.80-0.85         0          0          0        115       7   122
+0.85-0.90       276        592        267        183      35  1353
+0.90-0.95         9         82         55        166      61   373
+>=0.95            0          1          3         69      81   154
+All             285        675        325        591     187  2063
 
-Calibration pairs (for checking the model, not for discovery):
-  known_family    random declared family pairs; model should say duplicate / same_control_different_scope
-  negative        random pairs with embed cosine 0.30 to 0.50; model should say unrelated
-
-Classical features per pair (hypotheses about how the pair came to exist):
-  exact_name, exact_desc, id_format_mismatch (legacy short ID vs current long ID),
-  id_adjacent (both current, numbers within ID_ADJACENT_GAP), same_folder, same_folder_l3,
-  same_category, same_nature, same_freq, same_type, shared_l2, shared_l3, mutual_nn
-
-Run:  python 04_candidates.py
-Out:  experiments\\output\\candidates\\candidates.xlsx   (pairs, band_counts, crosstab, summary)
-      experiments\\output\\candidates\\candidates.parquet (same rows, full text, for Step 5)
-      experiments\\output\\candidates\\embed_vs_tfidf.png
-"""
-import html
-import re
-from pathlib import Path
-
-import numpy as np
-import pandas as pd
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from sklearn.feature_extraction.text import TfidfVectorizer
-
-DATA_DIR = Path(r"C:\Users\M061400\ai-test\experiments\data")
-EMB_DIR = Path(r"C:\Users\M061400\ai-test\experiments\output\embeddings")
-OUT_DIR = Path(r"C:\Users\M061400\ai-test\experiments\output\candidates")
-OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-VARIANT = "name_desc_detail"
-EMBED_MIN = 0.85
-TFIDF_MIN = 0.70
-VERBATIM_TFIDF = 0.90
-PARAPHRASE_TFIDF = 0.50
-ID_ADJACENT_GAP = 10
-N_CALIBRATION = 60
-SEED = 42
-
-CTRL_ID_RE = re.compile(r"\bCTL\d{6,}\b")
-HTML_RE = re.compile(r"<[^>]+>")
-UUID_RE = re.compile(r"([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})")
-
-
-def norm_text(v):
-    if not isinstance(v, str):
-        return ""
-    t = html.unescape(HTML_RE.sub(" ", v)).lower()
-    t = CTRL_ID_RE.sub(" ", t)
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]+", " ", t)).strip()
-
-
-def folder_prefix(p, depth=3):
-    return "/".join([s for s in p.split("/") if s][:depth]) if isinstance(p, str) else ""
-
-
-def uuid_of(s):
-    m = UUID_RE.search(s) if isinstance(s, str) else None
-    return m.group(1).upper() if m else None
-
-
-# ------------------------------------------------------------------ load
-controls = pd.read_excel(DATA_DIR / "juno_controls.xlsx", dtype=str)
-controls.columns = [c.strip() for c in controls.columns]
-controls["CTRL_ID"] = controls["CTRL_ID"].str.strip()
-controls = controls.drop_duplicates("CTRL_ID").reset_index(drop=True)
-ids = controls["CTRL_ID"].tolist(); idx = {c: i for i, c in enumerate(ids)}; n = len(ids)
-
-emb = pd.read_parquet(EMB_DIR / f"controls_{VARIANT}.parquet")
-assert emb["CTRL_ID"].tolist() == ids
-texts = emb["text"].tolist()
-X = np.vstack(emb["vector"].values).astype(np.float32)
-X /= np.linalg.norm(X, axis=1, keepdims=True).clip(min=1e-9)
-sim_e = X @ X.T
-T = TfidfVectorizer(ngram_range=(1, 2), min_df=2, sublinear_tf=True, stop_words="english").fit_transform([t or " " for t in texts])
-sim_t = (T @ T.T).toarray().astype(np.float32)
-del X, T
-
-# families
-F = np.zeros((n, n), dtype=bool)
-family_of = {}
-for cid, ref in zip(controls["CTRL_ID"], controls["COMMON_CTRL_REFERENCE"]):
-    for r in (set(CTRL_ID_RE.findall(ref)) if isinstance(ref, str) else []):
-        if r in idx and r != cid:
-            family_of.setdefault(r, {r}).add(cid)
-for members in family_of.values():
-    m = [idx[c] for c in members]; F[np.ix_(m, m)] = True
-np.fill_diagonal(F, False)
-
-# process linkage -> per-control L3 and L2 sets
-procs = pd.read_excel(DATA_DIR / "holocentric_processes.xlsx", dtype=str)
-procs.columns = [c.strip() for c in procs.columns]
-procs["uuid"] = procs["l3_activity_uuid"].map(uuid_of)
-l2_of = procs.dropna(subset=["uuid"]).set_index("uuid")["l2_process_id"].to_dict()
-link = pd.read_excel(DATA_DIR / "ctl_holo_linkage.xlsx", dtype=str)
-link.columns = [c.strip() for c in link.columns]
-link["uuid"] = link["L3_Activity_UUID"].map(uuid_of)
-link = link[link["uuid"].notna() & link["uuid"].isin(l2_of)]
-l3_sets = link.groupby("Control_ID")["uuid"].agg(set).to_dict()
-l2_sets = {c: {l2_of[u] for u in s} for c, s in l3_sets.items()}
-
-# per-control helpers
-name_key = controls["CTRL_NAME"].map(norm_text).values
-desc_key = controls["CTRL_DESC"].map(norm_text).values
-id_num = controls["CTRL_ID"].str.extract(r"CTL(\d+)")[0].astype(int).values
-id_len = controls["CTRL_ID"].str.len().values
-current_len = int(pd.Series(id_len).mode()[0])          # the dominant (current) ID length
-folder = controls["CTRL_FLDR"].fillna("").values
-folder3 = np.array([folder_prefix(f) for f in folder])
-cat = controls["CTRL_CATEGORY"].fillna("").values
-sim_nn = sim_e.copy(); np.fill_diagonal(sim_nn, -np.inf)
-nn = sim_nn.argmax(axis=1); del sim_nn
-
-# ------------------------------------------------------------------ select pairs
-iu = np.triu_indices(n, k=1)
-e, t, fam = sim_e[iu], sim_t[iu], F[iu]
-disc = ~fam & ((e >= EMBED_MIN) | (t >= TFIDF_MIN))
-rng = np.random.default_rng(SEED)
-known_pool = np.where(fam)[0]
-neg_pool = np.where(~fam & (e >= 0.30) & (e < 0.50))[0]
-sel_known = rng.choice(known_pool, min(N_CALIBRATION, len(known_pool)), replace=False)
-sel_neg = rng.choice(neg_pool, min(N_CALIBRATION, len(neg_pool)), replace=False)
-sel = np.concatenate([np.where(disc)[0], sel_known, sel_neg])
-pair_set = np.array(["discovery"] * disc.sum() + ["calibration_known_family"] * len(sel_known) + ["calibration_negative"] * len(sel_neg))
-
-
-def band(ev, tv):
-    if tv >= VERBATIM_TFIDF: return "verbatim"
-    if ev >= EMBED_MIN and tv < PARAPHRASE_TFIDF: return "paraphrase"
-    if ev >= EMBED_MIN: return "both"
-    return "lexical_only"
-
-
-rows = []
-for k, s in zip(sel, pair_set):
-    i, j = int(iu[0][k]), int(iu[1][k])
-    a, b = ids[i], ids[j]
-    ev, tv = float(e[k]), float(t[k])
-    both_current = id_len[i] == current_len and id_len[j] == current_len
-    rows.append({
-        "pair_id": f"{a}|{b}", "ctrl_a": a, "ctrl_b": b, "set": s,
-        "band": band(ev, tv) if s == "discovery" else s,
-        "cosine_embed": round(ev, 4), "cosine_tfidf": round(tv, 4),
-        "exact_name": bool(name_key[i] == name_key[j] != ""), "exact_desc": bool(desc_key[i] == desc_key[j] != ""),
-        "id_format_mismatch": bool(id_len[i] != id_len[j]),
-        "id_adjacent": bool(both_current and abs(int(id_num[i]) - int(id_num[j])) <= ID_ADJACENT_GAP),
-        "same_folder": bool(folder[i] == folder[j] != ""), "same_folder_l3": bool(folder3[i] == folder3[j] != ""),
-        "category_a": cat[i], "category_b": cat[j], "same_category": bool(cat[i] == cat[j]),
-        "same_nature": controls.at[i, "CTRL_NATRE"] == controls.at[j, "CTRL_NATRE"],
-        "same_freq": controls.at[i, "CTRL_FREQ"] == controls.at[j, "CTRL_FREQ"],
-        "same_type": controls.at[i, "CTRL_TYP"] == controls.at[j, "CTRL_TYP"],
-        "shared_l2": len(l2_sets.get(a, set()) & l2_sets.get(b, set())),
-        "shared_l3": len(l3_sets.get(a, set()) & l3_sets.get(b, set())),
-        "links_a": len(l3_sets.get(a, ())), "links_b": len(l3_sets.get(b, ())),
-        "mutual_nn": bool(nn[i] == j and nn[j] == i),
-        "name_a": controls.at[i, "CTRL_NAME"], "name_b": controls.at[j, "CTRL_NAME"],
-        "folder_a": folder[i], "folder_b": folder[j],
-        "freq_a": controls.at[i, "CTRL_FREQ"], "freq_b": controls.at[j, "CTRL_FREQ"],
-        "nature_a": controls.at[i, "CTRL_NATRE"], "nature_b": controls.at[j, "CTRL_NATRE"],
-        "text_a": texts[i], "text_b": texts[j],
-    })
-cand = pd.DataFrame(rows).sort_values(["set", "cosine_embed"], ascending=[True, False]).reset_index(drop=True)
-
-# ------------------------------------------------------------------ summaries
-disc_df = cand[cand["set"] == "discovery"]
-band_counts = disc_df.groupby("band").agg(
-    pairs=("pair_id", "size"), controls=("ctrl_a", lambda s: len(set(s) | set(disc_df.loc[s.index, "ctrl_b"]))),
-    exact_desc=("exact_desc", "sum"), id_format_mismatch=("id_format_mismatch", "sum"), id_adjacent=("id_adjacent", "sum"),
-    same_folder=("same_folder", "sum"), same_category=("same_category", "sum"), shared_l2=("shared_l2", lambda s: int((s > 0).sum())),
-    mutual_nn=("mutual_nn", "sum"), median_embed=("cosine_embed", "median"), median_tfidf=("cosine_tfidf", "median")).round(3)
-ebins = pd.cut(disc_df["cosine_embed"], [0, 0.80, 0.85, 0.90, 0.95, 1.01], labels=["<0.80", "0.80-0.85", "0.85-0.90", "0.90-0.95", ">=0.95"])
-tbins = pd.cut(disc_df["cosine_tfidf"], [-0.01, 0.30, 0.50, 0.70, 0.90, 1.01], labels=["<0.30", "0.30-0.50", "0.50-0.70", "0.70-0.90", ">=0.90"])
-crosstab = pd.crosstab(ebins, tbins, margins=True)
-cat_pairs = pd.crosstab(disc_df["category_a"], disc_df["category_b"])
-summary = pd.DataFrame([
-    ("discovery pairs", len(disc_df)),
-    ("distinct controls in discovery pairs", len(set(disc_df["ctrl_a"]) | set(disc_df["ctrl_b"]))),
-    ("pairs found by embed only (embed >= min, tfidf < min)", int(((disc_df["cosine_embed"] >= EMBED_MIN) & (disc_df["cosine_tfidf"] < TFIDF_MIN)).sum())),
-    ("pairs found by tfidf only", int(((disc_df["cosine_tfidf"] >= TFIDF_MIN) & (disc_df["cosine_embed"] < EMBED_MIN)).sum())),
-    ("pairs found by both", int(((disc_df["cosine_embed"] >= EMBED_MIN) & (disc_df["cosine_tfidf"] >= TFIDF_MIN)).sum())),
-    ("calibration known-family pairs", int((cand["set"] == "calibration_known_family").sum())),
-    ("calibration negative pairs", int((cand["set"] == "calibration_negative").sum())),
-    ("current ID length (dominant)", current_len),
-], columns=["metric", "value"])
-
-print(summary.to_string(index=False)); print("\n", band_counts.to_string()); print("\n", crosstab.to_string()); print("\n", cat_pairs.to_string())
-
-cand.to_parquet(OUT_DIR / "candidates.parquet", index=False)
-xl = cand.copy(); xl["text_a"] = xl["text_a"].str.slice(0, 2000); xl["text_b"] = xl["text_b"].str.slice(0, 2000)
-with pd.ExcelWriter(OUT_DIR / "candidates.xlsx", engine="openpyxl") as xw:
-    xl.to_excel(xw, sheet_name="pairs", index=False)
-    band_counts.to_excel(xw, sheet_name="band_counts")
-    crosstab.to_excel(xw, sheet_name="crosstab")
-    cat_pairs.to_excel(xw, sheet_name="category_pairs")
-    summary.to_excel(xw, sheet_name="summary", index=False)
-
-plt.figure(figsize=(6.5, 5.5))
-for b_, g in disc_df.groupby("band"):
-    plt.scatter(g["cosine_tfidf"], g["cosine_embed"], s=8, alpha=.6, label=f"{b_} ({len(g)})")
-plt.axhline(EMBED_MIN, ls="--", c="grey", lw=.8); plt.axvline(TFIDF_MIN, ls="--", c="grey", lw=.8)
-plt.xlabel("TF-IDF cosine"); plt.ylabel("embedding cosine"); plt.title("Discovery pairs by band"); plt.legend(fontsize=8); plt.grid(alpha=.3)
-plt.tight_layout(); plt.savefig(OUT_DIR / "embed_vs_tfidf.png", dpi=130)
-print(f"\nwritten -> {OUT_DIR}")
+ category_b   Centralised  Common  Unique
+category_a                              
+Centralised          186      97      35
+Common                57     668     141
+Unique                36     116     727
