@@ -1,49 +1,8 @@
-C:\Users\M061400\ai-test\experiments\code> python .\03_benchmark.py                                       
-controls 6913
-families 108  controls in families 1098  ground-truth pairs 7465
-embed_name               AP 0.848  MRR 0.985  R@1 0.976  R@10 0.998  R@10 macro 0.998
-tfidf_name               AP 0.844  MRR 0.982  R@1 0.971  R@10 0.997  R@10 macro 0.997
-embed_name_desc          AP 0.943  MRR 0.997  R@1 0.996  R@10 1.000  R@10 macro 1.000
-tfidf_name_desc          AP 0.958  MRR 0.998  R@1 0.997  R@10 1.000  R@10 macro 1.000
-embed_name_desc_detail   AP 0.990  MRR 1.000  R@1 1.000  R@10 1.000  R@10 macro 1.000
-tfidf_name_desc_detail   AP 0.994  MRR 1.000  R@1 1.000  R@10 1.000  R@10 macro 1.000
-embed_all_text           AP 0.952  MRR 0.999  R@1 0.999  R@10 1.000  R@10 macro 1.000
-tfidf_all_text           AP 0.957  MRR 0.999  R@1 0.998  R@10 1.000  R@10 macro 1.000
-exact CTRL_NAME: {'groups': 168, 'controls_in_groups': 908, 'pairs': 3894, 'pairs_that_are_family': 3731, 'pair_precision': np.float64(0.958), 'family_pairs_recovered': np.float64(0.5), 'groups_entirely_outside_families': 38, 'controls_in_those_groups': 88}
-exact CTRL_DESC: {'groups': 161, 'controls_in_groups': 1245, 'pairs': 7993, 'pairs_that_are_family': 7417, 'pair_precision': np.float64(0.928), 'family_pairs_recovered': np.float64(0.994), 'groups_entirely_outside_families': 58, 'controls_in_those_groups': 134}
-
-                                            metric                 value
-     family pairs with tfidf > 0.9 (near-verbatim)                 0.987
-                     family pairs with tfidf > 0.7                 0.999
-             family pairs with embed cosine > 0.95                 0.859
-             family pairs with embed cosine > 0.90                 0.991
-            family pair embed cosine: median / p10         0.996 / 0.942
-non-family pair embed cosine: median / p99 / p99.9 0.440 / 0.617 / 0.710
-         non-family pairs with embed cosine > 0.90                   527
-         non-family pairs with embed cosine > 0.95                   154
-
-nearest-neighbour cosine by category
-                count   mean    std    min    10%    50%    90%    max  share_nn_above_0.90  share_in_declared_family
-CTRL_CATEGORY                                                                                                        
-Centralised    1080.0  0.773  0.081  0.560  0.673  0.765  0.886  0.993                0.082                     0.000
-Common         1105.0  0.992  0.020  0.686  0.972  1.000  1.000  1.000                0.995                     0.994
-Unique         4728.0  0.768  0.081  0.464  0.670  0.763  0.878  1.000                0.066                     0.000
-
-nearest-neighbour category (row = control category, col = its NN's category)
-nn_category    Centralised  Common  Unique
-CTRL_CATEGORY                             
-Centralised          0.597   0.045   0.357
-Common               0.000   0.996   0.004
-Unique               0.090   0.023   0.886
-
-                       marker  share_of_controls
-                        [WHY]              0.013
-                        [WHO]              0.022
-                      [WHERE]              0.009
-                        [HOW]              0.018
-                       [WHAT]              0.021
-                       [WHEN]              0.021
-                   [EVIDENCE]              0.005
-WHY+WHO+WHERE+HOW all present              0.000
-
-written -> C:\Users\M061400\ai-test\experiments\output\benchmark
+field	group_size	members	name
+CTRL_NAME	2	CTL000139492, CTL000162891	10.2.05 IT Release Management
+CTRL_NAME	2	CTL000041574, CTL000158849	10.5.03 Segregation of Access/Duties
+CTRL_NAME	2	CTL000082510, CTL000137159	10.6.01 Secure Configuration Management
+CTRL_NAME	2	CTL000137160, CTL000082577	10.6.02 Penetration Testing
+CTRL_NAME	2	CTL000082519, CTL000137162	10.6.04 Security Threat Monitoring
+CTRL_NAME	2	CTL000082490, CTL000137165	10.6.07 Security Incident Management
+CTRL_NAME	2	CTL000082535, CTL000100800	10.6.08 Network Security Management
