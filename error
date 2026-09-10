@@ -1,8 +1,20 @@
 field	group_size	members	name
-CTRL_NAME	2	CTL000139492, CTL000162891	10.2.05 IT Release Management
-CTRL_NAME	2	CTL000041574, CTL000158849	10.5.03 Segregation of Access/Duties
-CTRL_NAME	2	CTL000082510, CTL000137159	10.6.01 Secure Configuration Management
-CTRL_NAME	2	CTL000137160, CTL000082577	10.6.02 Penetration Testing
-CTRL_NAME	2	CTL000082519, CTL000137162	10.6.04 Security Threat Monitoring
-CTRL_NAME	2	CTL000082490, CTL000137165	10.6.07 Security Incident Management
-CTRL_NAME	2	CTL000082535, CTL000100800	10.6.08 Network Security Management
+CTRL_DESC	2	CTL000161110, CTL000155772	10.5.01 Access deprovisioning in DBs supporting SOx applications. #SOx
+CTRL_DESC	2	CTL000164749, CTL012634	PACIFIC_10.4.02 Physical Security of Data Centres
+CTRL_DESC	2	CTL000082491, CTL000082530	10.5.01 Access Provisioning #SOX
+CTRL_DESC	2	CTL000184092, CTL000184091	BLO Servicing Suspense Accounts Reconciliation (WBC and SGB)
+CTRL_DESC	2	CTL000046597, CTL000046598	2.2.2 - Staff performance management process is documented , communicated and monitored to ensure adherence.
+CTRL_DESC	2	CTL000105126, CTL000105122	Timely assessment and escalation of potentially reportable incidents with a financial crime impact to the Regulatory Disclosure Forum (RDF) - WIB, Business and Wealth
+CTRL_DESC	2	CTL000046584, CTL000046746	2.1.1 - Staff due diligence is conducted through performance of background checks
+CTRL_DESC	2	CTL000160851, CTL012631	HRE: Back-up testing and recovery validation of HRE owned technology supplier solutions (HRE owned BMAs).
+CTRL_DESC	2	CTL000149469, CTL017476	UMP MRU Call Monitoring
+CTRL_DESC	2	CTL000138959, CTL000082486	10.3.09 Backup Execution and Monitoring-Cloud #TORP
+CTRL_DESC	3	CTL000046766, CTL000085349, CTL000046591	2.1.3 - Exit procedures are completed by all staff prior to leaving
+CTRL_DESC	2	CTL000067526, CTL000068283	BTIS ALL - Expenses are approved and reimbursed in accordance with applicable policy requirements
+CTRL_DESC	2	CTL000100804, CTL000082542	10.6.13 Internet Services Access Protection
+CTRL_DESC	2	CTL000141970, CTL000164769	10.3.03 IT Problem Management (Technology and CIO divisional use only)
+CTRL_DESC	4	CTL000046771, CTL000085351, CTL000046572, CTL000046574	2.4.2 - Resource planning is in place to ensure appropriate staff management
+CTRL_DESC	2	CTL000082535, CTL000100800	10.6.08 Network Security Management
+CTRL_DESC	2	CTL000184791, CTL009308	CBW - Merchant facility Prepayment Exposure Management (MPE)
+CTRL_DESC	2	CTL000160317, CTL000092944	Model monitoring groups (MMG) - SME Corporate Risk Grading and Property Risk Assessment Models (SOx)
+CTRL_DESC	3	CTL020251, CTL000043816, CTL000085405	ITKC 16_Monitoring of supplier performance_Asia
