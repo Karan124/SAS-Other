@@ -1,501 +1,153 @@
-# Enterprise Controls Research Dataset
-
-## Objective
-
-The goal is to evaluate the capabilities of embedding models and large reasoning models against an enterprise controls dataset and associated process metadata.
-
-This is primarily a research and experimentation exercise rather than a production solution build.
-
-Potential research areas include:
-
-- Control clustering
-- Duplicate control detection
-- Semantic similarity analysis
-- Taxonomy discovery
-- Control quality assessment
-- Relationship prediction
-- Control coverage analysis
-- Enterprise knowledge graph reconstruction
-- Obligation-control mapping
-- Embedding model benchmarking
-- Hallucination benchmarking
-
-The objective is to maximise learning during a temporary access window to embedding models and large reasoning models.
-
----
-
-# Physical Data Sources
-
-The datasets are available locally and should be treated as the primary source files for experimentation.
-
-## Controls
-
-```text
-C:\Users\M061400\ai-test\experiments\data\juno_controls.xlsx
-```
-
-## Processes
-
-```text
-C:\Users\M061400\ai-test\experiments\data\holocentric_processes.xlsx
-```
-
-## Control-to-Process Linkages
-
-```text
-C:\Users\M061400\ai-test\experiments\data\ctl_holo_linkage.xlsx
-```
-
-Python scripts should assume these locations as the initial defaults but remain configurable through parameters where practical.
-
----
-
-# Dataset Summary
-
-Available datasets:
-
-1. Controls
-2. Processes (Holocentric L2/L3 activities)
-3. Control-to-Process Linkages
-
-Potentially available later:
-
-- Obligations
-- Issues
-- Incidents
-- Applications
-- Additional object relationships
-
----
-
-# Dataset Volumes
-
-## Controls
-
-Approximate population:
-
-```text
-~6,996 active controls
-```
-
-This should be treated as the primary control corpus.
-
----
-
-## Processes
-
-Approximate population:
-
-```text
-~10,000 active L3 activities
-```
-
-The process hierarchy includes:
-
-```text
-L2 Process
-    ↓
-L3 Activity
-```
-
-Each L3 activity has an associated parent L2 process.
-
----
-
-## Control-to-Process Linkages
-
-Approximate population:
-
-```text
-~36,000 linkage rows
-```
-
-Average linkage density:
-
-```text
-36,000
-÷
-6,996
-
-≈ 5.1 process links per control
-```
-
-The actual distribution should be profiled.
-
-The dataset should be treated as a many-to-many relationship structure.
-
----
-
-# Controls Dataset
-
-## Controls Fields
-
-| Column | Type | Description | Example |
-|----------|----------|----------|----------|
-| CTRL_ID | Text | Control ID | CTL000093364 |
-| CTRL_NAME | Text | Control Name | Various |
-| CTRL_NATRE | Text | Nature of Control | Detective, Preventative |
-| CTRL_STUS | Text | Control Status | Assessed, Awaiting Assessment |
-| CTRL_FREQ | Text | Frequency | Daily, Weekly, Ad-hoc |
-| CTRL_KEY_CONTRL | Text | Key Control Indicator | Yes, No |
-| CTRL_DESC | Text | Control Objective | Free text |
-| CTRL_TYP | Text | Control Type | Manual, Automated, Manual-Automated |
-| CTRL_ASSESS_DT | Date | Last Assessment Date | Various |
-| CTRL_ASSESS_RTNG | Text | Assessment Rating | Effective, Requires Improvement |
-| CTRL_CTGRY_1 | Text | Control Category 1 | Data Validation, Assessment Activities |
-| CTRL_CTGRY_2 | Text | Control Category 2 | Workflow Management, Employee Due Diligence |
-| CTRL_OE_RTNG | Text | Operational Effectiveness Rating | Effective, Requires Improvement |
-| CTRL_DE_RTNG | Text | Design Effectiveness Rating | Effective, Requires Improvement |
-| CTRL_EVDNCD | Rich Text | How Control is Evidenced | Free text, hyperlinks |
-| CTRL_MNTRD | Rich Text | How Control is Monitored | Free text, hyperlinks |
-| CTRL_CATEGORY | Text | Control Category | Unique, Centralised, Common |
-| COMMON_CTRL_REFERENCE | Text | Related Common Control(s) | Control IDs |
-| COMMON_CTRL_TYP | Text | Common Control Type | Master, Instance |
-| CTRL_DESC_OF_CTRL | Text | Detailed Control Description | Free text |
-| CTRL_FLDR | Text | Organisational Hierarchy | /Westpac Group/Data Digital and AI/... |
-
----
-
-# Important Control Observations
-
-## Common Control Structure
-
-The following fields appear to represent an existing relationship model:
-
-```text
-COMMON_CTRL_REFERENCE
-COMMON_CTRL_TYP
-```
-
-Possible examples:
-
-```text
-Master Control
-    ↓
-Instance Controls
-```
-
-Potential research uses:
-
-- Duplicate detection benchmark
-- Similarity benchmarking
-- Relationship prediction
-- Embedding validation
-- Ground-truth relationship testing
-
-This may become one of the highest-value evaluation datasets available.
-
----
-
-## Potential Embedding Fields
-
-Initial candidates:
-
-```text
-CTRL_NAME
-CTRL_DESC
-CTRL_DESC_OF_CTRL
-```
-
-Potential secondary candidates:
-
-```text
-CTRL_EVDNCD
-CTRL_MNTRD
-```
-
-However data quality and sparsity should first be profiled before inclusion.
-
----
-
-## Potential Structured Metadata Features
-
-These may be more useful as non-embedded features:
-
-```text
-CTRL_NATRE
-CTRL_TYP
-CTRL_FREQ
-CTRL_KEY_CONTRL
-CTRL_CTGRY_1
-CTRL_CTGRY_2
-CTRL_CATEGORY
-COMMON_CTRL_TYP
-CTRL_STUS
-CTRL_OE_RTNG
-CTRL_DE_RTNG
-```
-
----
-
-# Process Dataset
-
-The process dataset contains active Holocentric process information.
-
-## Process Fields
-
-| Column | Type | Description |
-|----------|----------|----------|
-| l3_activity_uuid | Text | L3 Activity UUID |
-| l3_activity_id | Text | L3 Activity ID |
-| l3_activity_name | Text | L3 Activity Name |
-| l3_activity_description | Text | L3 Activity Description |
-| l3_activity_applications | Text | Linked Applications |
-| l3_activity_component_name | Text | Component Name |
-| l3_activity_component_description | Text | Component Description |
-| l3_activity_component_channels | Text | Associated Channels |
-| l3_activity_component_customer_segments | Text | Customer Segments |
-| l3_activity_component_products | Text | Products |
-| l2_process_uuid | Text | L2 Process UUID |
-| l2_process_id | Text | L2 Process ID |
-| l2_process_name | Text | L2 Process Name |
-| l2_process_description | Text | L2 Process Description |
-| value_stream_name | Text | Value Stream |
-| vcm_library_name | Text | VCM Library |
-| vcm_library_type | Text | VCM Library Type |
-| Value Chain | Text | Value Chain |
-| Business Capability Name (BCM) | Text | Business Capability |
-| Application Name | Text | Linked Applications |
-| Task Name | Text | Linked Tasks |
-| l3_activity_product/service | Text | Product/Service |
-
----
-
-# Process Hierarchy
-
-Available hierarchy:
-
-```text
-L2 Process
-    ↓
-L3 Activity
-```
-
-Join fields:
-
-```text
-l2_process_uuid
-l2_process_id
-
-l3_activity_uuid
-l3_activity_id
-```
-
-Potential research uses:
-
-- Relationship prediction
-- Coverage analysis
-- Process clustering
-- Semantic similarity analysis
-- Graph reconstruction
-
----
-
-# Control-to-Process Linkages
-
-## Fields
-
-| Column | Type | Description |
-|----------|----------|----------|
-| L3_Activity_UUID | Text | L3 Activity UUID |
-| Control_ID | Text | Control ID |
-
----
-
-## Important Data Rule
-
-The L3_Activity_UUID field contains mixed values.
-
-Only values containing a UUID suffix should be used for joins.
-
-Example:
-
-### Valid
-
-```text
-Equipment Finance - 02.02.04.01 - Establish Channel KPIs - Regional Australian Location - {1054C67B-5480-401C-AF86-F5EC62590267}
-```
-
-### Invalid
-
-```text
-Consumer Finance - 05.01.09 - Collections Management
-```
-
-Rows without UUIDs should be ignored.
-
----
-
-# Join Keys
-
-## Controls
-
-```text
-CTRL_ID
-```
-
-## Processes
-
-```text
-l3_activity_uuid
-```
-
-## Linkage Table
-
-```text
-Control_ID
-L3_Activity_UUID
-```
-
----
-
-# Known Research Assets
-
-## Asset 1: Master / Instance Relationships
-
-Source fields:
-
-```text
-COMMON_CTRL_REFERENCE
-COMMON_CTRL_TYP
-```
-
-Potential use:
-
-- Similarity ground truth
-- Duplicate detection benchmark
-- Relationship recovery benchmark
-
----
-
-## Asset 2: Control ↔ Process Relationships
-
-Potential use:
-
-- Link prediction
-- Coverage analysis
-- Process-control clustering
-- Embedding validation
-- Knowledge graph reconstruction
-
----
-
-## Asset 3: Process Hierarchy
-
-Potential use:
-
-- Hierarchical clustering
-- Process reconstruction
-- Graph analytics
-
----
-
-## Asset 4: Application Metadata
-
-Available via process metadata.
-
-Potential use:
-
-- Application-process-control graph creation
-- Semantic mapping
-- Coverage analysis
-
----
-
-# CT1–CT28 Payments Controls PoC
-
-The full CT1–CT28 control taxonomy is not available.
-
-However:
-
-- A Payments Controls PoC subset remains available.
-- This subset contains SME-reviewed mappings.
-- It should be treated as a validation dataset.
-- It should not be considered representative of the entire control population.
-
----
-
-# Execution Environment
-
-Execution is performed locally.
-
-Current authentication and execution process:
-
-```powershell
-az login
-
-az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
-
-cd C:\Users\m061400\ai-test
-
-$env:REQUESTS_CA_BUNDLE="C:\Users\m061400\ai-test\cacert.pem"
-$env:SSL_CERT_FILE="C:\Users\m061400\ai-test\cacert.pem"
-
-Remove-Item Env:AZURE_CA_BUNDLE -ErrorAction SilentlyContinue
-
-python .\run_payment_relevance_and_category_llm_uuid_v2.py
-```
-
-Available capabilities:
-
-- OpenAI Embedding Models
-- OpenAI Large Reasoning Models
-- Python
-- Local file processing
-- Azure-authenticated execution environment
-
----
-
-# Research Preference
-
-The objective is NOT to build:
-
-- A chatbot
-- A Copilot Studio solution
-- A production deployment
-
-The objective IS to maximise learning from the available model access.
-
-Preference should be given to experiments that:
-
-- Produce measurable outcomes
-- Create reusable benchmarks
-- Discover previously unknown patterns
-- Evaluate limitations of embeddings
-- Evaluate limitations of reasoning models
-- Compare AI methods against classical analytical approaches
-- Produce visual artefacts and research findings
-
-The objective is to determine what embeddings and reasoning models are genuinely capable of within an enterprise controls ecosystem.
-
----
-
-# Information Available Later
-
-The following can be supplied if required:
-
-- Column fill rates
-- Average text lengths
-- Sample controls
-- CT1–CT28 mapping structure
-- Python version
-- Installed packages
-
-Do not block initial experiment planning on these items.
-
----
-
-# Request
-
-Using the datasets described above:
-
-1. Refine existing experiment ideas.
-2. Propose additional experiments.
-3. Build a prioritised research roadmap.
-4. Design evaluation methodologies.
-5. Identify reusable benchmarks.
-6. Produce implementation plans.
-7. Generate Python solutions where appropriate.
-8. Maximise learning value rather than deployment value.
-9. Challenge assumptions.
-10. Recommend experiments that should NOT be pursued and explain why.
+"""
+STEP 1: Profile the three source files. No API calls.
+
+Answers four questions before we spend any tokens:
+  1. Which text fields are worth embedding (fill rate, length, boilerplate)?
+  2. Does the linkage file join cleanly to controls and processes?
+  3. How many master/instance families exist (our duplicate ground truth)?
+  4. Do control IDs leak into text fields?
+
+Run:
+  python 01_profile.py
+
+Output:
+  C:\\Users\\M061400\\ai-test\\experiments\\output\\profile.xlsx
+  and a summary printed to the console.
+"""
+import re
+import html
+from collections import Counter
+from pathlib import Path
+import pandas as pd
+
+DATA_DIR = Path(r"C:\Users\M061400\ai-test\experiments\data")
+OUT_DIR = Path(r"C:\Users\M061400\ai-test\experiments\output")
+OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+TEXT_FIELDS = ["CTRL_NAME", "CTRL_DESC", "CTRL_DESC_OF_CTRL", "CTRL_EVDNCD", "CTRL_MNTRD"]
+CODED_FIELDS = ["CTRL_NATRE", "CTRL_STUS", "CTRL_FREQ", "CTRL_KEY_CONTRL", "CTRL_TYP",
+                "CTRL_CTGRY_1", "CTRL_CTGRY_2", "CTRL_CATEGORY", "COMMON_CTRL_TYP",
+                "CTRL_OE_RTNG", "CTRL_DE_RTNG"]
+
+UUID_RE = re.compile(r"([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})")
+CTRL_ID_RE = re.compile(r"\bCTL\d{6,}\b")
+HTML_RE = re.compile(r"<[^>]+>")
+
+
+def clean(v):
+    """Strip HTML tags, collapse whitespace. Returns '' for blank/missing."""
+    if not isinstance(v, str) or v.strip().lower() in {"", "nan", "none", "null"}:
+        return ""
+    return re.sub(r"\s+", " ", html.unescape(HTML_RE.sub(" ", v))).strip()
+
+
+def uuid_of(v):
+    m = UUID_RE.search(v) if isinstance(v, str) else None
+    return m.group(1).upper() if m else None
+
+
+# ---------- load ----------
+controls = pd.read_excel(DATA_DIR / "juno_controls.xlsx", dtype=str)
+processes = pd.read_excel(DATA_DIR / "holocentric_processes.xlsx", dtype=str)
+linkage = pd.read_excel(DATA_DIR / "ctl_holo_linkage.xlsx", dtype=str)
+for df in (controls, processes, linkage):
+    df.columns = [c.strip() for c in df.columns]
+controls["CTRL_ID"] = controls["CTRL_ID"].str.strip()
+print(f"controls {len(controls)}  processes {len(processes)}  linkage rows {len(linkage)}")
+
+# ---------- 1. text fields ----------
+rows = []
+for f in TEXT_FIELDS:
+    if f not in controls.columns:
+        rows.append({"field": f, "note": "COLUMN NOT FOUND"}); continue
+    txt = controls[f].map(clean)
+    nb = txt[txt != ""]
+    rows.append({"field": f, "fill_rate": round(len(nb) / len(txt), 3), "distinct": nb.nunique(),
+                 "median_chars": nb.str.len().median() if len(nb) else 0,
+                 "p95_chars": nb.str.len().quantile(0.95) if len(nb) else 0,
+                 "approx_tokens_total": int(nb.str.len().sum() / 4),
+                 "rows_containing_ctrl_id": int(controls[f].map(lambda v: bool(CTRL_ID_RE.search(v)) if isinstance(v, str) else False).sum())})
+text_profile = pd.DataFrame(rows)
+
+boiler = []
+for f in TEXT_FIELDS:
+    if f not in controls.columns:
+        continue
+    txt = controls[f].map(clean).str.lower()
+    txt = txt[txt != ""]
+    for t, n in Counter(txt).most_common(25):
+        if n > 1:
+            boiler.append({"field": f, "repeat_count": n, "share": round(n / len(txt), 4), "text": t[:250]})
+boilerplate = pd.DataFrame(boiler, columns=["field", "repeat_count", "share", "text"])
+
+# ---------- 2. linkage ----------
+linkage["uuid"] = linkage["L3_Activity_UUID"].map(uuid_of)
+linkage["Control_ID"] = linkage["Control_ID"].str.strip()
+processes["uuid"] = processes["l3_activity_uuid"].map(uuid_of)
+valid = linkage[linkage["uuid"].notna()].drop_duplicates(["Control_ID", "uuid"])
+in_ctrl = valid["Control_ID"].isin(set(controls["CTRL_ID"]))
+in_proc = valid["uuid"].isin(set(processes["uuid"].dropna()))
+matched = valid[in_ctrl & in_proc]
+deg = matched.groupby("Control_ID").size()
+pdeg = matched.groupby("uuid").size()
+link_profile = pd.DataFrame([
+    ("linkage rows total", len(linkage)),
+    ("rows with a UUID", len(valid)),
+    ("rows whose control is in controls file", int(in_ctrl.sum())),
+    ("rows whose process is in processes file", int(in_proc.sum())),
+    ("rows matching both sides", len(matched)),
+    ("controls with at least one link", int(deg.shape[0])),
+    ("controls with no link", int(len(controls) - deg.shape[0])),
+    ("links per control: median / p95 / max", f"{deg.median()} / {deg.quantile(0.95)} / {deg.max()}" if len(deg) else "n/a"),
+    ("processes with at least one control", int(pdeg.shape[0])),
+    ("processes with no control", int(processes["uuid"].notna().sum() - pdeg.shape[0])),
+    ("controls per process: median / p95 / max", f"{pdeg.median()} / {pdeg.quantile(0.95)} / {pdeg.max()}" if len(pdeg) else "n/a"),
+], columns=["metric", "value"])
+
+# ---------- 3. master / instance families ----------
+ids = set(controls["CTRL_ID"])
+edges = []
+for cid, ref in zip(controls["CTRL_ID"], controls["COMMON_CTRL_REFERENCE"]):
+    for r in set(CTRL_ID_RE.findall(ref)) if isinstance(ref, str) else []:
+        edges.append({"CTRL_ID": cid, "master_id": r, "master_in_corpus": r in ids, "self_reference": r == cid})
+edges = pd.DataFrame(edges, columns=["CTRL_ID", "master_id", "master_in_corpus", "self_reference"])
+good = edges[edges["master_in_corpus"] & ~edges["self_reference"]]
+fam_sizes = good.groupby("master_id")["CTRL_ID"].nunique() + 1  # +1 for the master itself
+pairs = int(sum(s * (s - 1) / 2 for s in fam_sizes))
+has_ref = controls["COMMON_CTRL_REFERENCE"].map(lambda v: isinstance(v, str) and v.strip() != "")
+family_profile = pd.DataFrame([
+    ("controls with a COMMON_CTRL_REFERENCE", int(has_ref.sum())),
+    ("reference edges parsed", len(edges)),
+    ("edges pointing to a control in the corpus", int(edges["master_in_corpus"].sum())),
+    ("edges pointing to a control NOT in corpus", int((~edges["master_in_corpus"]).sum())),
+    ("families (distinct masters)", int(fam_sizes.shape[0])),
+    ("controls inside a family incl. masters", int(good["CTRL_ID"].nunique() + fam_sizes.shape[0])),
+    ("family size: median / max", f"{fam_sizes.median()} / {fam_sizes.max()}" if len(fam_sizes) else "n/a"),
+    ("ground-truth duplicate pairs", pairs),
+    ("COMMON_CTRL_TYP values", str(controls["COMMON_CTRL_TYP"].fillna("<blank>").value_counts().to_dict())),
+    ("CTRL_CATEGORY values", str(controls["CTRL_CATEGORY"].fillna("<blank>").value_counts().to_dict())),
+], columns=["metric", "value"])
+
+# ---------- 4. coded fields ----------
+coded = []
+for f in CODED_FIELDS:
+    if f in controls.columns:
+        for v, n in controls[f].fillna("<blank>").value_counts().head(12).items():
+            coded.append({"field": f, "value": v, "count": int(n), "share": round(n / len(controls), 3)})
+coded = pd.DataFrame(coded)
+
+# ---------- write ----------
+out = OUT_DIR / "profile.xlsx"
+with pd.ExcelWriter(out, engine="openpyxl") as xw:
+    text_profile.to_excel(xw, sheet_name="text_fields", index=False)
+    boilerplate.to_excel(xw, sheet_name="boilerplate", index=False)
+    link_profile.to_excel(xw, sheet_name="linkage", index=False)
+    family_profile.to_excel(xw, sheet_name="families", index=False)
+    edges.to_excel(xw, sheet_name="family_edges", index=False)
+    coded.to_excel(xw, sheet_name="coded_fields", index=False)
+
+pd.set_option("display.width", 200, "display.max_colwidth", 80)
+print("\n== TEXT FIELDS ==\n", text_profile.to_string(index=False))
+print("\n== LINKAGE ==\n", link_profile.to_string(index=False))
+print("\n== FAMILIES ==\n", family_profile.to_string(index=False))
+print(f"\nwritten: {out}")
