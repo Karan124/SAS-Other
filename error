@@ -1,4 +1,4 @@
-PS C:\Users\m061400\ai-test\experiments\code> python 02_embed.py --dry-run
+PS C:\Users\m061400\ai-test\experiments\code> python 02_embed.py
 
 PLAN
   controls_name              rows   6913  empty    0  median chars    65  max chars    566  ~tokens   125,563
@@ -8,7 +8,104 @@ PLAN
   processes                  rows   9081  empty    0  median chars   330  max chars   9492  ~tokens 1,207,443
   total ~9,202,051 tokens  ~$1.20 USD  ~92 min at batch 20
 
-SAMPLE TEXT (first control, name_desc_detail or nearest variant):
-Data Validation of Mandatory Event Information Fields on Event Security Notification Form.
-[WHY] The objective of this data validation control is to ensure event data quality, to manage event security and Corporate Security risks by enforcing mandatory fields to be completed by the WNZL Event Organiser for Event Security Notification Form in line with the Event Security Standard. This information allows WNZL Protective Services to complete a preliminary security risk assessment and provide appropriate advice to the Event Organiser and assist as required.
-When the Event Organiser [WHO] completes an Event Security Notification Form for an event via the Protective Services / Event Security Sharepoint page [WHERE], [HOW] a fully automated data validation control enforces the collection of mand
+controls_name
+  controls_name: 500/6913  tokens 6,933  eta 14 min
+  controls_name: 1000/6913  tokens 14,104  eta 13 min
+  controls_name: 1500/6913  tokens 21,266  eta 12 min
+  controls_name: 2000/6913  tokens 28,365  eta 10 min
+  controls_name: 2500/6913  tokens 35,682  eta 9 min
+  controls_name: 3000/6913  tokens 43,164  eta 8 min
+  controls_name: 3500/6913  tokens 50,280  eta 7 min
+  controls_name: 4000/6913  tokens 57,455  eta 6 min
+  controls_name: 4500/6913  tokens 64,555  eta 5 min
+  controls_name: 5000/6913  tokens 71,595  eta 4 min
+  controls_name: 5500/6913  tokens 78,941  eta 3 min
+  controls_name: 6000/6913  tokens 86,324  eta 2 min
+  controls_name: 6500/6913  tokens 93,274  eta 1 min
+  controls_name: 6913/6913  tokens 99,509  eta 0 min
+  controls_name: done  {'file': 'controls_name.parquet', 'rows': 6913, 'model': 'text-embedding-3-large', 'dim': 3072, 'tokens': 99509, 'usd': 0.013, 'minutes': 14.7, 'finished': '2026-09-10T13:30:42'}
+
+controls_name_desc
+  controls_name_desc: 500/6913  tokens 41,474  eta 13 min
+  controls_name_desc: 1000/6913  tokens 82,718  eta 12 min
+  controls_name_desc: 1500/6913  tokens 124,634  eta 11 min
+  controls_name_desc: 2000/6913  tokens 166,935  eta 10 min
+  controls_name_desc: 2500/6913  tokens 209,375  eta 9 min
+  controls_name_desc: 3000/6913  tokens 252,052  eta 8 min
+  controls_name_desc: 3500/6913  tokens 295,819  eta 7 min
+  controls_name_desc: 4000/6913  tokens 340,364  eta 6 min
+  controls_name_desc: 4500/6913  tokens 382,624  eta 5 min
+  controls_name_desc: 5000/6913  tokens 424,804  eta 4 min
+  controls_name_desc: 5500/6913  tokens 465,812  eta 3 min
+  controls_name_desc: 6000/6913  tokens 510,033  eta 2 min
+  controls_name_desc: 6500/6913  tokens 551,898  eta 1 min
+  controls_name_desc: 6913/6913  tokens 586,292  eta 0 min
+  controls_name_desc: done  {'file': 'controls_name_desc.parquet', 'rows': 6913, 'model': 'text-embedding-3-large', 'dim': 3072, 'tokens': 586292, 'usd': 0.076, 'minutes': 14.9, 'finished': '2026-09-10T13:45:36'}
+
+controls_name_desc_detail
+  controls_name_desc_detail: 500/6913  tokens 162,943  eta 13 min
+  controls_name_desc_detail: 1000/6913  tokens 336,130  eta 12 min
+  controls_name_desc_detail: 1500/6913  tokens 506,692  eta 11 min
+  controls_name_desc_detail: 2000/6913  tokens 681,182  eta 10 min
+  controls_name_desc_detail: 2500/6913  tokens 857,241  eta 9 min
+  controls_name_desc_detail: 3000/6913  tokens 1,032,389  eta 8 min
+  controls_name_desc_detail: 3500/6913  tokens 1,205,283  eta 7 min
+  controls_name_desc_detail: 4000/6913  tokens 1,379,220  eta 6 min
+  controls_name_desc_detail: 4500/6913  tokens 1,548,518  eta 5 min
+  controls_name_desc_detail: 5000/6913  tokens 1,722,870  eta 4 min
+  controls_name_desc_detail: 5500/6913  tokens 1,888,512  eta 3 min
+  controls_name_desc_detail: 6000/6913  tokens 2,055,653  eta 2 min
+  controls_name_desc_detail: 6500/6913  tokens 2,215,998  eta 1 min
+  controls_name_desc_detail: 6913/6913  tokens 2,366,784  eta 0 min
+  controls_name_desc_detail: done  {'file': 'controls_name_desc_detail.parquet', 'rows': 6913, 'model': 'text-embedding-3-large', 'dim': 3072, 'tokens': 2366784, 'usd': 0.308, 'minutes': 14.6, 'finished': '2026-09-10T14:00:09'}
+
+controls_all_text
+  controls_all_text: 500/6913  tokens 220,009  eta 14 min
+  controls_all_text: 1000/6913  tokens 452,931  eta 13 min
+  controls_all_text: 1500/6913  tokens 684,741  eta 12 min
+  controls_all_text: 2000/6913  tokens 922,517  eta 11 min
+  controls_all_text: 2500/6913  tokens 1,162,080  eta 10 min
+  controls_all_text: 3000/6913  tokens 1,395,211  eta 9 min
+  controls_all_text: 3500/6913  tokens 1,623,505  eta 8 min
+  controls_all_text: 4000/6913  tokens 1,859,487  eta 7 min
+  controls_all_text: 4500/6913  tokens 2,088,812  eta 6 min
+  controls_all_text: 5000/6913  tokens 2,318,672  eta 4 min
+  controls_all_text: 5500/6913  tokens 2,544,378  eta 3 min
+  controls_all_text: 6000/6913  tokens 2,770,651  eta 2 min
+  controls_all_text: 6500/6913  tokens 2,989,845  eta 1 min
+  controls_all_text: 6913/6913  tokens 3,192,177  eta 0 min
+  controls_all_text: done  {'file': 'controls_all_text.parquet', 'rows': 6913, 'model': 'text-embedding-3-large', 'dim': 3072, 'tokens': 3192177, 'usd': 0.415, 'minutes': 16.1, 'finished': '2026-09-10T14:16:14'}
+
+processes
+  processes: 500/9081  tokens 55,947  eta 17 min
+  processes: 1000/9081  tokens 113,160  eta 16 min
+  processes: 1500/9081  tokens 160,834  eta 15 min
+  processes: 2000/9081  tokens 208,024  eta 14 min
+  processes: 2500/9081  tokens 268,225  eta 13 min
+  processes: 3000/9081  tokens 313,973  eta 12 min
+  processes: 3500/9081  tokens 359,797  eta 11 min
+  processes: 4000/9081  tokens 410,579  eta 10 min
+  processes: 4500/9081  tokens 483,662  eta 9 min
+  processes: 5000/9081  tokens 540,390  eta 8 min
+  processes: 5500/9081  tokens 617,906  eta 7 min
+  processes: 6000/9081  tokens 686,143  eta 6 min
+  processes: 6500/9081  tokens 743,229  eta 5 min
+  processes: 7000/9081  tokens 777,292  eta 4 min
+  processes: 7500/9081  tokens 820,592  eta 3 min
+  processes: 8000/9081  tokens 850,156  eta 2 min
+  processes: 8500/9081  tokens 884,357  eta 1 min
+  processes: 9000/9081  tokens 908,662  eta 0 min
+  processes: 9081/9081  tokens 912,274  eta 0 min
+  processes: done  {'file': 'processes.parquet', 'rows': 9081, 'model': 'text-embedding-3-large', 'dim': 3072, 'tokens': 912274, 'usd': 0.119, 'minutes': 18.8, 'finished': '2026-09-10T14:35:05'}
+
+all done -> C:\Users\M061400\ai-test\experiments\output\embeddings
+PS C:\Users\m061400\ai-test\experiments\code> python 02_embed.py --variants name_desc_detail --skip-processes
+
+PLAN
+  controls_name_desc_detail  rows   6913  empty    0  median chars  1598  max chars   6705  ~tokens 3,026,994  cached
+  total ~3,026,994 tokens  ~$0.39 USD  ~0 min at batch 20
+
+controls_name_desc_detail
+  controls_name_desc_detail: already complete (controls_name_desc_detail.parquet)
+
+all done -> C:\Users\M061400\ai-test\experiments\output\embeddings
