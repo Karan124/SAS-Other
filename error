@@ -1,111 +1,238 @@
-PS C:\Users\m061400\ai-test\experiments\code> python 02_embed.py
+"""
+STEP 3: Benchmark every arm against the declared master/instance families. No API calls.
 
-PLAN
-  controls_name              rows   6913  empty    0  median chars    65  max chars    566  ~tokens   125,563
-  controls_name_desc         rows   6913  empty    0  median chars   364  max chars   4022  ~tokens   768,677
-  controls_name_desc_detail  rows   6913  empty    0  median chars  1598  max chars   6705  ~tokens 3,026,994
-  controls_all_text          rows   6913  empty    0  median chars  2189  max chars   9545  ~tokens 4,073,374
-  processes                  rows   9081  empty    0  median chars   330  max chars   9492  ~tokens 1,207,443
-  total ~9,202,051 tokens  ~$1.20 USD  ~92 min at batch 20
+Arms
+  exact_name   controls sharing a normalised CTRL_NAME
+  exact_desc   controls sharing a normalised CTRL_DESC
+  tfidf_<v>    TF-IDF (1-2 grams) cosine over the cleaned text of variant v
+  embed_<v>    text-embedding-3-large cosine over variant v
 
-controls_name
-  controls_name: 500/6913  tokens 6,933  eta 14 min
-  controls_name: 1000/6913  tokens 14,104  eta 13 min
-  controls_name: 1500/6913  tokens 21,266  eta 12 min
-  controls_name: 2000/6913  tokens 28,365  eta 10 min
-  controls_name: 2500/6913  tokens 35,682  eta 9 min
-  controls_name: 3000/6913  tokens 43,164  eta 8 min
-  controls_name: 3500/6913  tokens 50,280  eta 7 min
-  controls_name: 4000/6913  tokens 57,455  eta 6 min
-  controls_name: 4500/6913  tokens 64,555  eta 5 min
-  controls_name: 5000/6913  tokens 71,595  eta 4 min
-  controls_name: 5500/6913  tokens 78,941  eta 3 min
-  controls_name: 6000/6913  tokens 86,324  eta 2 min
-  controls_name: 6500/6913  tokens 93,274  eta 1 min
-  controls_name: 6913/6913  tokens 99,509  eta 0 min
-  controls_name: done  {'file': 'controls_name.parquet', 'rows': 6913, 'model': 'text-embedding-3-large', 'dim': 3072, 'tokens': 99509, 'usd': 0.013, 'minutes': 14.7, 'finished': '2026-09-10T13:30:42'}
+Ground truth: unordered pairs of controls sharing a family (COMMON_CTRL_REFERENCE).
 
-controls_name_desc
-  controls_name_desc: 500/6913  tokens 41,474  eta 13 min
-  controls_name_desc: 1000/6913  tokens 82,718  eta 12 min
-  controls_name_desc: 1500/6913  tokens 124,634  eta 11 min
-  controls_name_desc: 2000/6913  tokens 166,935  eta 10 min
-  controls_name_desc: 2500/6913  tokens 209,375  eta 9 min
-  controls_name_desc: 3000/6913  tokens 252,052  eta 8 min
-  controls_name_desc: 3500/6913  tokens 295,819  eta 7 min
-  controls_name_desc: 4000/6913  tokens 340,364  eta 6 min
-  controls_name_desc: 4500/6913  tokens 382,624  eta 5 min
-  controls_name_desc: 5000/6913  tokens 424,804  eta 4 min
-  controls_name_desc: 5500/6913  tokens 465,812  eta 3 min
-  controls_name_desc: 6000/6913  tokens 510,033  eta 2 min
-  controls_name_desc: 6500/6913  tokens 551,898  eta 1 min
-  controls_name_desc: 6913/6913  tokens 586,292  eta 0 min
-  controls_name_desc: done  {'file': 'controls_name_desc.parquet', 'rows': 6913, 'model': 'text-embedding-3-large', 'dim': 3072, 'tokens': 586292, 'usd': 0.076, 'minutes': 14.9, 'finished': '2026-09-10T13:45:36'}
+Metrics
+  per control : for each control in a family, rank of its nearest family member -> recall@k, MRR
+  per family  : same, averaged within family first so large families do not dominate
+  all pairs   : average precision over all ~24M unordered pairs (positive = same family)
 
-controls_name_desc_detail
-  controls_name_desc_detail: 500/6913  tokens 162,943  eta 13 min
-  controls_name_desc_detail: 1000/6913  tokens 336,130  eta 12 min
-  controls_name_desc_detail: 1500/6913  tokens 506,692  eta 11 min
-  controls_name_desc_detail: 2000/6913  tokens 681,182  eta 10 min
-  controls_name_desc_detail: 2500/6913  tokens 857,241  eta 9 min
-  controls_name_desc_detail: 3000/6913  tokens 1,032,389  eta 8 min
-  controls_name_desc_detail: 3500/6913  tokens 1,205,283  eta 7 min
-  controls_name_desc_detail: 4000/6913  tokens 1,379,220  eta 6 min
-  controls_name_desc_detail: 4500/6913  tokens 1,548,518  eta 5 min
-  controls_name_desc_detail: 5000/6913  tokens 1,722,870  eta 4 min
-  controls_name_desc_detail: 5500/6913  tokens 1,888,512  eta 3 min
-  controls_name_desc_detail: 6000/6913  tokens 2,055,653  eta 2 min
-  controls_name_desc_detail: 6500/6913  tokens 2,215,998  eta 1 min
-  controls_name_desc_detail: 6913/6913  tokens 2,366,784  eta 0 min
-  controls_name_desc_detail: done  {'file': 'controls_name_desc_detail.parquet', 'rows': 6913, 'model': 'text-embedding-3-large', 'dim': 3072, 'tokens': 2366784, 'usd': 0.308, 'minutes': 14.6, 'finished': '2026-09-10T14:00:09'}
+Also reports ground-truth hardness, exact-match groups outside any family, similarity
+by CTRL_CATEGORY, nearest-neighbour category crosstab, and template marker prevalence.
 
-controls_all_text
-  controls_all_text: 500/6913  tokens 220,009  eta 14 min
-  controls_all_text: 1000/6913  tokens 452,931  eta 13 min
-  controls_all_text: 1500/6913  tokens 684,741  eta 12 min
-  controls_all_text: 2000/6913  tokens 922,517  eta 11 min
-  controls_all_text: 2500/6913  tokens 1,162,080  eta 10 min
-  controls_all_text: 3000/6913  tokens 1,395,211  eta 9 min
-  controls_all_text: 3500/6913  tokens 1,623,505  eta 8 min
-  controls_all_text: 4000/6913  tokens 1,859,487  eta 7 min
-  controls_all_text: 4500/6913  tokens 2,088,812  eta 6 min
-  controls_all_text: 5000/6913  tokens 2,318,672  eta 4 min
-  controls_all_text: 5500/6913  tokens 2,544,378  eta 3 min
-  controls_all_text: 6000/6913  tokens 2,770,651  eta 2 min
-  controls_all_text: 6500/6913  tokens 2,989,845  eta 1 min
-  controls_all_text: 6913/6913  tokens 3,192,177  eta 0 min
-  controls_all_text: done  {'file': 'controls_all_text.parquet', 'rows': 6913, 'model': 'text-embedding-3-large', 'dim': 3072, 'tokens': 3192177, 'usd': 0.415, 'minutes': 16.1, 'finished': '2026-09-10T14:16:14'}
+Run:  python 03_benchmark.py
+Out:  experiments\\output\\benchmark\\benchmark.xlsx, pr_curves.png, nn_by_category.png
+"""
+import html
+import re
+from pathlib import Path
 
-processes
-  processes: 500/9081  tokens 55,947  eta 17 min
-  processes: 1000/9081  tokens 113,160  eta 16 min
-  processes: 1500/9081  tokens 160,834  eta 15 min
-  processes: 2000/9081  tokens 208,024  eta 14 min
-  processes: 2500/9081  tokens 268,225  eta 13 min
-  processes: 3000/9081  tokens 313,973  eta 12 min
-  processes: 3500/9081  tokens 359,797  eta 11 min
-  processes: 4000/9081  tokens 410,579  eta 10 min
-  processes: 4500/9081  tokens 483,662  eta 9 min
-  processes: 5000/9081  tokens 540,390  eta 8 min
-  processes: 5500/9081  tokens 617,906  eta 7 min
-  processes: 6000/9081  tokens 686,143  eta 6 min
-  processes: 6500/9081  tokens 743,229  eta 5 min
-  processes: 7000/9081  tokens 777,292  eta 4 min
-  processes: 7500/9081  tokens 820,592  eta 3 min
-  processes: 8000/9081  tokens 850,156  eta 2 min
-  processes: 8500/9081  tokens 884,357  eta 1 min
-  processes: 9000/9081  tokens 908,662  eta 0 min
-  processes: 9081/9081  tokens 912,274  eta 0 min
-  processes: done  {'file': 'processes.parquet', 'rows': 9081, 'model': 'text-embedding-3-large', 'dim': 3072, 'tokens': 912274, 'usd': 0.119, 'minutes': 18.8, 'finished': '2026-09-10T14:35:05'}
+import numpy as np
+import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from sklearn.feature_extraction.text import TfidfVectorizer
 
-all done -> C:\Users\M061400\ai-test\experiments\output\embeddings
-PS C:\Users\m061400\ai-test\experiments\code> python 02_embed.py --variants name_desc_detail --skip-processes
+DATA_DIR = Path(r"C:\Users\M061400\ai-test\experiments\data")
+EMB_DIR = Path(r"C:\Users\M061400\ai-test\experiments\output\embeddings")
+OUT_DIR = Path(r"C:\Users\M061400\ai-test\experiments\output\benchmark")
+OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-PLAN
-  controls_name_desc_detail  rows   6913  empty    0  median chars  1598  max chars   6705  ~tokens 3,026,994  cached
-  total ~3,026,994 tokens  ~$0.39 USD  ~0 min at batch 20
+VARIANTS = ["name", "name_desc", "name_desc_detail", "all_text"]
+MAIN_VARIANT = "name_desc_detail"
+KS = [1, 5, 10, 20]
+CTRL_ID_RE = re.compile(r"\bCTL\d{6,}\b")
+HTML_RE = re.compile(r"<[^>]+>")
 
-controls_name_desc_detail
-  controls_name_desc_detail: already complete (controls_name_desc_detail.parquet)
 
-all done -> C:\Users\M061400\ai-test\experiments\output\embeddings
+def norm_text(v):
+    if not isinstance(v, str):
+        return ""
+    t = html.unescape(HTML_RE.sub(" ", v)).lower()
+    t = CTRL_ID_RE.sub(" ", t)
+    t = re.sub(r"[^a-z0-9 ]+", " ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+# ------------------------------------------------------------------ load
+controls = pd.read_excel(DATA_DIR / "juno_controls.xlsx", dtype=str)
+controls.columns = [c.strip() for c in controls.columns]
+controls["CTRL_ID"] = controls["CTRL_ID"].str.strip()
+controls = controls.drop_duplicates("CTRL_ID").reset_index(drop=True)
+ids = controls["CTRL_ID"].tolist()
+idx = {c: i for i, c in enumerate(ids)}
+n = len(ids)
+print(f"controls {n}")
+
+# families -> boolean pair matrix
+fam_edges = []
+for cid, ref in zip(controls["CTRL_ID"], controls["COMMON_CTRL_REFERENCE"]):
+    for r in (set(CTRL_ID_RE.findall(ref)) if isinstance(ref, str) else []):
+        if r in idx and r != cid:
+            fam_edges.append((cid, r))
+family_of = {}
+for cid, master in fam_edges:
+    family_of.setdefault(master, {master}).add(cid)
+F = np.zeros((n, n), dtype=bool)
+for members in family_of.values():
+    m = [idx[c] for c in members]
+    F[np.ix_(m, m)] = True
+np.fill_diagonal(F, False)
+in_family = F.any(axis=1)
+queries = np.where(in_family)[0]
+fam_id = np.full(n, -1)
+for k, members in enumerate(family_of.values()):
+    for c in members:
+        fam_id[idx[c]] = k
+iu = np.triu_indices(n, k=1)
+labels = F[iu]
+n_pos = int(labels.sum())
+print(f"families {len(family_of)}  controls in families {len(queries)}  ground-truth pairs {n_pos}")
+
+
+# ------------------------------------------------------------------ metrics
+def rank_metrics(sim):
+    """Rank of the nearest family member for each control in a family."""
+    ranks = np.empty(len(queries))
+    for qi, i in enumerate(queries):
+        row = sim[i].copy(); row[i] = -np.inf
+        best_fam = row[F[i]].max()
+        ranks[qi] = 1 + np.sum(row > best_fam)
+    per_control = {"mrr": float(np.mean(1 / ranks)), **{f"recall@{k}": float(np.mean(ranks <= k)) for k in KS}}
+    fam_df = pd.DataFrame({"fam": fam_id[queries], "rr": 1 / ranks, **{f"r{k}": ranks <= k for k in KS}})
+    by_fam = fam_df.groupby("fam").mean()
+    per_family = {"mrr_macro": float(by_fam["rr"].mean()), **{f"recall@{k}_macro": float(by_fam[f"r{k}"].mean()) for k in KS}}
+    return {**per_control, **per_family}, ranks
+
+
+def pair_pr(sim, step=2000):
+    """Average precision over all unordered pairs plus a downsampled PR curve."""
+    scores = sim[iu]
+    order = np.argsort(-scores, kind="stable")
+    hits = labels[order]
+    cum = np.cumsum(hits)
+    pos = np.arange(1, len(hits) + 1)
+    precision = cum / pos
+    ap = float(precision[hits].sum() / n_pos)
+    sel = np.arange(0, len(hits), step)
+    return ap, precision[sel], cum[sel] / n_pos, scores[order][sel]
+
+
+def cosine(X):
+    X = X / np.linalg.norm(X, axis=1, keepdims=True).clip(min=1e-9)
+    return (X @ X.T).astype(np.float32)
+
+
+def exact_groups(col):
+    key = controls[col].map(norm_text)
+    groups = controls.groupby(key)["CTRL_ID"].apply(list)
+    groups = groups[(groups.index != "") & (groups.map(len) > 1)]
+    pairs = set()
+    for members in groups:
+        m = sorted(idx[c] for c in members)
+        for a in range(len(m)):
+            for b in range(a + 1, len(m)):
+                pairs.add((m[a], m[b]))
+    tp = sum(F[a, b] for a, b in pairs)
+    outside = [g for g in groups if not any(in_family[idx[c]] for c in g)]
+    return {"groups": len(groups), "controls_in_groups": int(groups.map(len).sum()), "pairs": len(pairs),
+            "pairs_that_are_family": int(tp), "pair_precision": round(tp / max(len(pairs), 1), 3),
+            "family_pairs_recovered": round(tp / n_pos, 3),
+            "groups_entirely_outside_families": len(outside),
+            "controls_in_those_groups": int(sum(len(g) for g in outside))}, outside
+
+
+# ------------------------------------------------------------------ run arms
+metrics, curves, sims = [], {}, {}
+for v in VARIANTS:
+    df = pd.read_parquet(EMB_DIR / f"controls_{v}.parquet")
+    assert df["CTRL_ID"].tolist() == ids, "embedding order differs from controls file"
+    texts = df["text"].tolist()
+    X = np.vstack(df["vector"].values).astype(np.float32)
+    for arm, sim in [("embed", cosine(X)),
+                     ("tfidf", cosine(TfidfVectorizer(ngram_range=(1, 2), min_df=2, sublinear_tf=True,
+                                                      stop_words="english").fit_transform([t or " " for t in texts]).toarray()))]:
+        m, ranks = rank_metrics(sim)
+        ap, p, r, s = pair_pr(sim)
+        metrics.append({"arm": f"{arm}_{v}", "average_precision": round(ap, 4), **{k: round(x, 4) for k, x in m.items()}})
+        curves[f"{arm}_{v}"] = (p, r)
+        print(f"{arm}_{v:18s} AP {ap:.3f}  MRR {m['mrr']:.3f}  R@1 {m['recall@1']:.3f}  R@10 {m['recall@10']:.3f}  "
+              f"R@10 macro {m['recall@10_macro']:.3f}")
+        if v == MAIN_VARIANT:
+            sims[arm] = sim
+        del sim
+    del X
+
+# exact-match arms
+exact_rows, outside_groups = [], {}
+for col in ["CTRL_NAME", "CTRL_DESC"]:
+    stats, outside = exact_groups(col)
+    exact_rows.append({"field": col, **stats})
+    outside_groups[col] = outside
+    print(f"exact {col}: {stats}")
+exact_df = pd.DataFrame(exact_rows)
+
+# ------------------------------------------------------------------ hardness of ground truth
+sim_t, sim_e = sims["tfidf"], sims["embed"]
+fam_t = sim_t[F & np.triu(np.ones((n, n), bool), 1)]
+fam_e = sim_e[F & np.triu(np.ones((n, n), bool), 1)]
+non_e = sim_e[iu][~labels]
+hardness = pd.DataFrame([
+    ("family pairs with tfidf > 0.9 (near-verbatim)", round(float((fam_t > 0.9).mean()), 3)),
+    ("family pairs with tfidf > 0.7", round(float((fam_t > 0.7).mean()), 3)),
+    ("family pairs with embed cosine > 0.95", round(float((fam_e > 0.95).mean()), 3)),
+    ("family pairs with embed cosine > 0.90", round(float((fam_e > 0.90).mean()), 3)),
+    ("family pair embed cosine: median / p10", f"{np.median(fam_e):.3f} / {np.percentile(fam_e, 10):.3f}"),
+    ("non-family pair embed cosine: median / p99 / p99.9",
+     f"{np.median(non_e):.3f} / {np.percentile(non_e, 99):.3f} / {np.percentile(non_e, 99.9):.3f}"),
+    ("non-family pairs with embed cosine > 0.90", int((non_e > 0.90).sum())),
+    ("non-family pairs with embed cosine > 0.95", int((non_e > 0.95).sum())),
+], columns=["metric", "value"])
+print("\n" + hardness.to_string(index=False))
+
+# ------------------------------------------------------------------ category behaviour (embed, main variant)
+sim_nn = sim_e.copy(); np.fill_diagonal(sim_nn, -np.inf)
+nn_idx = sim_nn.argmax(axis=1)
+nn_score = sim_nn[np.arange(n), nn_idx]
+cat = controls["CTRL_CATEGORY"].fillna("<blank>").values
+cat_df = pd.DataFrame({"CTRL_CATEGORY": cat, "nn_cosine": nn_score, "nn_category": cat[nn_idx],
+                       "nn_same_family": F[np.arange(n), nn_idx], "in_family": in_family})
+category_stats = cat_df.groupby("CTRL_CATEGORY")["nn_cosine"].describe(percentiles=[.1, .5, .9]).round(3)
+category_stats["share_nn_above_0.90"] = cat_df.groupby("CTRL_CATEGORY")["nn_cosine"].apply(lambda s: round((s > 0.9).mean(), 3))
+category_stats["share_in_declared_family"] = cat_df.groupby("CTRL_CATEGORY")["in_family"].mean().round(3)
+nn_crosstab = pd.crosstab(cat_df["CTRL_CATEGORY"], cat_df["nn_category"], normalize="index").round(3)
+print("\nnearest-neighbour cosine by category\n" + category_stats.to_string())
+print("\nnearest-neighbour category (row = control category, col = its NN's category)\n" + nn_crosstab.to_string())
+
+# ------------------------------------------------------------------ template markers
+t = controls["CTRL_DESC_OF_CTRL"].fillna("")
+tags = ["[WHY]", "[WHO]", "[WHERE]", "[HOW]", "[WHAT]", "[WHEN]", "[EVIDENCE]"]
+template = pd.DataFrame([{"marker": g, "share_of_controls": round(t.str.contains(re.escape(g), case=False).mean(), 3)} for g in tags])
+all4 = (t.str.contains(r"\[WHY\]", case=False) & t.str.contains(r"\[WHO\]", case=False)
+        & t.str.contains(r"\[WHERE\]", case=False) & t.str.contains(r"\[HOW\]", case=False))
+template.loc[len(template)] = {"marker": "WHY+WHO+WHERE+HOW all present", "share_of_controls": round(all4.mean(), 3)}
+print("\n" + template.to_string(index=False))
+
+# ------------------------------------------------------------------ write
+outside_rows = [{"field": f, "group_size": len(g), "members": ", ".join(g),
+                 "name": controls.loc[idx[g[0]], "CTRL_NAME"]} for f, gs in outside_groups.items() for g in gs]
+with pd.ExcelWriter(OUT_DIR / "benchmark.xlsx", engine="openpyxl") as xw:
+    pd.DataFrame(metrics).to_excel(xw, sheet_name="metrics", index=False)
+    exact_df.to_excel(xw, sheet_name="exact_match", index=False)
+    hardness.to_excel(xw, sheet_name="hardness", index=False)
+    category_stats.to_excel(xw, sheet_name="category_nn")
+    nn_crosstab.to_excel(xw, sheet_name="nn_category_crosstab")
+    template.to_excel(xw, sheet_name="template", index=False)
+    pd.DataFrame(outside_rows).to_excel(xw, sheet_name="exact_groups_outside_families", index=False)
+
+plt.figure(figsize=(7, 5.5))
+for name, (p, r) in curves.items():
+    plt.plot(r, p, label=name, lw=1.4, ls="-" if name.startswith("embed") else "--")
+plt.xlabel("recall of declared family pairs"); plt.ylabel("precision"); plt.ylim(0, 1.02)
+plt.title("Family pair recovery, all unordered pairs"); plt.legend(fontsize=7); plt.grid(alpha=.3)
+plt.tight_layout(); plt.savefig(OUT_DIR / "pr_curves.png", dpi=130); plt.close()
+
+plt.figure(figsize=(7, 4))
+for c, s in cat_df.groupby("CTRL_CATEGORY")["nn_cosine"]:
+    plt.hist(s, bins=60, alpha=.5, label=f"{c} (n={len(s)})", density=True)
+plt.xlabel("cosine to nearest neighbour (embed, main variant)"); plt.legend(); plt.grid(alpha=.3)
+plt.tight_layout(); plt.savefig(OUT_DIR / "nn_by_category.png", dpi=130)
+print(f"\nwritten -> {OUT_DIR}")
