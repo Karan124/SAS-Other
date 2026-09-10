@@ -1,3 +1,146 @@
-The 15,000 linkage rows without a UUID: the example without one had a three-part ID (05.01.09) rather than four-part, which looks like an L2 process link rather than an L3 activity. Is that the case? If so we can use them later at L2 level rather than discard them.
-What does Centralised mean in CTRL_CATEGORY? Centrally executed controls applied across business units, or something else? It affects whether we treat them like Common controls in the benchmark.
-Could you paste the top five rows of the boilerplate sheet for CTRL_DESC and CTRL_DESC_OF_CTRL (the repeat counts and shares are enough, the text can be trimmed). I want to know whether the repeated objectives are declared families or templates applied across unrelated controls.
+# Clarifications
+
+## Question 1: Linkage Rows Without UUIDs
+
+My current view is that these should NOT automatically be treated as valid L2 process relationships.
+
+While the examples without UUIDs often appear to represent L2 process references (for example values containing only a three-part hierarchy such as `05.01.09`), using those records introduces a significant number of false positives.
+
+In practice, some controls appear against these non-UUID values even when there is no confirmed underlying process linkage that can be reliably joined back to the process hierarchy.
+
+For the initial research work I recommend:
+
+### Phase 1
+
+Use only rows containing a valid UUID suffix.
+
+Example:
+
+```text
+Equipment Finance - 02.02.04.01 - Establish Channel KPIs - Regional Australian Location - {1054C67B-5480-401C-AF86-F5EC62590267}
+```
+
+These records can be joined deterministically against:
+
+```text
+l3_activity_uuid
+```
+
+and therefore provide a reliable ground-truth relationship dataset.
+
+### Phase 2 (Optional)
+
+After the initial experiments, the non-UUID rows can be investigated separately to determine whether they genuinely represent:
+
+```text
+Control -> L2 Process
+```
+
+relationships.
+
+However, they should not be mixed with the UUID-based linkage dataset during benchmark construction.
+
+For now I would treat them as:
+
+```text
+Unverified relationship candidates
+```
+
+rather than confirmed process links.
+
+---
+
+## Question 2: Meaning of CTRL_CATEGORY = Centralised
+
+My understanding is that Centralised should not automatically be treated as equivalent to Common controls.
+
+Current interpretation:
+
+### Unique
+
+Control performed and managed within a specific area or context.
+
+### Common
+
+Control designed for reuse across multiple areas and typically participates in the:
+
+```text
+COMMON_CTRL_REFERENCE
+COMMON_CTRL_TYP
+```
+
+framework.
+
+These controls may have Master / Instance relationships.
+
+### Centralised
+
+My understanding is that these are controls executed by a central function or service and consumed by multiple business units.
+
+Examples could include:
+
+```text
+Enterprise monitoring
+Central operations functions
+Shared service controls
+```
+
+However, Centralised does not necessarily imply participation in the Common Control framework.
+
+Therefore my recommendation is:
+
+### Research Assumption
+
+Do not merge:
+
+```text
+Centralised
+```
+
+and
+
+```text
+Common
+```
+
+during benchmark construction.
+
+Treat them as separate categories until empirical analysis confirms otherwise.
+
+Potentially useful experiments:
+
+1. Compare semantic similarity distributions across:
+
+```text
+Unique
+Common
+Centralised
+```
+
+2. Determine whether Centralised controls naturally cluster with Common controls.
+
+3. Assess whether Centralised controls exhibit Master/Instance behaviour based on embeddings rather than metadata.
+
+For now I would keep:
+
+```text
+Unique
+Common
+Centralised
+```
+
+as distinct values.
+
+---
+
+## Question 3
+
+See below the data:
+
+field	repeat_count	share	text
+CTRL_NAME	24	0.0035	disengagement checks of services and service provider
+CTRL_NAME	23	0.0033	initiative performance monitoring
+CTRL_NAME	23	0.0033	review of governance for non-material service providers
+CTRL_NAME	21	0.003	review and sign off of business continuity program
+CTRL_NAME	21	0.003	review of service owner approval of selection, risk assessment and agreements (for agreements stored outside coupa)
+
