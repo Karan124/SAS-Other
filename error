@@ -1,34 +1,3 @@
-== TEXT FIELDS ==
-             field  fill_rate  distinct  median_chars  p95_chars  approx_tokens_total  rows_containing_ctrl_id
-        CTRL_NAME      1.000      6180          65.0      144.0               125579                        3
-        CTRL_DESC      1.000      5834         293.0      914.0               642725                      122
-CTRL_DESC_OF_CTRL      0.999      5900        1165.0     2962.8              2276307                      604
-      CTRL_EVDNCD      0.983      6280         271.0      967.0               617840                      172
-       CTRL_MNTRD      0.982      5735         198.0      757.7               468645                      260
-
-== LINKAGE ==
-                                   metric            value
-                      linkage rows total            36466
-                        rows with a UUID            21517
-  rows whose control is in controls file            21485
- rows whose process is in processes file            18461
-                rows matching both sides            18432
-         controls with at least one link             2976
-                   controls with no link             3937
-   links per control: median / p95 / max 2.0 / 23.0 / 189
-     processes with at least one control             4851
-               processes with no control             5220
-controls per process: median / p95 / max  2.0 / 12.0 / 75
-
-== FAMILIES ==
-                                    metric                                                 value
-    controls with a COMMON_CTRL_REFERENCE                                                  1143
-                   reference edges parsed                                                  1131
-edges pointing to a control in the corpus                                                  1125
-edges pointing to a control NOT in corpus                                                     6
-              families (distinct masters)                                                   108
-   controls inside a family incl. masters                                                  1098
-                family size: median / max                                             10.0 / 39
-             ground-truth duplicate pairs                                                  7465
-                   COMMON_CTRL_TYP values     {'<blank>': 5804, 'Instance': 990, 'Master': 119}
-                     CTRL_CATEGORY values {'Unique': 4728, 'Common': 1105, 'Centralised': 1080}
+The 15,000 linkage rows without a UUID: the example without one had a three-part ID (05.01.09) rather than four-part, which looks like an L2 process link rather than an L3 activity. Is that the case? If so we can use them later at L2 level rather than discard them.
+What does Centralised mean in CTRL_CATEGORY? Centrally executed controls applied across business units, or something else? It affects whether we treat them like Common controls in the benchmark.
+Could you paste the top five rows of the boilerplate sheet for CTRL_DESC and CTRL_DESC_OF_CTRL (the repeat counts and shares are enough, the text can be trimmed). I want to know whether the repeated objectives are declared families or templates applied across unrelated controls.
