@@ -1,1 +1,97 @@
-v
+"""
+STEP 4b: Collapse candidate pairs to family level. No API calls.
+
+A control that is an instance of master M is represented by M. Candidate pairs are then
+deduplicated on (family_a, family_b): fourteen pairs of "CTL000137989 vs each 10.5.06
+instance" become one pair "CTL000137989 vs master CTL000137971", carrying a count of the
+pairs it stands for. The verdict on the representative pair applies to all of them.
+
+Representative choice: if a candidate pair exists between the two family heads themselves,
+use it (the master text is the design). Otherwise use the highest-cosine pair in the group.
+
+Run:  python 04b_collapse.py
+Out:  experiments\\output\\candidates\\candidates_collapsed.parquet   input for Step 5
+      experiments\\output\\candidates\\candidates_collapsed.xlsx      pairs + before/after summaries + hubs
+"""
+import re
+from pathlib import Path
+import pandas as pd
+
+DATA_DIR = Path(r"C:\Users\M061400\ai-test\experiments\data")
+CAND_DIR = Path(r"C:\Users\M061400\ai-test\experiments\output\candidates")
+CTRL_ID_RE = re.compile(r"\bCTL\d{6,}\b")
+
+controls = pd.read_excel(DATA_DIR / "juno_controls.xlsx", dtype=str)
+controls.columns = [c.strip() for c in controls.columns]
+controls["CTRL_ID"] = controls["CTRL_ID"].str.strip()
+ids = set(controls["CTRL_ID"])
+
+# control -> family head (master). Masters and non-family controls map to themselves.
+head = {c: c for c in ids}
+for cid, ref in zip(controls["CTRL_ID"], controls["COMMON_CTRL_REFERENCE"]):
+    refs = [r for r in (CTRL_ID_RE.findall(ref) if isinstance(ref, str) else []) if r in ids and r != cid]
+    if refs:
+        head[cid] = sorted(refs)[0]
+fam_size = pd.Series(head).value_counts()
+
+cand = pd.read_parquet(CAND_DIR / "candidates.parquet")
+disc = cand[cand["set"] == "discovery"].copy()
+calib = cand[cand["set"] != "discovery"].copy()
+disc["head_a"] = disc["ctrl_a"].map(head)
+disc["head_b"] = disc["ctrl_b"].map(head)
+same_family = disc["head_a"] == disc["head_b"]
+print(f"discovery pairs {len(disc)} | pairs inside one family (dropped) {int(same_family.sum())}")
+disc = disc[~same_family].copy()
+disc["fam_key"] = [f"{min(a, b)}|{max(a, b)}" for a, b in zip(disc["head_a"], disc["head_b"])]
+disc["is_head_pair"] = (disc["ctrl_a"] == disc["head_a"]) & (disc["ctrl_b"] == disc["head_b"])
+
+rows = []
+for key, g in disc.groupby("fam_key"):
+    g = g.sort_values(["is_head_pair", "cosine_embed"], ascending=[False, False])
+    rep = g.iloc[0].copy()
+    rep["n_pairs_represented"] = len(g)
+    rep["bands_represented"] = ", ".join(f"{b}:{n}" for b, n in g["band"].value_counts().items())
+    rep["members_a"] = ", ".join(sorted(set(g["ctrl_a"])))
+    rep["members_b"] = ", ".join(sorted(set(g["ctrl_b"])))
+    rep["max_cosine_embed"] = g["cosine_embed"].max()
+    rep["fam_size_a"] = int(fam_size.get(rep["head_a"], 1))
+    rep["fam_size_b"] = int(fam_size.get(rep["head_b"], 1))
+    rows.append(rep)
+col = pd.DataFrame(rows)
+for c in ["head_a", "head_b", "fam_key", "is_head_pair", "n_pairs_represented", "bands_represented", "members_a", "members_b",
+          "max_cosine_embed", "fam_size_a", "fam_size_b"]:
+    calib[c] = None
+calib["n_pairs_represented"] = 1
+out = pd.concat([col, calib], ignore_index=True)
+
+# summaries
+before = disc.groupby("band").size().rename("pairs_before")
+after = col.groupby("band").size().rename("pairs_after")
+band_summary = pd.concat([before, after], axis=1).fillna(0).astype(int)
+band_summary["represented_by_after"] = col.groupby("band")["n_pairs_represented"].sum()
+cat_before = pd.crosstab(disc["category_a"], disc["category_b"])
+cat_after = pd.crosstab(col["category_a"], col["category_b"])
+hub_before = pd.concat([disc["ctrl_a"], disc["ctrl_b"]]).value_counts().head(15).rename("pairs")
+hub_after = pd.concat([col["head_a"], col["head_b"]]).value_counts().head(15).rename("pairs")
+hubs = pd.DataFrame({"control_before": hub_before.index, "pairs_before": hub_before.values,
+                     "head_after": hub_after.index, "pairs_after": hub_after.values})
+hubs["name_before"] = hubs["control_before"].map(controls.set_index("CTRL_ID")["CTRL_NAME"])
+hubs["name_after"] = hubs["head_after"].map(controls.set_index("CTRL_ID")["CTRL_NAME"])
+
+print(f"\ncollapsed: {len(disc)} -> {len(col)} representative pairs "
+      f"({int((col['n_pairs_represented'] > 1).sum())} of them stand for more than one pair; "
+      f"{int(col['is_head_pair'].sum())} are head-to-head)")
+print("\n" + band_summary.to_string())
+print("\ncategory pairs before\n" + cat_before.to_string())
+print("\ncategory pairs after\n" + cat_after.to_string())
+print("\ntop hubs\n" + hubs[["control_before", "pairs_before", "head_after", "pairs_after"]].to_string(index=False))
+
+out.to_parquet(CAND_DIR / "candidates_collapsed.parquet", index=False)
+xl = out.copy(); xl["text_a"] = xl["text_a"].str.slice(0, 1500); xl["text_b"] = xl["text_b"].str.slice(0, 1500)
+with pd.ExcelWriter(CAND_DIR / "candidates_collapsed.xlsx", engine="openpyxl") as xw:
+    xl.to_excel(xw, sheet_name="pairs", index=False)
+    band_summary.to_excel(xw, sheet_name="band_before_after")
+    cat_before.to_excel(xw, sheet_name="category_before")
+    cat_after.to_excel(xw, sheet_name="category_after")
+    hubs.to_excel(xw, sheet_name="hubs", index=False)
+print(f"\nwritten -> {CAND_DIR}")
