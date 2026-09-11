@@ -1,339 +1,154 @@
-"""
-STEP 5 (v2): Reasoning-model review of every collapsed candidate pair. The only script that spends reasoning tokens.
+PS C:\Users\M061400\ai-test\experiments\code> python .\04b_collapse.py
+discovery pairs 2063 | pairs inside one family (dropped) 0
 
-For each pair the model receives the complete record of both controls (all text fields,
-coded metadata, org folder, ratings, Common Control references, linked L2/L3 processes)
-and returns a structured case: verdict, confidence, what is the same, what is different,
-scope difference, verbatim evidence from each control, a consolidation recommendation
-with which control to keep and why, the risk of acting, and questions an SME would need
-to settle. Everything is cached to JSONL by pair_id so the run can stop and resume.
+collapsed: 2063 -> 1037 representative pairs (48 of them stand for more than one pair; 1030 are head-to-head)
 
-Verdicts
-  duplicate                      same activity, same scope, recorded more than once
-  same_control_different_scope   same activity applied to a different entity, division,
-                                 region, product, system or population; Common Control candidate
-  overlapping_distinct           related activities or shared risk, but genuinely different controls
-  unrelated                      similarity is superficial
+              pairs_before  pairs_after  represented_by_after
+band                                                         
+both                   743          505                   738
+lexical_only           173          122                   173
+paraphrase             960          271                   965
+verbatim               187          139                   187
 
-Reads candidates_collapsed.parquet (Step 4b). Run order: paraphrase, lexical_only, verbatim,
-calibration sets, then both. Verdicts cached in verdicts_v2.jsonl (the 20-pair trial under the
-first rubric stays in verdicts.jsonl and is not reused).
+category pairs before
+category_b   Centralised  Common  Unique
+category_a                              
+Centralised          186      97      35
+Common                57     668     141
+Unique                36     116     727
 
-Before running:  az login  (and the CA bundle env vars, as for Step 2)
-Run:
-  python 05_llm_review.py --dry-run          # counts, one rendered prompt, no API calls
-  python 05_llm_review.py                    # full run (resumable)
-  python 05_llm_review.py --sample-per-band 8 --seed 7   # stratified trial: 8 random pairs per band
-  python 05_llm_review.py --mock             # fake verdicts, pipeline test only
+category pairs after
+category_b   Centralised  Common  Unique
+category_a                              
+Centralised          186       9      35
+Common                 5      11      22
+Unique                36       6     727
 
-Out:  experiments\\output\\review\\verdicts_v2.jsonl      raw model output, one line per pair
-      experiments\\output\\review\\review_v2.xlsx         candidates merged with verdicts + summaries
-"""
-import argparse
-import hashlib
-import html
-import json
-import re
-import time
-from datetime import datetime
-from pathlib import Path
+top hubs
+control_before  pairs_before   head_after  pairs_after
+  CTL000174649            36 CTL000077964           15
+  CTL000172929            36 CTL000071564           15
+  CTL000174752            36    CTL010552           15
+  CTL000174767            36    CTL010553           15
+  CTL000174759            36    CTL010554           15
+  CTL000174756            36    CTL010559           15
+  CTL000174693            36    CTL010562           15
+  CTL000174652            36    CTL018199           15
+  CTL000174754            36 CTL000108202           15
+  CTL000174738            36    CTL010560           15
+  CTL000174730            35    CTL018198           15
+  CTL000137989            34    CTL020071           15
+  CTL000082513            33    CTL010556           15
+  CTL000143949            23    CTL010555           15
+  CTL000143934            23 CTL000091243           14
 
-import pandas as pd
+written -> C:\Users\M061400\ai-test\experiments\output\candidates
 
-DATA_DIR = Path(r"C:\Users\M061400\ai-test\experiments\data")
-CAND_PATH = Path(r"C:\Users\M061400\ai-test\experiments\output\candidates\candidates_collapsed.parquet")
-OUT_DIR = Path(r"C:\Users\M061400\ai-test\experiments\output\review")
-OUT_DIR.mkdir(parents=True, exist_ok=True)
-CACHE = OUT_DIR / "verdicts_v2.jsonl"
+PS C:\Users\m061400\ai-test\experiments\code> python .\05_llm_review.py --dry-run --sample-per-band 8
+selected 48 pairs | cached 0 | to call 48
+band
+paraphrase                  8
+lexical_only                8
+verbatim                    8
+calibration_known_family    8
+calibration_negative        8
+both                        8
 
-AZURE_ENDPOINT = "https://ai.eng.azure.srv.westpac.com.au"
-API_VERSION = "2024-10-21"
-MODEL = "gpt-5.4"
-REASONING_EFFORT = "medium"
-MAX_COMPLETION_TOKENS = 12000       # reasoning tokens count against this; generous by design
-PROXY_URL = "http://127.0.0.1:9000"
-CA_BUNDLE = r"C:\Users\m061400\ai-test\cacert.pem"
-SLEEP_BETWEEN = 1.0
-RETRY_COUNT = 5
-MAX_PROCESSES_LISTED = 12
+--- sample prompt (CTL008854|CTL004652, band paraphrase, ~1836 tokens) ---
+Similarity scores (for your information only, not evidence): embedding cosine 0.865, TF-IDF cosine 0.215. Identical name: False. Identical objective: False. Same org folder: False. Shared L2 processes: 0.
 
-BAND_ORDER = ["paraphrase", "lexical_only", "verbatim", "calibration_known_family", "calibration_negative", "both"]
-MASTER_COUNTS = {}
-VERDICTS = ["duplicate", "same_control_different_scope", "overlapping_distinct", "unrelated"]
-
-HTML_RE = re.compile(r"<[^>]+>")
-UUID_RE = re.compile(r"([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})")
-
-SYSTEM = """You are a senior operational risk and controls specialist reviewing a bank's controls register.
-Your job is to compare two controls and produce a written case that a risk manager could act on
-without a subject-matter expert in the room. The wider goal is to simplify the control environment:
-fewer, clearer controls with no loss of coverage. Only recommend action where action would actually
-simplify something.
-
-Step 1, before anything else: check whether the register already links these two controls. Look at
-the Common control type and Common reference fields, the family information supplied, and any control
-IDs cited in either text that point to the other control or to its master. If the pair is already
-governed by the master/instance framework, or the two texts explicitly cross-reference each other as
-complementary controls with mutually exclusive populations, say so in already_linked_in_register and
-recommend no_action_already_governed unless the records themselves are wrong or inconsistent.
-
-Step 2: judge on what each control actually does, who performs it, over what population, on what
-system, how often, by what mechanism, and how it is evidenced. Wording similarity is not evidence on
-its own. Identical text in two different organisational folders can be a legitimate instance for
-another division; near-identical text in the same folder is more likely a true duplicate. Read the
-names for entity, brand, region and product qualifiers (WNZL, SGB, WIB, RAMS, Pacific, Asia, SOx and
-similar).
-
-Verdicts:
-- duplicate: the same control activity, same mechanism, over the same scope, recorded more than once.
-  One record could be retired and the other kept with no loss of coverage.
-- same_control_different_scope: the same control design (same activity, same mechanism, same kind of
-  evidence) applied to a different entity, division, region, product, system or population. Coverage
-  is genuinely separate but the design is shared, so the pair is a candidate for the Common Control
-  (master/instance) framework rather than for merging. This verdict requires the same mechanism: an
-  automated tool-driven review and a manual review of the same objective are different controls.
-- overlapping_distinct: the controls address the same or a related risk but are different activities
-  or different mechanisms (for example a preventive and a detective control over the same process, or
-  a tool-facilitated and a manual variant of the same objective). Both should remain.
-- unrelated: the similarity is superficial.
-
-Be direct about uncertainty. If the records do not contain enough to decide, say so, choose the most
-defensible verdict, give a lower confidence and put the missing facts in questions_for_sme.
-
-Respond with a single JSON object and nothing else:
-{
- "already_linked_in_register": "yes" or "no" or "partly", followed by the evidence (which field or which cited ID),
- "verdict": one of ["duplicate","same_control_different_scope","overlapping_distinct","unrelated"],
- "confidence": number 0 to 1,
- "summary": "one sentence a manager could read on its own",
- "what_is_the_same": "the activity, purpose, mechanism, evidence, performer, system, frequency that match",
- "what_is_different": "every material difference you can find, or 'none found'",
- "scope_difference": "the specific entity/division/region/product/system/population difference, or 'none'",
- "mechanism_difference": "how the control is actually executed and evidenced in A versus B, or 'none'",
- "evidence_a": "short verbatim quotes from Control A that support the verdict",
- "evidence_b": "short verbatim quotes from Control B that support the verdict",
- "reasoning": "your full reasoning, step by step, including alternatives you rejected and why",
- "recommendation": one of ["retire_one_keep_other","merge_into_one","link_as_common_control","keep_both","no_action_already_governed","investigate"],
- "keep_which": "A, B, either, or n/a, with the reason (completeness of text, ratings, assessment date, linkage)",
- "simplification_benefit": "what the control environment gains if the recommendation is followed, or 'none'",
- "risk_of_acting": "what could go wrong if the recommendation is applied without further checks",
- "questions_for_sme": "the specific facts an owner would need to confirm, as a short list in one string"
-}"""
-
-
-def clean(v):
-    if not isinstance(v, str) or v.strip().lower() in {"", "nan", "none", "null"}:
-        return ""
-    return re.sub(r"\s+", " ", html.unescape(HTML_RE.sub(" ", v))).strip()
-
-
-def uuid_of(s):
-    m = UUID_RE.search(s) if isinstance(s, str) else None
-    return m.group(1).upper() if m else None
-
-
-# ------------------------------------------------------------------ context
-def load_context():
-    c = pd.read_excel(DATA_DIR / "juno_controls.xlsx", dtype=str)
-    c.columns = [x.strip() for x in c.columns]
-    c["CTRL_ID"] = c["CTRL_ID"].str.strip()
-    c = c.drop_duplicates("CTRL_ID").set_index("CTRL_ID")
-    for cid, ref in zip(c.index, c["COMMON_CTRL_REFERENCE"]):
-        for r in (set(re.findall(r"\bCTL\d{6,}\b", ref)) if isinstance(ref, str) else []):
-            if r in c.index and r != cid:
-                MASTER_COUNTS[r] = MASTER_COUNTS.get(r, 0) + 1
-    p = pd.read_excel(DATA_DIR / "holocentric_processes.xlsx", dtype=str)
-    p.columns = [x.strip() for x in p.columns]
-    p["uuid"] = p["l3_activity_uuid"].map(uuid_of)
-    p = p.dropna(subset=["uuid"]).drop_duplicates("uuid").set_index("uuid")
-    l = pd.read_excel(DATA_DIR / "ctl_holo_linkage.xlsx", dtype=str)
-    l.columns = [x.strip() for x in l.columns]
-    l["uuid"] = l["L3_Activity_UUID"].map(uuid_of)
-    l = l[l["uuid"].notna() & l["uuid"].isin(p.index)]
-    proc_names = {}
-    for cid, grp in l.groupby("Control_ID"):
-        names = sorted({f"{p.at[u, 'l2_process_name']} > {p.at[u, 'l3_activity_name']}" for u in grp["uuid"]})
-        proc_names[cid.strip()] = names
-    return c, proc_names
-
-
-def family_line(cid, c):
-    r = c.loc[cid]
-    typ, ref = clean(r.get("COMMON_CTRL_TYP")), clean(r.get("COMMON_CTRL_REFERENCE"))
-    if typ.lower().startswith("master") or cid in MASTER_COUNTS:
-        return f"Family: MASTER control with {MASTER_COUNTS.get(cid, 0)} declared instances"
-    if ref:
-        return f"Family: declared INSTANCE of master {ref}"
-    return "Family: not in the Common Control framework"
-
-
-def render_control(cid, c, proc_names, label):
-    r = c.loc[cid]
-    procs = proc_names.get(cid, [])
-    proc_txt = "\n".join(f"  - {x}" for x in procs[:MAX_PROCESSES_LISTED]) if procs else "  (no process linkage recorded)"
-    if len(procs) > MAX_PROCESSES_LISTED:
-        proc_txt += f"\n  - ... and {len(procs) - MAX_PROCESSES_LISTED} more"
-    return f"""=== CONTROL {label}: {cid} ===
-Name: {clean(r.get('CTRL_NAME'))}
-Org folder: {clean(r.get('CTRL_FLDR'))}
-{family_line(cid, c)}
-Category: {clean(r.get('CTRL_CATEGORY'))} | Common control type: {clean(r.get('COMMON_CTRL_TYP')) or 'n/a'} | Common reference: {clean(r.get('COMMON_CTRL_REFERENCE')) or 'none'}
-Nature: {clean(r.get('CTRL_NATRE'))} | Type: {clean(r.get('CTRL_TYP'))} | Frequency: {clean(r.get('CTRL_FREQ'))} | Key control: {clean(r.get('CTRL_KEY_CONTRL'))}
-Status: {clean(r.get('CTRL_STUS'))} | Assessment: {clean(r.get('CTRL_ASSESS_RTNG'))} ({clean(r.get('CTRL_ASSESS_DT'))}) | Design: {clean(r.get('CTRL_DE_RTNG'))} | Operating: {clean(r.get('CTRL_OE_RTNG'))}
-Category 1 / 2: {clean(r.get('CTRL_CTGRY_1'))} / {clean(r.get('CTRL_CTGRY_2'))}
-Linked processes ({len(procs)}):
-{proc_txt}
+=== CONTROL A: CTL008854 ===
+Name: APS 113 - Annual review of the Business Division Credit Risk Rating System
+Org folder: /Westpac Group/Business and Wealth Division/Business Lending
+Family: not in the Common Control framework
+Category: Unique | Common control type: n/a | Common reference: none
+Nature: Detective | Type: Manual | Frequency: Annually | Key control: No
+Status: Awaiting Assessment | Assessment: Effective (2024-04-12 00:00:00) | Design: Effective | Operating: Effective
+Category 1 / 2: Authorisation & Approval / Preparer and authoriser (4 eyes check)
+Linked processes (0):
+  (no process linkage recorded)
 
 Control objective:
-{clean(r.get('CTRL_DESC'))}
+Per paragraph 67 of Prudential Standard APS 113 Capital Adequacy, the objective of the control is to ensure that independent review and approval of the Business Division Credit Risk Rating System (CRRS) is performed in a timely manner, annually. This is a non-key control pertaining to the divisional review of the CRRS. Refer to CTL004652 which is a key control that rolls-up divisional CRRS reviews for independent review and approval of the Group Credit Risk Rating System by the GCCO. Requirements, roles and responsibilities for the CRRS review are documented in section 01.09 Credit Risk Rating System in BB & WIB Credit Policies on the Intranet.
 
 Detailed description:
-{clean(r.get('CTRL_DESC_OF_CTRL'))}
+Paragraph 67 of Prudential Standard APS 113 Capital Adequacy: Internal Ratings-based Approach to Credit Risk states: An ADI’s rating system and its operations, including the operations of the credit risk control function and the estimation of PD and, where relevant, LGD and EAD, must be reviewed at least annually by an independent function. This review must include adherence to all applicable minimum requirements detailed in this Attachment. The findings of this review must be documented. To meet the requirements of this standard, on an annual basis, Business Lending Risk Portfolio Management undertakes a review of the Business Division Credit Risk Rating System, which is for approval by the Group Chief Credit Officer (or delegate). Data analysis / commentary summarised in the report includes key factors underpinning Customer Risk Grade (CRG) and Loss Given Default (LGD) accuracy and therefore supporting (or otherwise) the efficacy thereof, viz: model outcomes versus overrides (includes findings of annual model reviews approved by the Credit Risk Estimates Committee (CREC)), annual CRG / LGD refresh processes, tracking and completion of annual / interim reviews, plus other policies which support CRG / LGD assignment, matured facilities, volume and mix of policy exceptions, timeliness of policy reviews (where required), credit data integrity testing and Credit Risk Review testing outcomes. On completion, a draft 'Memorandum to Group Chief Credit Officer' (the Memo) is circulated for review / discussion, with feedback incorporated as required; final version of the Memo (and recommendation(s) therein), is supported by the Head of Risk Business Lending and the Head of Credit Optimisation (BL LOB), and submitted to Group Chief Credit Officer (or delegate) for review and approval. The annual rating system review process is initiated at the request of Senior Manager, Credit Risk Policy, Credit Risk, who manages the annual Credit Risk Rating System review process on behalf of GCCO. Senior Manager, Credit Risk Policy, Credit Risk follows up to ensure that requisite paper(s) is/are received by the due date, and in an acceptable format. Business Division Credit Risk Rating System Review Report is produced by Business Lending Risk Portfolio Management. Head of Risk Business Lending and the Head of Credit Optimisation (BL LOB) review and support to GCCO (or delegate) for approval.
 
 How evidenced:
-{clean(r.get('CTRL_EVDNCD'))}
+Compliance is evidenced by completion of the Annual risk rating review with approval from Group Chief Credit Officer (or delegate)(electronic) of the Memo.
 
 How monitored:
-{clean(r.get('CTRL_MNTRD'))}
-"""
+Senior Manager, Credit Risk Policy, Credit Risk follows up to ensure that requisite paper(s) is/are received by the due date, and in an acceptable format.
 
+=== CONTROL B: CTL004652 ===
+Name: Group Credit Risk Rating System Annual Review
+Org folder: /Westpac Group/Risk/Deputy CRO/Risk Analytics and Portfolio Insights/Credit Prudential Management & Sox
+Family: not in the Common Control framework
+Category: Unique | Common control type: n/a | Common reference: none
+Nature: Preventative | Type: Manual | Frequency: Annually | Key control: Yes
+Status: Assessed | Assessment: Effective (2026-05-07 00:00:00) | Design: Effective | Operating: Effective
+Category 1 / 2: Authorisation & Approval / Committee review and approval
+Linked processes (3):
+  - Identify Risks > Identify APS 220 and APS 221 Regulatory Changes
+  - Provide Oversight & Challenge > Provide Risk & Compliance Advice related to Prud. Std.
+  - Provide Oversight & Challenge > Provide Risk and Compliance Advice for WIB, Tsy, B&W
 
-def render_pair(row, c, proc_names):
-    head = (f"Similarity scores (for your information only, not evidence): embedding cosine {row['cosine_embed']:.3f}, "
-            f"TF-IDF cosine {row['cosine_tfidf']:.3f}. Identical name: {row['exact_name']}. Identical objective: {row['exact_desc']}. "
-            f"Same org folder: {row['same_folder']}. Shared L2 processes: {row['shared_l2']}.\n")
-    n_rep = row.get("n_pairs_represented") or 1
-    if n_rep and n_rep > 1:
-        head += (f"Note: this pair represents {int(n_rep)} similar candidate pairs between members of the same two "
-                 f"control families (A side: {row.get('members_a')}; B side: {row.get('members_b')}). "
-                 f"Judge the two records shown.\n")
-    head += "\n"
-    return head + render_control(row["ctrl_a"], c, proc_names, "A") + "\n" + render_control(row["ctrl_b"], c, proc_names, "B")
+Control objective:
+• Annual review of the Credit Risk Rating System is required to ensure the continuing appropriateness, effectiveness, and integrity of the rating systems, and risk estimates. • This control supports compliance with the Credit Risk Rating Systems Policy, and regulatory obligations in APS 112, APS 113, and APS 220.
 
+Detailed description:
+• Group Credit Policy team prepare and release a scope document to each Division (retail and non-retail) outlining review and information/data requirements due within a set timeframe. • Divisions submit their annual reports to Group Credit Policy, having been overseen and endorsed by their respective Divisional Line 2 teams. • Group Credit Policy team review Divisional reports and summarise key findings for roll up into the broader CRRS review. • Teams contribute to the broader CRRS review in regard to model risk perform
+PS C:\Users\m061400\ai-test\experiments\code> python .\05_llm_review.py --dry-run --sample-per-band 8 --seed 7
+selected 48 pairs | cached 0 | to call 48
+band
+paraphrase                  8
+lexical_only                8
+verbatim                    8
+calibration_known_family    8
+calibration_negative        8
+both                        8
 
-# ------------------------------------------------------------------ client
-def make_client():
-    import httpx
-    from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-    from openai import AzureOpenAI
-    tp = get_bearer_token_provider(DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default")
-    return AzureOpenAI(azure_endpoint=AZURE_ENDPOINT, api_version=API_VERSION, azure_ad_token_provider=tp,
-                       http_client=httpx.Client(proxy=PROXY_URL, verify=CA_BUNDLE, timeout=httpx.Timeout(600.0, connect=30.0),
-                                                limits=httpx.Limits(max_keepalive_connections=0, max_connections=1)))
+--- sample prompt (CTL008854|CTL004652, band paraphrase, ~1836 tokens) ---
+Similarity scores (for your information only, not evidence): embedding cosine 0.865, TF-IDF cosine 0.215. Identical name: False. Identical objective: False. Same org folder: False. Shared L2 processes: 0.
 
+=== CONTROL A: CTL008854 ===
+Name: APS 113 - Annual review of the Business Division Credit Risk Rating System
+Org folder: /Westpac Group/Business and Wealth Division/Business Lending
+Family: not in the Common Control framework
+Category: Unique | Common control type: n/a | Common reference: none
+Nature: Detective | Type: Manual | Frequency: Annually | Key control: No
+Status: Awaiting Assessment | Assessment: Effective (2024-04-12 00:00:00) | Design: Effective | Operating: Effective
+Category 1 / 2: Authorisation & Approval / Preparer and authoriser (4 eyes check)
+Linked processes (0):
+  (no process linkage recorded)
 
-def call_model(holder, user_text, mock=False):
-    if mock:
-        h = int(hashlib.md5(user_text.encode()).hexdigest()[:8], 16)
-        v = VERDICTS[h % 4]
-        return {"already_linked_in_register": ["yes", "no", "partly"][h % 3], "verdict": v, "confidence": 0.5 + (h % 50) / 100,
-                "summary": "mock", "reasoning": "mock", "recommendation": "investigate", "keep_which": "n/a"}, {"prompt_tokens": 1000, "completion_tokens": 500, "reasoning_tokens": 300}, "{}"
-    for attempt in range(1, RETRY_COUNT + 1):
-        try:
-            resp = holder["client"].chat.completions.create(
-                model=MODEL, reasoning_effort=REASONING_EFFORT, max_completion_tokens=MAX_COMPLETION_TOKENS,
-                response_format={"type": "json_object"},
-                messages=[{"role": "system", "content": SYSTEM}, {"role": "user", "content": user_text}])
-            raw = resp.choices[0].message.content or ""
-            usage = {"prompt_tokens": resp.usage.prompt_tokens, "completion_tokens": resp.usage.completion_tokens,
-                     "reasoning_tokens": getattr(getattr(resp.usage, "completion_tokens_details", None), "reasoning_tokens", None)}
-            return json.loads(raw), usage, raw
-        except json.JSONDecodeError as e:
-            print(f"    bad JSON (attempt {attempt}): {e}")
-            if attempt == RETRY_COUNT:
-                return {"verdict": "parse_error", "raw": raw[:4000]}, usage, raw
-        except Exception as e:
-            wait = 5 * attempt
-            print(f"    retry {attempt}/{RETRY_COUNT} after {type(e).__name__}: {str(e)[:150]} (sleep {wait}s)")
-            time.sleep(wait)
-            holder["client"] = make_client()
-    raise RuntimeError("model call failed after retries")
+Control objective:
+Per paragraph 67 of Prudential Standard APS 113 Capital Adequacy, the objective of the control is to ensure that independent review and approval of the Business Division Credit Risk Rating System (CRRS) is performed in a timely manner, annually. This is a non-key control pertaining to the divisional review of the CRRS. Refer to CTL004652 which is a key control that rolls-up divisional CRRS reviews for independent review and approval of the Group Credit Risk Rating System by the GCCO. Requirements, roles and responsibilities for the CRRS review are documented in section 01.09 Credit Risk Rating System in BB & WIB Credit Policies on the Intranet.
 
+Detailed description:
+Paragraph 67 of Prudential Standard APS 113 Capital Adequacy: Internal Ratings-based Approach to Credit Risk states: An ADI’s rating system and its operations, including the operations of the credit risk control function and the estimation of PD and, where relevant, LGD and EAD, must be reviewed at least annually by an independent function. This review must include adherence to all applicable minimum requirements detailed in this Attachment. The findings of this review must be documented. To meet the requirements of this standard, on an annual basis, Business Lending Risk Portfolio Management undertakes a review of the Business Division Credit Risk Rating System, which is for approval by the Group Chief Credit Officer (or delegate). Data analysis / commentary summarised in the report includes key factors underpinning Customer Risk Grade (CRG) and Loss Given Default (LGD) accuracy and therefore supporting (or otherwise) the efficacy thereof, viz: model outcomes versus overrides (includes findings of annual model reviews approved by the Credit Risk Estimates Committee (CREC)), annual CRG / LGD refresh processes, tracking and completion of annual / interim reviews, plus other policies which support CRG / LGD assignment, matured facilities, volume and mix of policy exceptions, timeliness of policy reviews (where required), credit data integrity testing and Credit Risk Review testing outcomes. On completion, a draft 'Memorandum to Group Chief Credit Officer' (the Memo) is circulated for review / discussion, with feedback incorporated as required; final version of the Memo (and recommendation(s) therein), is supported by the Head of Risk Business Lending and the Head of Credit Optimisation (BL LOB), and submitted to Group Chief Credit Officer (or delegate) for review and approval. The annual rating system review process is initiated at the request of Senior Manager, Credit Risk Policy, Credit Risk, who manages the annual Credit Risk Rating System review process on behalf of GCCO. Senior Manager, Credit Risk Policy, Credit Risk follows up to ensure that requisite paper(s) is/are received by the due date, and in an acceptable format. Business Division Credit Risk Rating System Review Report is produced by Business Lending Risk Portfolio Management. Head of Risk Business Lending and the Head of Credit Optimisation (BL LOB) review and support to GCCO (or delegate) for approval.
 
-# ------------------------------------------------------------------ main
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--bands", nargs="*", default=BAND_ORDER)
-    ap.add_argument("--limit", type=int, default=None, help="max pairs to call this run")
-    ap.add_argument("--sample-per-band", type=int, default=None, help="random pairs per band (stratified trial)")
-    ap.add_argument("--seed", type=int, default=7)
-    ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--mock", action="store_true")
-    args = ap.parse_args()
+How evidenced:
+Compliance is evidenced by completion of the Annual risk rating review with approval from Group Chief Credit Officer (or delegate)(electronic) of the Memo.
 
-    cand = pd.read_parquet(CAND_PATH)
-    cand["band"] = pd.Categorical(cand["band"], categories=BAND_ORDER, ordered=True)
-    cand = cand[cand["band"].isin(args.bands)].sort_values(["band", "cosine_embed"], ascending=[True, False]).reset_index(drop=True)
-    c, proc_names = load_context()
+How monitored:
+Senior Manager, Credit Risk Policy, Credit Risk follows up to ensure that requisite paper(s) is/are received by the due date, and in an acceptable format.
 
-    done = {}
-    if CACHE.exists():
-        for line in open(CACHE, encoding="utf-8"):
-            rec = json.loads(line); done[rec["pair_id"]] = rec
-    if args.sample_per_band:
-        parts = [g.sample(min(len(g), args.sample_per_band), random_state=args.seed)
-                 for _, g in cand.groupby("band", observed=True)]
-        cand = pd.concat(parts).sort_values("band").reset_index(drop=True)
-    todo = cand[~cand["pair_id"].isin(done)]
-    if args.limit:
-        todo = todo.head(args.limit)
-    print(f"selected {len(cand)} pairs | cached {cand['pair_id'].isin(done).sum()} | to call {len(todo)}")
-    print(todo["band"].value_counts().reindex(BAND_ORDER).dropna().to_string())
-    if args.dry_run:
-        row = todo.iloc[0]
-        txt = render_pair(row, c, proc_names)
-        print(f"\n--- sample prompt ({row['pair_id']}, band {row['band']}, ~{len(txt)//4} tokens) ---\n{txt[:6000]}")
-        return
+=== CONTROL B: CTL004652 ===
+Name: Group Credit Risk Rating System Annual Review
+Org folder: /Westpac Group/Risk/Deputy CRO/Risk Analytics and Portfolio Insights/Credit Prudential Management & Sox
+Family: not in the Common Control framework
+Category: Unique | Common control type: n/a | Common reference: none
+Nature: Preventative | Type: Manual | Frequency: Annually | Key control: Yes
+Status: Assessed | Assessment: Effective (2026-05-07 00:00:00) | Design: Effective | Operating: Effective
+Category 1 / 2: Authorisation & Approval / Committee review and approval
+Linked processes (3):
+  - Identify Risks > Identify APS 220 and APS 221 Regulatory Changes
+  - Provide Oversight & Challenge > Provide Risk & Compliance Advice related to Prud. Std.
+  - Provide Oversight & Challenge > Provide Risk and Compliance Advice for WIB, Tsy, B&W
 
-    holder = {"client": None if args.mock else make_client()}
-    t0, n_done, tok_in, tok_out = time.time(), 0, 0, 0
-    with open(CACHE, "a", encoding="utf-8") as f:
-        for _, row in todo.iterrows():
-            txt = render_pair(row, c, proc_names)
-            out, usage, raw = call_model(holder, txt, mock=args.mock)
-            rec = {"pair_id": row["pair_id"], "ctrl_a": row["ctrl_a"], "ctrl_b": row["ctrl_b"], "band": str(row["band"]),
-                   "model": MODEL, "reasoning_effort": REASONING_EFFORT, "ts": datetime.now().isoformat(timespec="seconds"),
-                   **{f"llm_{k}": v for k, v in out.items()}, **usage}
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n"); f.flush()
-            done[rec["pair_id"]] = rec
-            n_done += 1; tok_in += usage.get("prompt_tokens", 0) or 0; tok_out += usage.get("completion_tokens", 0) or 0
-            if n_done % 10 == 0 or n_done == len(todo):
-                rate = (time.time() - t0) / n_done
-                print(f"  {n_done}/{len(todo)}  {rate:.1f}s/pair  eta {(len(todo)-n_done)*rate/60:.0f} min  "
-                      f"tokens in {tok_in:,} out {tok_out:,}  last: {row['band']} -> {out.get('verdict')} ({out.get('confidence')})")
-            time.sleep(SLEEP_BETWEEN)
+Control objective:
+• Annual review of the Credit Risk Rating System is required to ensure the continuing appropriateness, effectiveness, and integrity of the rating systems, and risk estimates. • This control supports compliance with the Credit Risk Rating Systems Policy, and regulatory obligations in APS 112, APS 113, and APS 220.
 
-    # merge and summarise everything cached so far
-    v = pd.DataFrame(list(done.values()))
-    full = pd.read_parquet(CAND_PATH)
-    merged = full.merge(v.drop(columns=["ctrl_a", "ctrl_b", "band"]), on="pair_id", how="left")
-    reviewed = merged[merged["llm_verdict"].notna()]
-    print(f"\nreviewed so far: {len(reviewed)} of {len(full)}")
-    xt = pd.crosstab(reviewed["band"], reviewed["llm_verdict"], margins=True)
-    print("\nband x verdict\n" + xt.to_string())
-    cal = reviewed[reviewed["set"].str.startswith("calibration")]
-    if len(cal):
-        print("\ncalibration\n" + pd.crosstab(cal["set"], cal["llm_verdict"]).to_string())
-    rec_xt = pd.crosstab(reviewed["llm_verdict"], reviewed["llm_recommendation"]) if "llm_recommendation" in reviewed else None
-    if rec_xt is not None:
-        print("\nverdict x recommendation\n" + rec_xt.to_string())
-    if "llm_already_linked_in_register" in reviewed:
-        linked = reviewed["llm_already_linked_in_register"].astype(str).str.split().str[0].str.lower().str.strip(",.;:")
-        print("\nalready linked in register\n" + pd.crosstab(linked, reviewed["llm_verdict"]).to_string())
-    if "n_pairs_represented" in reviewed:
-        rep = reviewed["n_pairs_represented"].fillna(1).astype(int)
-        print(f"\npairs represented by reviewed verdicts: {int(rep.sum())}")
-    for col in ["text_a", "text_b"]:
-        merged[col] = merged[col].str.slice(0, 1500)
-    with pd.ExcelWriter(OUT_DIR / "review_v2.xlsx", engine="openpyxl") as xw:
-        merged.to_excel(xw, sheet_name="pairs", index=False)
-        xt.to_excel(xw, sheet_name="band_x_verdict")
-        if rec_xt is not None:
-            rec_xt.to_excel(xw, sheet_name="verdict_x_recommendation")
-        if len(cal):
-            pd.crosstab(cal["set"], cal["llm_verdict"]).to_excel(xw, sheet_name="calibration")
-    print(f"\nwritten -> {OUT_DIR}")
-
-
-if __name__ == "__main__":
-    main()
+Detailed description:
+• Group Credit Policy team prepare and release a scope document to each Division (retail and non-retail) outlining review and information/data requirements due within a set timeframe. • Divisions submit their annual reports to Group Credit Policy, having been overseen and endorsed by their respective Divisional Line 2 teams. • Group Credit Policy team review Divisional reports and summarise key findings for roll up into the broader CRRS review. • Teams contribute to the broader CRRS review in regard to model risk perform
