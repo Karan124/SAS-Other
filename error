@@ -1,27 +1,11 @@
-PS C:\Users\m061400\ai-test\experiments\code> python 05_llm_review.py --bands paraphrase --limit 20
-selected 960 pairs | cached 0 | to call 20
-band
-paraphrase                  20
-lexical_only                 0
-verbatim                     0
-calibration_known_family     0
-calibration_negative         0
-both                         0
-  10/20  28.3s/pair  eta 5 min  tokens in 25,030 out 20,385  last: paraphrase -> same_control_different_scope (0.98)
-  20/20  27.0s/pair  eta 0 min  tokens in 48,812 out 39,674  last: paraphrase -> same_control_different_scope (0.95)
-
-reviewed so far: 20 of 2183
-
-band x verdict
-llm_verdict  overlapping_distinct  same_control_different_scope  All
-band
-paraphrase                      1                            19   20
-All                             1                            19   20
-
-verdict x recommendation
-llm_recommendation            keep_both  link_as_common_control
-llm_verdict
-overlapping_distinct                  1                       0
-same_control_different_scope          0                      19
-
-written -> C:\Users\M061400\ai-test\experiments\output\review
+import json, pandas as pd
+rows = [json.loads(l) for l in open(r"C:\Users\M061400\ai-test\experiments\output\review\verdicts.jsonl", encoding="utf-8")]
+c = pd.read_excel(r"C:\Users\M061400\ai-test\experiments\data\juno_controls.xlsx", dtype=str).set_index("CTRL_ID")
+for r in rows:
+    a, b = r["ctrl_a"], r["ctrl_b"]
+    print("=" * 100)
+    print(f"{a} | {c.at[a,'CTRL_NAME']}\n   folder: {c.at[a,'CTRL_FLDR']}")
+    print(f"{b} | {c.at[b,'CTRL_NAME']}\n   folder: {c.at[b,'CTRL_FLDR']}")
+    print(f"VERDICT {r['llm_verdict']} ({r['llm_confidence']})  REC {r.get('llm_recommendation')}  reasoning_tokens {r.get('reasoning_tokens')}")
+    for k in ["llm_summary", "llm_scope_difference", "llm_what_is_different", "llm_evidence_a", "llm_evidence_b", "llm_keep_which", "llm_questions_for_sme"]:
+        print(f"  {k[4:]}: {str(r.get(k, ''))[:600]}")
