@@ -1,52 +1,14 @@
-S C:\Users\m061400\ai-test\experiments\code> python .\05_llm_review.py --sample-per-band 8 --seed 7
-selected 48 pairs | cached 0 | to call 48
-band
-paraphrase                  8
-lexical_only                8
-verbatim                    8
-calibration_known_family    8
-calibration_negative        8
-both                        8
-  10/48  45.9s/pair  eta 29 min  tokens in 24,897 out 24,512  last: lexical_only -> same_control_different_scope (0.72)
-  20/48  45.1s/pair  eta 21 min  tokens in 43,344 out 46,286  last: verbatim -> same_control_different_scope (0.94)
-  30/48  40.8s/pair  eta 12 min  tokens in 65,963 out 64,356  last: calibration_known_family -> same_control_different_scope (0.99)
-  40/48  36.6s/pair  eta 5 min  tokens in 89,417 out 77,400  last: calibration_negative -> unrelated (0.99)
-  48/48  38.3s/pair  eta 0 min  tokens in 109,866 out 96,765  last: both -> same_control_different_scope (0.95)
-
-reviewed so far: 48 of 1157
-
-band x verdict
-llm_verdict               duplicate  overlapping_distinct  same_control_different_scope  unrelated  All
-band
-both                              1                     0                             7          0    8
-calibration_known_family          0                     0                             8          0    8
-calibration_negative              0                     0                             0          8    8
-lexical_only                      0                     1                             6          1    8
-paraphrase                        0                     6                             2          0    8
-verbatim                          0                     0                             8          0    8
-All                               1                     7                            31          9   48
-
-calibration
-llm_verdict               same_control_different_scope  unrelated
-set
-calibration_known_family                             8          0
-calibration_negative                                 0          8
-
-verdict x recommendation
-llm_recommendation            investigate  keep_both  link_as_common_control  merge_into_one  no_action_already_governed
-llm_verdict
-duplicate                               0          0                       0               1                           0
-overlapping_distinct                    1          5                       0               0                           1
-same_control_different_scope            1          0                      21               0                           9
-unrelated                               0          9                       0               0                           0
-
-already linked in register
-llm_verdict                     duplicate  overlapping_distinct  same_control_different_scope  unrelated
-llm_already_linked_in_register
-no                                      1                     4                            20          9
-partly                                  0                     3                             3          0
-yes                                     0                     0                             8          0
-
-pairs represented by reviewed verdicts: 101
-
-written -> C:\Users\M061400\ai-test\experiments\output\review
+import json, pandas as pd
+rows = [json.loads(l) for l in open(r"C:\Users\M061400\ai-test\experiments\output\review\verdicts_v2.jsonl", encoding="utf-8")]
+rows = [r for r in rows if r["band"] in ("paraphrase", "lexical_only")]
+c = pd.read_excel(r"C:\Users\M061400\ai-test\experiments\data\juno_controls.xlsx", dtype=str).set_index("CTRL_ID")
+for r in rows:
+    a, b = r["ctrl_a"], r["ctrl_b"]
+    print("=" * 100)
+    print(f"[{r['band']}] {a} | {c.at[a,'CTRL_NAME']}\n   folder: {c.at[a,'CTRL_FLDR']}")
+    print(f"{' ' * (len(r['band']) + 3)}{b} | {c.at[b,'CTRL_NAME']}\n   folder: {c.at[b,'CTRL_FLDR']}")
+    print(f"VERDICT {r['llm_verdict']} ({r['llm_confidence']})  REC {r.get('llm_recommendation')}  "
+          f"LINKED {str(r.get('llm_already_linked_in_register',''))[:80]}")
+    for k in ["llm_summary", "llm_scope_difference", "llm_mechanism_difference", "llm_what_is_different",
+              "llm_evidence_a", "llm_evidence_b", "llm_keep_which", "llm_questions_for_sme"]:
+        print(f"  {k[4:]}: {str(r.get(k, ''))[:600]}")
