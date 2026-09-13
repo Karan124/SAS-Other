@@ -1,37 +1,173 @@
-reviewed so far: 1157 of 1157
+"""
+STEP 6: From pairs to controls. No API calls.
 
-band x verdict
-llm_verdict               duplicate  overlapping_distinct  same_control_different_scope  unrelated   All
-band
-both                             14                    87                           404          0   505
-calibration_known_family          1                     1                            58          0    60
-calibration_negative              0                     0                             0         60    60
-lexical_only                     14                    16                            91          1   122
-paraphrase                        5                   152                           108          6   271
-verbatim                         20                     4                           115          0   139
-All                              54                   260                           776         67  1157
+Answers: out of ~6,900 controls, how many are duplicates, how many could become
+instances of a common control, how many are related-but-distinct, how many untouched.
 
-calibration
-llm_verdict               duplicate  overlapping_distinct  same_control_different_scope  unrelated
-set
-calibration_known_family          1                     1                            58          0
-calibration_negative              0                     0                             0         60
+Method
+  1. Each representative pair's verdict (verdicts_v3.jsonl) is applied to every original
+     candidate pair it represents (same two families, from candidates.parquet).
+  2. Pairs become a graph: controls are nodes, verdict pairs are edges.
+     - duplicate edges -> "duplicate groups": a group of N controls needs at most 1 record,
+       so N-1 are retirement candidates.
+     - duplicate + same_control_different_scope edges -> "proposed families": a group of N
+       heads could sit under one master. Existing instances of those heads ride along.
+  3. Each control gets one primary verdict by precedence:
+     duplicate > same_control_different_scope > overlapping_distinct > unrelated > not a candidate.
 
-verdict x recommendation
-llm_recommendation            investigate  keep_both  link_as_common_control  merge_into_one  no_action_already_governed  retire_one_keep_other
-llm_verdict                                                                                                             
-duplicate                              26          0                       0               6                           0                     22
-overlapping_distinct                   43        201                       0               0                          16                      0
-same_control_different_scope           16          0                     694               2                          64                      0
-unrelated                               0         67                       0               0                           0                      0
+Run:  python 06_control_view.py
+Out:  experiments\\output\\review\\control_view.xlsx  (summary, controls, duplicate_groups, proposed_families)
+"""
+import json
+import re
+from pathlib import Path
 
-already linked in register
-llm_verdict                     duplicate  overlapping_distinct  same_control_different_scope  unrelated
-llm_already_linked_in_register
-no                                     49                   208                           657         67
-partly                                  4                    43                            61          0
-yes                                     1                     9                            58          0
+import networkx as nx
+import pandas as pd
 
-pairs with record quality issues noted: 1157 of 1157
+DATA_DIR = Path(r"C:\Users\M061400\ai-test\experiments\data")
+CAND_DIR = Path(r"C:\Users\M061400\ai-test\experiments\output\candidates")
+REV_DIR = Path(r"C:\Users\M061400\ai-test\experiments\output\review")
+VERDICTS = REV_DIR / "verdicts_v3.jsonl"
+CTRL_ID_RE = re.compile(r"\bCTL\d{6,}\b")
+PRECEDENCE = ["duplicate", "same_control_different_scope", "overlapping_distinct", "unrelated"]
 
-pairs represented by reviewed verdicts: 2183
+# ------------------------------------------------------------------ load
+controls = pd.read_excel(DATA_DIR / "juno_controls.xlsx", dtype=str)
+controls.columns = [c.strip() for c in controls.columns]
+controls["CTRL_ID"] = controls["CTRL_ID"].str.strip()
+controls = controls.drop_duplicates("CTRL_ID").set_index("CTRL_ID")
+ids = set(controls.index)
+N = len(ids)
+
+head = {c: c for c in ids}
+for cid, ref in zip(controls.index, controls["COMMON_CTRL_REFERENCE"]):
+    refs = [r for r in (CTRL_ID_RE.findall(ref) if isinstance(ref, str) else []) if r in ids and r != cid]
+    if refs:
+        head[cid] = sorted(refs)[0]
+instances_of = {}
+for c, h in head.items():
+    if c != h:
+        instances_of.setdefault(h, []).append(c)
+in_declared_family = {c for c, h in head.items() if c != h} | set(instances_of)
+
+verd = pd.DataFrame([json.loads(l) for l in open(VERDICTS, encoding="utf-8")])
+verd = verd[verd["llm_verdict"].isin(PRECEDENCE)]
+rep = pd.read_parquet(CAND_DIR / "candidates_collapsed.parquet")
+rep = rep[rep["set"] == "discovery"].merge(verd[["pair_id", "llm_verdict", "llm_recommendation", "llm_confidence", "llm_keep_which"]], on="pair_id", how="inner")
+key_verdict = rep.set_index("fam_key")[["llm_verdict", "llm_recommendation", "llm_confidence", "llm_keep_which", "pair_id"]]
+
+orig = pd.read_parquet(CAND_DIR / "candidates.parquet")
+orig = orig[orig["set"] == "discovery"].copy()
+orig["fam_key"] = [f"{min(head[a], head[b])}|{max(head[a], head[b])}" for a, b in zip(orig["ctrl_a"], orig["ctrl_b"])]
+orig = orig[orig["fam_key"].isin(key_verdict.index)].copy()
+for col in ["llm_verdict", "llm_recommendation", "llm_confidence", "llm_keep_which"]:
+    orig[col] = orig["fam_key"].map(key_verdict[col])
+orig["rep_pair"] = orig["fam_key"].map(key_verdict["pair_id"])
+print(f"original candidate pairs with a verdict: {len(orig)} (via {len(key_verdict)} reviewed representative pairs)")
+
+# ------------------------------------------------------------------ per-control primary verdict
+per = {}
+for _, r in orig.iterrows():
+    for c in (r["ctrl_a"], r["ctrl_b"]):
+        d = per.setdefault(c, {v: 0 for v in PRECEDENCE})
+        d[r["llm_verdict"]] += 1
+ctrl_rows = []
+for c in ids:
+    d = per.get(c)
+    primary = next((v for v in PRECEDENCE if d and d[v] > 0), "not_a_candidate")
+    ctrl_rows.append({"CTRL_ID": c, "primary_verdict": primary, **{f"pairs_{v}": (d[v] if d else 0) for v in PRECEDENCE},
+                      "in_declared_family": c in in_declared_family, "is_master": c in instances_of,
+                      "CTRL_CATEGORY": controls.at[c, "CTRL_CATEGORY"], "CTRL_NAME": controls.at[c, "CTRL_NAME"],
+                      "CTRL_FLDR": controls.at[c, "CTRL_FLDR"]})
+cv = pd.DataFrame(ctrl_rows)
+
+# ------------------------------------------------------------------ duplicate groups
+def components(edges_df):
+    G = nx.Graph()
+    G.add_edges_from(zip(edges_df["ctrl_a"], edges_df["ctrl_b"]))
+    return [sorted(cc) for cc in nx.connected_components(G)]
+
+
+dup_edges = orig[orig["llm_verdict"] == "duplicate"]
+dup_groups = components(dup_edges)
+retire_flags = {}
+for _, r in dup_edges.iterrows():
+    kw = str(r["llm_keep_which"]).strip().upper()
+    if kw.startswith("A"):
+        retire_flags[r["ctrl_b"]] = r["ctrl_a"]
+    elif kw.startswith("B"):
+        retire_flags[r["ctrl_a"]] = r["ctrl_b"]
+dg_rows = []
+for i, g in enumerate(dup_groups, 1):
+    sub = dup_edges[dup_edges["ctrl_a"].isin(g) & dup_edges["ctrl_b"].isin(g)]
+    dg_rows.append({"group": i, "n_controls": len(g), "retirement_candidates": len(g) - 1,
+                    "model_suggested_retire": ", ".join(c for c in g if c in retire_flags),
+                    "recommendations": ", ".join(f"{k}:{v}" for k, v in sub["llm_recommendation"].value_counts().items()),
+                    "min_confidence": round(sub["llm_confidence"].min(), 2),
+                    "members": ", ".join(g), "names": " | ".join(controls.at[c, "CTRL_NAME"][:80] for c in g[:4])})
+dg = pd.DataFrame(dg_rows).sort_values("n_controls", ascending=False)
+
+# ------------------------------------------------------------------ proposed families (heads graph)
+fam_edges = orig[orig["llm_verdict"].isin(["duplicate", "same_control_different_scope"])].copy()
+fam_edges["ctrl_a"] = fam_edges["ctrl_a"].map(head); fam_edges["ctrl_b"] = fam_edges["ctrl_b"].map(head)
+fam_edges = fam_edges[fam_edges["ctrl_a"] != fam_edges["ctrl_b"]]
+fam_groups = components(fam_edges)
+pf_rows = []
+for i, g in enumerate(fam_groups, 1):
+    existing_masters = [h for h in g if h in instances_of]
+    riders = sum(len(instances_of.get(h, [])) for h in g)
+    pf_rows.append({"family": i, "n_heads": len(g), "existing_masters_among_heads": len(existing_masters),
+                    "existing_instances_riding_along": riders, "controls_covered": len(g) + riders,
+                    "records_after_if_one_master": 1 + (len(g) - len(existing_masters)) + riders,
+                    "categories": ", ".join(f"{k}:{v}" for k, v in controls.loc[g, "CTRL_CATEGORY"].value_counts().items()),
+                    "heads": ", ".join(g), "names": " | ".join(controls.at[c, "CTRL_NAME"][:80] for c in g[:4])})
+pf = pd.DataFrame(pf_rows).sort_values("controls_covered", ascending=False)
+
+# ------------------------------------------------------------------ summary
+counts = cv["primary_verdict"].value_counts()
+cand_controls = int((cv["primary_verdict"] != "not_a_candidate").sum())
+n_dup_ctrls = int(sum(len(g) for g in dup_groups))
+n_retire = int(sum(len(g) - 1 for g in dup_groups))
+heads_in_fam = int(sum(len(g) for g in fam_groups))
+new_heads = int(sum(1 for g in fam_groups for h in g if h not in instances_of))
+riders_total = int(sum(len(instances_of.get(h, [])) for g in fam_groups for h in g))
+summary = pd.DataFrame([
+    ("active controls in scope", N),
+    ("controls already in a declared master/instance family", len(in_declared_family)),
+    ("controls appearing in at least one reviewed candidate pair", cand_controls),
+    ("controls not in any candidate pair (no similarity signal above threshold)", N - cand_controls),
+    ("", ""),
+    ("DUPLICATES", ""),
+    ("controls in a duplicate group", n_dup_ctrls),
+    ("duplicate groups", len(dup_groups)),
+    ("retirement candidates (group size minus one)", n_retire),
+    ("of which the model named the record to retire", len(retire_flags)),
+    ("", ""),
+    ("SHARED DESIGNS (same control, different scope)", ""),
+    ("controls whose primary verdict is same_control_different_scope", int(counts.get("same_control_different_scope", 0))),
+    ("proposed families (components of duplicate + same-scope edges, at family-head level)", len(fam_groups)),
+    ("heads in proposed families", heads_in_fam),
+    ("of which currently outside the Common Control framework", new_heads),
+    ("existing instances that would ride along under a merged master", riders_total),
+    ("controls covered by proposed families (heads + riders)", heads_in_fam + riders_total),
+    ("", ""),
+    ("RELATED BUT DISTINCT", ""),
+    ("controls whose primary verdict is overlapping_distinct (keep)", int(counts.get("overlapping_distinct", 0))),
+    ("controls whose primary verdict is unrelated", int(counts.get("unrelated", 0))),
+], columns=["metric", "value"])
+
+by_cat = pd.crosstab(cv["CTRL_CATEGORY"], cv["primary_verdict"])
+print(summary.to_string(index=False))
+print("\nprimary verdict by category\n" + by_cat.to_string())
+print(f"\nlargest duplicate groups:\n{dg.head(5)[['n_controls', 'names']].to_string(index=False)}")
+print(f"\nlargest proposed families:\n{pf.head(8)[['n_heads', 'existing_masters_among_heads', 'controls_covered', 'names']].to_string(index=False)}")
+
+with pd.ExcelWriter(REV_DIR / "control_view.xlsx", engine="openpyxl") as xw:
+    summary.to_excel(xw, sheet_name="summary", index=False)
+    by_cat.to_excel(xw, sheet_name="by_category")
+    cv.sort_values(["primary_verdict", "pairs_duplicate", "pairs_same_control_different_scope"], ascending=[True, False, False]).to_excel(xw, sheet_name="controls", index=False)
+    dg.to_excel(xw, sheet_name="duplicate_groups", index=False)
+    pf.to_excel(xw, sheet_name="proposed_families", index=False)
+    orig.drop(columns=["text_a", "text_b"]).to_excel(xw, sheet_name="all_pairs_with_verdict", index=False)
+print(f"\nwritten -> {REV_DIR / 'control_view.xlsx'}")
