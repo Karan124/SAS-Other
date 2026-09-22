@@ -1,173 +1,622 @@
-"""
-STEP 6: From pairs to controls. No API calls.
+GENERATE A PRODUCTION-GRADE CONTROL AUTOMATION ASSESSMENT SCRIPT
+Objective
 
-Answers: out of ~6,900 controls, how many are duplicates, how many could become
-instances of a common control, how many are related-but-distinct, how many untouched.
+Generate a complete, executable, production-ready Python script that performs a Control Automation Method assessment against an Excel spreadsheet containing internal controls.
 
-Method
-  1. Each representative pair's verdict (verdicts_v3.jsonl) is applied to every original
-     candidate pair it represents (same two families, from candidates.parquet).
-  2. Pairs become a graph: controls are nodes, verdict pairs are edges.
-     - duplicate edges -> "duplicate groups": a group of N controls needs at most 1 record,
-       so N-1 are retirement candidates.
-     - duplicate + same_control_different_scope edges -> "proposed families": a group of N
-       heads could sit under one master. Existing instances of those heads ride along.
-  3. Each control gets one primary verdict by precedence:
-     duplicate > same_control_different_scope > overlapping_distinct > unrelated > not a candidate.
+The script will use Azure OpenAI GPT-5.4 to analyse controls and classify them as either:
 
-Run:  python 06_control_view.py
-Out:  experiments\\output\\review\\control_view.xlsx  (summary, controls, duplicate_groups, proposed_families)
-"""
-import json
-import re
-from pathlib import Path
+ITDMC (IT-Dependent Manual Control)
+MAC (Manual-Automated Control)
 
-import networkx as nx
-import pandas as pd
+The generated code must be fully executable.
 
-DATA_DIR = Path(r"C:\Users\M061400\ai-test\experiments\data")
-CAND_DIR = Path(r"C:\Users\M061400\ai-test\experiments\output\candidates")
-REV_DIR = Path(r"C:\Users\M061400\ai-test\experiments\output\review")
-VERDICTS = REV_DIR / "verdicts_v3.jsonl"
-CTRL_ID_RE = re.compile(r"\bCTL\d{6,}\b")
-PRECEDENCE = ["duplicate", "same_control_different_scope", "overlapping_distinct", "unrelated"]
+Do not return pseudocode.
 
-# ------------------------------------------------------------------ load
-controls = pd.read_excel(DATA_DIR / "juno_controls.xlsx", dtype=str)
-controls.columns = [c.strip() for c in controls.columns]
-controls["CTRL_ID"] = controls["CTRL_ID"].str.strip()
-controls = controls.drop_duplicates("CTRL_ID").set_index("CTRL_ID")
-ids = set(controls.index)
-N = len(ids)
+Do not omit functions.
 
-head = {c: c for c in ids}
-for cid, ref in zip(controls.index, controls["COMMON_CTRL_REFERENCE"]):
-    refs = [r for r in (CTRL_ID_RE.findall(ref) if isinstance(ref, str) else []) if r in ids and r != cid]
-    if refs:
-        head[cid] = sorted(refs)[0]
-instances_of = {}
-for c, h in head.items():
-    if c != h:
-        instances_of.setdefault(h, []).append(c)
-in_declared_family = {c for c, h in head.items() if c != h} | set(instances_of)
+Provide the complete script.
 
-verd = pd.DataFrame([json.loads(l) for l in open(VERDICTS, encoding="utf-8")])
-verd = verd[verd["llm_verdict"].isin(PRECEDENCE)]
-rep = pd.read_parquet(CAND_DIR / "candidates_collapsed.parquet")
-rep = rep[rep["set"] == "discovery"].merge(verd[["pair_id", "llm_verdict", "llm_recommendation", "llm_confidence", "llm_keep_which"]], on="pair_id", how="inner")
-key_verdict = rep.set_index("fam_key")[["llm_verdict", "llm_recommendation", "llm_confidence", "llm_keep_which", "pair_id"]]
+Input File
 
-orig = pd.read_parquet(CAND_DIR / "candidates.parquet")
-orig = orig[orig["set"] == "discovery"].copy()
-orig["fam_key"] = [f"{min(head[a], head[b])}|{max(head[a], head[b])}" for a, b in zip(orig["ctrl_a"], orig["ctrl_b"])]
-orig = orig[orig["fam_key"].isin(key_verdict.index)].copy()
-for col in ["llm_verdict", "llm_recommendation", "llm_confidence", "llm_keep_which"]:
-    orig[col] = orig["fam_key"].map(key_verdict[col])
-orig["rep_pair"] = orig["fam_key"].map(key_verdict["pair_id"])
-print(f"original candidate pairs with a verdict: {len(orig)} (via {len(key_verdict)} reviewed representative pairs)")
+Input Excel file:
 
-# ------------------------------------------------------------------ per-control primary verdict
-per = {}
-for _, r in orig.iterrows():
-    for c in (r["ctrl_a"], r["ctrl_b"]):
-        d = per.setdefault(c, {v: 0 for v in PRECEDENCE})
-        d[r["llm_verdict"]] += 1
-ctrl_rows = []
-for c in ids:
-    d = per.get(c)
-    primary = next((v for v in PRECEDENCE if d and d[v] > 0), "not_a_candidate")
-    ctrl_rows.append({"CTRL_ID": c, "primary_verdict": primary, **{f"pairs_{v}": (d[v] if d else 0) for v in PRECEDENCE},
-                      "in_declared_family": c in in_declared_family, "is_master": c in instances_of,
-                      "CTRL_CATEGORY": controls.at[c, "CTRL_CATEGORY"], "CTRL_NAME": controls.at[c, "CTRL_NAME"],
-                      "CTRL_FLDR": controls.at[c, "CTRL_FLDR"]})
-cv = pd.DataFrame(ctrl_rows)
+Plain Text
+1
+C:\Users\M061400\ai-test\experiments\Bianca\_controls_.xlsx
+2
+ 
+Show more lines
 
-# ------------------------------------------------------------------ duplicate groups
-def components(edges_df):
-    G = nx.Graph()
-    G.add_edges_from(zip(edges_df["ctrl_a"], edges_df["ctrl_b"]))
-    return [sorted(cc) for cc in nx.connected_components(G)]
+The workbook contains one worksheet.
 
+Columns:
 
-dup_edges = orig[orig["llm_verdict"] == "duplicate"]
-dup_groups = components(dup_edges)
-retire_flags = {}
-for _, r in dup_edges.iterrows():
-    kw = str(r["llm_keep_which"]).strip().upper()
-    if kw.startswith("A"):
-        retire_flags[r["ctrl_b"]] = r["ctrl_a"]
-    elif kw.startswith("B"):
-        retire_flags[r["ctrl_a"]] = r["ctrl_b"]
-dg_rows = []
-for i, g in enumerate(dup_groups, 1):
-    sub = dup_edges[dup_edges["ctrl_a"].isin(g) & dup_edges["ctrl_b"].isin(g)]
-    dg_rows.append({"group": i, "n_controls": len(g), "retirement_candidates": len(g) - 1,
-                    "model_suggested_retire": ", ".join(c for c in g if c in retire_flags),
-                    "recommendations": ", ".join(f"{k}:{v}" for k, v in sub["llm_recommendation"].value_counts().items()),
-                    "min_confidence": round(sub["llm_confidence"].min(), 2),
-                    "members": ", ".join(g), "names": " | ".join(controls.at[c, "CTRL_NAME"][:80] for c in g[:4])})
-dg = pd.DataFrame(dg_rows).sort_values("n_controls", ascending=False)
+Column	NameA	Control ID
+B	Control Name
+C	Control Objective
+D	Description of Control
+Assessment Instructions
 
-# ------------------------------------------------------------------ proposed families (heads graph)
-fam_edges = orig[orig["llm_verdict"].isin(["duplicate", "same_control_different_scope"])].copy()
-fam_edges["ctrl_a"] = fam_edges["ctrl_a"].map(head); fam_edges["ctrl_b"] = fam_edges["ctrl_b"].map(head)
-fam_edges = fam_edges[fam_edges["ctrl_a"] != fam_edges["ctrl_b"]]
-fam_groups = components(fam_edges)
-pf_rows = []
-for i, g in enumerate(fam_groups, 1):
-    existing_masters = [h for h in g if h in instances_of]
-    riders = sum(len(instances_of.get(h, [])) for h in g)
-    pf_rows.append({"family": i, "n_heads": len(g), "existing_masters_among_heads": len(existing_masters),
-                    "existing_instances_riding_along": riders, "controls_covered": len(g) + riders,
-                    "records_after_if_one_master": 1 + (len(g) - len(existing_masters)) + riders,
-                    "categories": ", ".join(f"{k}:{v}" for k, v in controls.loc[g, "CTRL_CATEGORY"].value_counts().items()),
-                    "heads": ", ".join(g), "names": " | ".join(controls.at[c, "CTRL_NAME"][:80] for c in g[:4])})
-pf = pd.DataFrame(pf_rows).sort_values("controls_covered", ascending=False)
+The following instructions must be passed to the LLM and used for every control assessment.
 
-# ------------------------------------------------------------------ summary
-counts = cv["primary_verdict"].value_counts()
-cand_controls = int((cv["primary_verdict"] != "not_a_candidate").sum())
-n_dup_ctrls = int(sum(len(g) for g in dup_groups))
-n_retire = int(sum(len(g) - 1 for g in dup_groups))
-heads_in_fam = int(sum(len(g) for g in fam_groups))
-new_heads = int(sum(1 for g in fam_groups for h in g if h not in instances_of))
-riders_total = int(sum(len(instances_of.get(h, [])) for g in fam_groups for h in g))
-summary = pd.DataFrame([
-    ("active controls in scope", N),
-    ("controls already in a declared master/instance family", len(in_declared_family)),
-    ("controls appearing in at least one reviewed candidate pair", cand_controls),
-    ("controls not in any candidate pair (no similarity signal above threshold)", N - cand_controls),
-    ("", ""),
-    ("DUPLICATES", ""),
-    ("controls in a duplicate group", n_dup_ctrls),
-    ("duplicate groups", len(dup_groups)),
-    ("retirement candidates (group size minus one)", n_retire),
-    ("of which the model named the record to retire", len(retire_flags)),
-    ("", ""),
-    ("SHARED DESIGNS (same control, different scope)", ""),
-    ("controls whose primary verdict is same_control_different_scope", int(counts.get("same_control_different_scope", 0))),
-    ("proposed families (components of duplicate + same-scope edges, at family-head level)", len(fam_groups)),
-    ("heads in proposed families", heads_in_fam),
-    ("of which currently outside the Common Control framework", new_heads),
-    ("existing instances that would ride along under a merged master", riders_total),
-    ("controls covered by proposed families (heads + riders)", heads_in_fam + riders_total),
-    ("", ""),
-    ("RELATED BUT DISTINCT", ""),
-    ("controls whose primary verdict is overlapping_distinct (keep)", int(counts.get("overlapping_distinct", 0))),
-    ("controls whose primary verdict is unrelated", int(counts.get("unrelated", 0))),
-], columns=["metric", "value"])
+Role
 
-by_cat = pd.crosstab(cv["CTRL_CATEGORY"], cv["primary_verdict"])
-print(summary.to_string(index=False))
-print("\nprimary verdict by category\n" + by_cat.to_string())
-print(f"\nlargest duplicate groups:\n{dg.head(5)[['n_controls', 'names']].to_string(index=False)}")
-print(f"\nlargest proposed families:\n{pf.head(8)[['n_heads', 'existing_masters_among_heads', 'controls_covered', 'names']].to_string(index=False)}")
+You are an Internal Controls, Risk Management, and Control Automation Subject Matter Expert performing a Control Automation Method assessment.
 
-with pd.ExcelWriter(REV_DIR / "control_view.xlsx", engine="openpyxl") as xw:
-    summary.to_excel(xw, sheet_name="summary", index=False)
-    by_cat.to_excel(xw, sheet_name="by_category")
-    cv.sort_values(["primary_verdict", "pairs_duplicate", "pairs_same_control_different_scope"], ascending=[True, False, False]).to_excel(xw, sheet_name="controls", index=False)
-    dg.to_excel(xw, sheet_name="duplicate_groups", index=False)
-    pf.to_excel(xw, sheet_name="proposed_families", index=False)
-    orig.drop(columns=["text_a", "text_b"]).to_excel(xw, sheet_name="all_pairs_with_verdict", index=False)
-print(f"\nwritten -> {REV_DIR / 'control_view.xlsx'}")
+Objective
+
+Review each control using only:
+
+Column B: Control Name
+Column C: Control Objective
+Column D: Description of Control
+
+Do not use:
+
+Control ID
+Any other fields
+
+Apply a conservative classification approach.
+
+Assessment Framework
+
+Determine whether each control should be classified as:
+
+ITDMC (IT-Dependent Manual Control)
+MAC (Manual-Automated Control)
+ITDMC Definition
+
+Classify as ITDMC when:
+
+The control relies on system-generated reports
+Data extracts
+Dashboards
+Alerts
+Workflow notifications
+Information from systems
+
+AND
+
+Risk mitigation is performed primarily by people through:
+Review
+Investigation
+Validation
+Approval
+Reconciliation
+Judgement
+Follow-up
+
+Technology supports the control but does not independently perform a risk-mitigating control activity.
+
+Automated reports, dashboards, data retrieval and workflow routing do not make a control MAC.
+
+MAC Definition
+
+Classify as MAC only when:
+
+A risk-mitigating control activity is explicitly performed automatically through:
+
+Business rule validation
+Automated calculations
+System-enforced restrictions
+Automated monitoring
+Automated exception detection
+Automated matching
+Automated reconciliation
+Automated approval logic
+Automated preventative controls
+
+AND
+
+A manual risk-mitigating activity also exists.
+
+Both manual and automated activities must contribute to mitigating the risk.
+
+Critical Analysis Rules
+Control Activities
+
+Risk-mitigating activities.
+
+Examples:
+
+Automated exception detection
+Automated validation
+Automated matching
+Automated reconciliation
+Manual review
+Manual approval
+Manual investigation
+Process Steps
+
+Operational activities that do not mitigate risk.
+
+Examples:
+
+Running reports
+Downloading reports
+Extracting data
+Accessing systems
+Generating dashboards
+
+Do not classify as MAC solely because systems are used.
+
+Required Analysis
+
+For each control identify:
+
+Manual Control Activities
+
+List manual control activities.
+
+Automated Control Activities
+
+List automated control activities.
+
+Process Steps
+
+List process activities that are not controls.
+
+Classification
+
+Select:
+
+Plain Text
+1
+ITDMC
+Show more lines
+
+or
+
+Plain Text
+1
+MAC
+Show more lines
+Rationale
+
+Explain:
+
+Which activities mitigate risk
+Why the chosen classification applies
+Why the alternative classification was rejected
+Confidence
+
+High
+
+Medium
+
+Low
+
+Key Assumptions
+
+Document assumptions used.
+
+Confidence Definitions
+High
+
+Control explicitly describes the relevant activities.
+
+Medium
+
+Some assumptions required.
+
+Low
+
+Significant assumptions required.
+
+Quality Assurance Rules
+
+Before finalising:
+
+Confirm identified control activities mitigate risk.
+Confirm process steps are not treated as controls.
+Where automated risk mitigation is not explicitly stated, default to ITDMC.
+Explain why the alternative classification was rejected.
+Do not infer automation from reports, dashboards, workflows or alerts.
+Final Classification Rule
+
+When uncertainty exists:
+
+Plain Text
+1
+Default to ITDMC
+Show more lines
+
+and explain the uncertainty.
+
+Output Schema
+
+The model must return STRICT JSON.
+
+No markdown.
+
+No explanations.
+
+No code fences.
+
+JSON only.
+
+Schema:
+
+JSON
+1
+{
+2
+"manual_control_activities": "",
+3
+"automated_control_activities": "",
+4
+"process_steps": "",
+5
+"classification": "",
+6
+"rationale": "",
+7
+"confidence_level": "",
+8
+"key_assumptions": ""
+9
+}
+10
+``
+Show more lines
+Azure OpenAI Environment
+
+The script must use Azure OpenAI.
+
+Configuration:
+
+Python
+1
+AZURE_ENDPOINT = "https://ai.eng.azure.srv.westpac.com.au"
+2
+ 
+3
+API_VERSION = "2024-10-21"
+4
+ 
+5
+MODEL = "gpt-5.4"
+6
+ 
+7
+REASONING_EFFORT = "medium"
+8
+ 
+9
+MAX_COMPLETION_TOKENS = 12000
+10
+ 
+11
+PROXY_URL = "http://127.0.0.1:9000"
+12
+ 
+13
+CA_BUNDLE = r"C:\Users\M061400\ai-test\cacert.pem"
+14
+ 
+15
+SLEEP_BETWEEN = 1.0
+16
+ 
+17
+RETRY_COUNT = 5
+Show more lines
+API Requirements
+
+Use:
+
+Python
+1
+from openai import OpenAI
+Show more lines
+
+Use Azure OpenAI Responses API.
+
+Use GPT-5.4.
+
+Use:
+
+Python
+1
+temperature=0
+Show more lines
+
+for deterministic behaviour.
+
+Batch Processing Design
+
+Do not process one control per request.
+
+Use batch processing.
+
+Configuration:
+
+Python
+1
+BATCH_SIZE = 20
+Show more lines
+
+Each API request should assess 20 controls simultaneously.
+
+Each control presented to the model should include only:
+
+Plain Text
+1
+Control Name
+2
+Control Objective
+3
+Description of Control
+Show more lines
+
+Do not provide Control ID.
+
+Batch Response Format
+
+The model should return:
+
+JSON
+1
+[
+2
+{
+3
+"control_number": 1,
+4
+"manual_control_activities": "",
+5
+"automated_control_activities": "",
+6
+"process_steps": "",
+7
+"classification": "",
+8
+"rationale": "",
+9
+"confidence_level": "",
+10
+"key_assumptions": ""
+11
+}
+12
+]
+Show more lines
+
+where all controls in the batch are returned as an array.
+
+Mini Classification Framework
+
+Before processing controls, the script should generate a reusable decision dictionary that will be supplied as context to subsequent batches.
+
+Purpose:
+
+Improve consistency.
+
+Example entries:
+
+Plain Text
+1
+System generates report reviewed by analyst -> ITDMC
+2
+ 
+3
+Workflow routes approval -> ITDMC
+4
+ 
+5
+Automated transaction blocking -> MAC
+6
+ 
+7
+Automated exception detection followed by manual review -> MAC
+8
+ 
+9
+Dashboard reviewed monthly -> ITDMC
+10
+ 
+11
+System performs automated reconciliation before human review -> MAC
+Show more lines
+
+The script should store and reuse this framework throughout the run.
+
+Validation Requirements
+
+Validate every LLM response.
+
+Verify:
+
+Python
+1
+classification in ["ITDMC", "MAC"]
+Show more lines
+
+Verify all required fields are present.
+
+Verify JSON is valid.
+
+If validation fails:
+
+Python
+1
+retry up to 5 times
+Show more lines
+
+before logging an error.
+
+Checkpointing Requirements
+
+After every batch:
+
+Save:
+
+Plain Text
+1
+_controls_checkpoint.xlsx
+Show more lines
+
+containing all completed assessments.
+
+Resume Capability
+
+If checkpoint exists:
+
+Python
+1
+resume_from_checkpoint = True
+Show more lines
+
+the script must:
+
+identify completed rows
+skip completed rows
+continue processing remaining rows
+
+without duplication.
+
+Output Workbook
+
+Create:
+
+Plain Text
+1
+C:\Users\M061400\ai-test\experiments\Bianca\_controls_assessed_.xlsx
+Show more lines
+Worksheet 1
+Plain Text
+1
+Control Assessment
+Show more lines
+
+Preserve Columns A-D exactly.
+
+Append:
+
+Manual Control Activities
+Automated Control Activities
+Process Steps (Non-Control Activities)
+Classification
+Rationale
+Confidence Level
+Key Assumptions
+Worksheet 2
+Plain Text
+1
+LLM Audit Log
+Show more lines
+
+Capture:
+
+Row Number
+Batch Number
+Timestamp
+Model Used
+Prompt Tokens
+Completion Tokens
+Total Tokens
+Raw Response
+Worksheet 3
+Plain Text
+1
+Run Metrics
+Show more lines
+
+Capture:
+
+Total Controls
+Controls Processed
+Total ITDMC
+Total MAC
+High Confidence
+Medium Confidence
+Low Confidence
+Prompt Tokens
+Completion Tokens
+Total Tokens
+Average Tokens per Control
+Estimated Cost
+Total API Calls
+Runtime
+Cost Tracking
+
+Capture token usage from every API response.
+
+Track:
+
+Python
+1
+prompt_tokens
+2
+completion_tokens
+3
+total_tokens
+Show more lines
+
+at:
+
+control level
+batch level
+run level
+Logging
+
+Generate:
+
+Plain Text
+1
+control_assessment.log
+Show more lines
+
+Log:
+
+startup
+batch processing
+retries
+validation failures
+token consumption
+API failures
+checkpoint saves
+completion summary
+Performance Requirements
+
+The solution must successfully process:
+
+Plain Text
+1
+7,000+ controls
+Show more lines
+
+and be resilient to:
+
+API failures
+malformed JSON
+interrupted execution
+network interruptions
+token limit issues
+
+without requiring manual intervention.
+
+Development Requirements
+
+The generated code must:
+
+be production ready
+fully executable
+heavily commented
+modular
+object-oriented where appropriate
+use type hints
+use structured logging
+support future model changes by configuration only
+support future batch size changes by configuration only
+Final Instruction To The Coding Model
+
+Generate the complete Python script.
+
+Do not provide explanations.
+
+Do not provide summaries.
+
+Do not provide design commentary.
+
+Return only the final executable Python code.
