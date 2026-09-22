@@ -1,761 +1,207 @@
-"""
-control_automation_assessment.py
-─────────────────────────────────────────────────────────────────────────────
-Control Automation Method Assessment
-Classifies internal controls as ITDMC or MAC using Azure OpenAI GPT-5.4.
-
-Features:
-  - Batch processing (20 controls per API call)
-  - Mini classification framework generated once, reused across batches
-  - Checkpoint save after every batch for resumability
-  - Full validation with retry on bad responses
-  - Three-sheet Excel output: Control Assessment, LLM Audit Log, Run Metrics
-  - Structured logging to file and console
-  - Token cost tracking at control, batch, and run level
-
-Usage:
-  python control_automation_assessment.py
-  python control_automation_assessment.py --force    # ignore checkpoint, restart
-
-Before running:
-  az account set --subscription 6c72e6c5-ed48-4030-b29c-34e2849c9288
-"""
-
-import argparse
-import json
-import logging
-import sys
-import time
-from datetime import datetime
-from pathlib import Path
-from typing import Any
-
-import httpx
-import pandas as pd
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from openai import AzureOpenAI
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  CONFIGURATION — change only these to adapt the script
-# ─────────────────────────────────────────────────────────────────────────────
-
-INPUT_FILE        = Path(r"C:\Users\M061400\ai-test\experiments\Bianca\_controls_.xlsx")
-OUTPUT_FILE       = Path(r"C:\Users\M061400\ai-test\experiments\Bianca\_controls_assessed_.xlsx")
-CHECKPOINT_FILE   = Path(r"C:\Users\M061400\ai-test\experiments\Bianca\_controls_checkpoint.xlsx")
-LOG_FILE          = Path(r"C:\Users\M061400\ai-test\experiments\Bianca\control_assessment.log")
-
-AZURE_ENDPOINT    = "https://ai.eng.azure.srv.westpac.com.au"
-API_VERSION       = "2024-10-21"
-MODEL             = "gpt-5.4"
-REASONING_EFFORT  = "medium"
-MAX_COMPLETION_TOKENS = 12000
-PROXY_URL         = "http://127.0.0.1:9000"
-CA_BUNDLE         = r"C:\Users\M061400\ai-test\cacert.pem"
-
-BATCH_SIZE        = 20
-RETRY_COUNT       = 5
-RETRY_WAIT_BASE   = 5       # seconds; doubles on each retry
-SLEEP_BETWEEN     = 1.0     # seconds between batch calls
-
-# Token cost (USD per 1M tokens) — update if pricing changes
-INPUT_PRICE_PER_M  = 1.75
-OUTPUT_PRICE_PER_M = 14.00
-AUD_USD_RATE       = 0.65   # used to show AUD estimate
-
-VALID_CLASSIFICATIONS = {"ITDMC", "MAC"}
-REQUIRED_FIELDS = {
-    "manual_control_activities",
-    "automated_control_activities",
-    "process_steps",
-    "classification",
-    "rationale",
-    "confidence_level",
-    "key_assumptions",
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  LOGGING
-# ─────────────────────────────────────────────────────────────────────────────
-
-def setup_logging() -> logging.Logger:
-    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    logger = logging.getLogger("ctrl_assess")
-    if logger.handlers:
-        return logger
-    logger.setLevel(logging.DEBUG)
-    fmt = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(fmt)
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.INFO)
-    ch.setFormatter(fmt)
-    logger.addHandler(fh)
-    logger.addHandler(ch)
-    return logger
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  AZURE OPENAI CLIENT  — fresh client per call avoids stale proxy connections
-# ─────────────────────────────────────────────────────────────────────────────
-
-def make_client() -> AzureOpenAI:
-    """Create a fresh AzureOpenAI client with proxy and cert configuration."""
-    token_provider = get_bearer_token_provider(
-        DefaultAzureCredential(),
-        "https://cognitiveservices.azure.com/.default",
-    )
-    return AzureOpenAI(
-        azure_endpoint=AZURE_ENDPOINT,
-        api_version=API_VERSION,
-        azure_ad_token_provider=token_provider,
-        http_client=httpx.Client(
-            proxy=PROXY_URL,
-            verify=CA_BUNDLE,
-            timeout=httpx.Timeout(180.0, connect=30.0),
-            limits=httpx.Limits(max_keepalive_connections=0, max_connections=1),
-        ),
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  PROMPTS
-# ─────────────────────────────────────────────────────────────────────────────
-
-SYSTEM_PROMPT = """
-You are an Internal Controls, Risk Management, and Control Automation Subject Matter Expert
-performing a Control Automation Method assessment.
-
-OBJECTIVE
-Classify each control as ITDMC or MAC using only:
-  - Control Name
-  - Control Objective
-  - Description of Control
-
-Do NOT use Control ID. Apply a conservative classification approach.
-
-─────────────────────────────────────────────────────────────────────────
-DEFINITIONS
-─────────────────────────────────────────────────────────────────────────
-
-ITDMC (IT-Dependent Manual Control)
-  The control relies on system-generated reports, data extracts, dashboards,
-  alerts, workflow notifications, or information from systems,
-  AND the risk mitigation is performed primarily by people through
-  review, investigation, validation, approval, reconciliation, judgement,
-  or follow-up.
-  Technology supports the control but does NOT independently perform a
-  risk-mitigating activity.
-  Automated reports, dashboards, data retrieval and workflow routing do NOT
-  make a control MAC.
-
-MAC (Manual-Automated Control)
-  Classify as MAC ONLY when:
-    (1) A risk-mitigating control activity is explicitly performed
-        AUTOMATICALLY through one or more of:
-        business rule validation, automated calculations,
-        system-enforced restrictions, automated monitoring,
-        automated exception detection, automated matching,
-        automated reconciliation, automated approval logic,
-        automated preventative controls;
-  AND
-    (2) A manual risk-mitigating activity also exists.
-  Both manual AND automated activities must contribute to mitigating the risk.
-
-─────────────────────────────────────────────────────────────────────────
-CRITICAL RULES
-─────────────────────────────────────────────────────────────────────────
-
-CONTROL ACTIVITIES (risk-mitigating):
-  Automated exception detection, automated validation, automated matching,
-  automated reconciliation, manual review, manual approval, manual investigation.
-
-PROCESS STEPS (NOT controls):
-  Running reports, downloading reports, extracting data, accessing systems,
-  generating dashboards, receiving alerts, routing workflows.
-
-Do not classify as MAC solely because systems are used.
-Where automated risk mitigation is not explicitly stated, default to ITDMC.
-When uncertainty exists, default to ITDMC and explain the uncertainty.
-
-─────────────────────────────────────────────────────────────────────────
-QUALITY ASSURANCE
-─────────────────────────────────────────────────────────────────────────
-
-Before finalising each classification:
-  1. Confirm identified control activities actually mitigate risk.
-  2. Confirm process steps are not being treated as controls.
-  3. If automated risk mitigation is not explicitly stated, choose ITDMC.
-  4. Explain why the alternative classification was rejected.
-  5. Do not infer automation from reports, dashboards, workflows or alerts.
-
-─────────────────────────────────────────────────────────────────────────
-OUTPUT FORMAT — STRICT JSON ARRAY, NO MARKDOWN, NO CODE FENCES
-─────────────────────────────────────────────────────────────────────────
-
-Return a JSON array with one object per control in the exact order supplied.
-Each object must use these exact keys:
-
-[
-  {
-    "control_number": <1-based integer within this batch>,
-    "manual_control_activities": "<string>",
-    "automated_control_activities": "<string>",
-    "process_steps": "<string>",
-    "classification": "<ITDMC or MAC>",
-    "rationale": "<string explaining risk mitigation, chosen classification, rejected alternative>",
-    "confidence_level": "<High or Medium or Low>",
-    "key_assumptions": "<string>"
-  }
-]
-
-Confidence definitions:
-  High   — control explicitly describes the relevant activities
-  Medium — some assumptions required
-  Low    — significant assumptions required
-""".strip()
-
-
-MINI_FRAMEWORK_PROMPT = """
-Generate a concise decision dictionary for classifying internal controls as
-ITDMC or MAC. The dictionary should list 12-15 example scenarios (one per line)
-in the format:
-  <scenario description> -> <ITDMC or MAC>
-
-Focus on scenarios relevant to financial services controls.
-Return the dictionary as plain text lines only — no JSON, no markdown.
-""".strip()
-
-
-def build_batch_prompt(
-    controls: list[dict[str, str]],
-    mini_framework: str,
-    batch_number: int,
-    total_batches: int,
-) -> str:
-    """Build the user prompt for a single batch of controls."""
-    lines = [
-        f"BATCH {batch_number} of {total_batches}",
-        f"Controls in this batch: {len(controls)}",
-        "",
-        "CLASSIFICATION REFERENCE (apply consistently):",
-        mini_framework,
-        "",
-        "CONTROLS TO ASSESS:",
-        "",
-    ]
-    for i, ctrl in enumerate(controls, 1):
-        lines += [
-            f"--- Control {i} ---",
-            f"Control Name:      {ctrl.get('control_name', '')}",
-            f"Control Objective: {ctrl.get('control_objective', '')}",
-            f"Description:       {ctrl.get('description', '')}",
-            "",
-        ]
-    lines += [
-        "Return a JSON array with one object per control, in order.",
-        "control_number must match the 1-based position above.",
-        "JSON only. No markdown. No code fences.",
-    ]
-    return "\n".join(lines)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  MINI CLASSIFICATION FRAMEWORK
-# ─────────────────────────────────────────────────────────────────────────────
-
-def generate_mini_framework(log: logging.Logger) -> str:
-    """
-    Call the LLM once to generate a reusable classification reference
-    that is injected into every subsequent batch prompt.
-    """
-    log.info("Generating mini classification framework...")
-    for attempt in range(1, RETRY_COUNT + 1):
-        try:
-            client = make_client()
-            resp = client.chat.completions.create(
-                model=MODEL,
-                messages=[{"role": "user", "content": MINI_FRAMEWORK_PROMPT}],
-                reasoning_effort=REASONING_EFFORT,
-                max_completion_tokens=1000,
-            )
-            framework = resp.choices[0].message.content or ""
-            log.info(f"  Framework generated ({len(framework.splitlines())} lines)")
-            log.debug(f"  Framework:\n{framework}")
-            return framework.strip()
-        except Exception as exc:
-            wait = min(RETRY_WAIT_BASE * 2 ** (attempt - 1), 60)
-            log.warning(f"  Framework attempt {attempt}: {exc}. Wait {wait}s...")
-            time.sleep(wait)
-    log.warning("  Framework generation failed — using built-in fallback.")
-    return (
-        "System generates report reviewed by analyst -> ITDMC\n"
-        "Workflow routes approval to reviewer -> ITDMC\n"
-        "Dashboard reviewed monthly by manager -> ITDMC\n"
-        "Alert sent to analyst who investigates -> ITDMC\n"
-        "Data extract downloaded, manually reconciled -> ITDMC\n"
-        "Automated transaction blocking based on rules -> MAC\n"
-        "Automated exception detection + manual review and sign-off -> MAC\n"
-        "System performs automated reconciliation before human review -> MAC\n"
-        "Automated matching of transactions + manual resolution of breaks -> MAC\n"
-        "System enforces business rule limits; reviewer approves exceptions -> MAC\n"
-        "Automated duplicate payment detection + manual investigation -> MAC\n"
-        "System validates mandatory fields; reviewer approves release -> MAC"
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  RESPONSE PARSING AND VALIDATION
-# ─────────────────────────────────────────────────────────────────────────────
-
-def strip_fences(text: str) -> str:
-    """Remove markdown code fences if the model added them despite instructions."""
-    import re
-    text = re.sub(r"^```(?:json)?\s*", "", text.strip())
-    text = re.sub(r"\s*```$", "", text)
-    return text.strip()
-
-
-def validate_batch_response(
-    data: Any,
-    expected_count: int,
-) -> list[dict]:
-    """
-    Validate the parsed JSON response from a batch call.
-    Returns the list of assessment dicts if valid.
-    Raises ValueError with a descriptive message if not.
-    """
-    if not isinstance(data, list):
-        raise ValueError(f"Expected JSON array, got {type(data).__name__}")
-    if len(data) != expected_count:
-        raise ValueError(
-            f"Expected {expected_count} results, got {len(data)}"
-        )
-    for i, item in enumerate(data, 1):
-        missing = REQUIRED_FIELDS - set(item.keys())
-        if missing:
-            raise ValueError(f"Item {i} missing fields: {missing}")
-        clf = item.get("classification", "")
-        if clf not in VALID_CLASSIFICATIONS:
-            raise ValueError(
-                f"Item {i} has invalid classification '{clf}' "
-                f"(must be ITDMC or MAC)"
-            )
-    return data
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  BATCH API CALL WITH RETRY
-# ─────────────────────────────────────────────────────────────────────────────
-
-def call_batch(
-    controls: list[dict[str, str]],
-    mini_framework: str,
-    batch_number: int,
-    total_batches: int,
-    log: logging.Logger,
-) -> tuple[list[dict], dict]:
-    """
-    Send one batch to the LLM and return (assessments, usage_dict).
-    Retries up to RETRY_COUNT times on failure or invalid response.
-    """
-    prompt = build_batch_prompt(
-        controls, mini_framework, batch_number, total_batches
-    )
-    usage: dict = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-
-    for attempt in range(1, RETRY_COUNT + 1):
-        try:
-            client = make_client()
-            resp = client.chat.completions.create(
-                model=MODEL,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user",   "content": prompt},
-                ],
-                reasoning_effort=REASONING_EFFORT,
-                max_completion_tokens=MAX_COMPLETION_TOKENS,
-                temperature=0,
-            )
-            raw_text = resp.choices[0].message.content or ""
-
-            # Token usage
-            u = getattr(resp, "usage", None)
-            if u:
-                usage = {
-                    "prompt_tokens":     getattr(u, "prompt_tokens", 0),
-                    "completion_tokens": getattr(u, "completion_tokens", 0),
-                    "total_tokens":      getattr(u, "total_tokens", 0),
-                }
-
-            # Parse and validate
-            cleaned = strip_fences(raw_text)
-            parsed  = json.loads(cleaned)
-            results = validate_batch_response(parsed, len(controls))
-
-            log.debug(
-                f"  Batch {batch_number} OK — "
-                f"tokens: {usage['total_tokens']:,}"
-            )
-            return results, usage
-
-        except (json.JSONDecodeError, ValueError) as exc:
-            wait = min(RETRY_WAIT_BASE * 2 ** (attempt - 1), 60)
-            log.warning(
-                f"  Batch {batch_number} validation error (attempt {attempt}): "
-                f"{exc}. Retrying in {wait}s..."
-            )
-            time.sleep(wait)
-
-        except Exception as exc:
-            is_conn = any(
-                w in str(exc).lower()
-                for w in ["connection", "timed out", "timeout", "proxy"]
-            )
-            wait = 90 if is_conn else min(
-                RETRY_WAIT_BASE * 2 ** (attempt - 1), 60
-            )
-            log.warning(
-                f"  Batch {batch_number} API error (attempt {attempt}): "
-                f"{exc}. Retrying in {wait}s..."
-            )
-            time.sleep(wait)
-
-    log.error(f"  Batch {batch_number}: all {RETRY_COUNT} retries exhausted.")
-    return [], usage
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  CHECKPOINT
-# ─────────────────────────────────────────────────────────────────────────────
-
-def load_checkpoint(log: logging.Logger) -> pd.DataFrame | None:
-    """Load checkpoint file if it exists and has data."""
-    if not CHECKPOINT_FILE.exists():
-        return None
-    try:
-        df = pd.read_excel(CHECKPOINT_FILE, engine="openpyxl")
-        if df.empty:
-            return None
-        log.info(
-            f"Checkpoint loaded: {len(df):,} rows from {CHECKPOINT_FILE.name}"
-        )
-        return df
-    except Exception as exc:
-        log.warning(f"Checkpoint load failed ({exc}) — starting fresh.")
-        return None
-
-
-def save_checkpoint(
-    results: list[dict],
-    source_df: pd.DataFrame,
-    log: logging.Logger,
-) -> None:
-    """Save current results to checkpoint file."""
-    try:
-        df = build_assessment_df(results, source_df)
-        df.to_excel(CHECKPOINT_FILE, index=False, engine="openpyxl")
-        log.debug(f"Checkpoint saved: {len(df):,} rows")
-    except Exception as exc:
-        log.warning(f"Checkpoint save failed: {exc}")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  OUTPUT CONSTRUCTION
-# ─────────────────────────────────────────────────────────────────────────────
-
-def build_assessment_df(
-    results: list[dict],
-    source_df: pd.DataFrame,
-) -> pd.DataFrame:
-    """Merge LLM assessment results back onto the source dataframe."""
-    results_df = pd.DataFrame(results)
-    # Align on zero-based row index
-    out = source_df.copy()
-    out["Manual Control Activities"]       = None
-    out["Automated Control Activities"]    = None
-    out["Process Steps (Non-Control Activities)"] = None
-    out["Classification"]                  = None
-    out["Rationale"]                       = None
-    out["Confidence Level"]                = None
-    out["Key Assumptions"]                 = None
-
-    for rec in results:
-        idx = rec.get("_row_index")
-        if idx is None:
-            continue
-        out.at[idx, "Manual Control Activities"]            = rec.get("manual_control_activities", "")
-        out.at[idx, "Automated Control Activities"]         = rec.get("automated_control_activities", "")
-        out.at[idx, "Process Steps (Non-Control Activities)"] = rec.get("process_steps", "")
-        out.at[idx, "Classification"]                       = rec.get("classification", "")
-        out.at[idx, "Rationale"]                            = rec.get("rationale", "")
-        out.at[idx, "Confidence Level"]                     = rec.get("confidence_level", "")
-        out.at[idx, "Key Assumptions"]                      = rec.get("key_assumptions", "")
-    return out
-
-
-def write_output(
-    all_results: list[dict],
-    audit_log: list[dict],
-    source_df: pd.DataFrame,
-    run_stats: dict,
-    log: logging.Logger,
-) -> None:
-    """Write the three-sheet output workbook."""
-    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-
-    assessment_df = build_assessment_df(all_results, source_df)
-
-    # ── Sheet 2: LLM Audit Log ────────────────────────────────────────────────
-    audit_df = pd.DataFrame(audit_log)
-
-    # ── Sheet 3: Run Metrics ─────────────────────────────────────────────────
-    clf_counts = assessment_df["Classification"].value_counts()
-    conf_counts = assessment_df["Confidence Level"].value_counts()
-    total_in    = run_stats.get("prompt_tokens", 0)
-    total_out   = run_stats.get("completion_tokens", 0)
-    n_processed = run_stats.get("controls_processed", 0)
-    est_cost_usd = (
-        total_in  / 1_000_000 * INPUT_PRICE_PER_M +
-        total_out / 1_000_000 * OUTPUT_PRICE_PER_M
-    )
-    est_cost_aud = est_cost_usd / AUD_USD_RATE
-
-    metrics_rows = [
-        ("Total Controls in Input",   len(source_df)),
-        ("Controls Processed",         n_processed),
-        ("Total ITDMC",                int(clf_counts.get("ITDMC", 0))),
-        ("Total MAC",                  int(clf_counts.get("MAC", 0))),
-        ("High Confidence",            int(conf_counts.get("High", 0))),
-        ("Medium Confidence",          int(conf_counts.get("Medium", 0))),
-        ("Low Confidence",             int(conf_counts.get("Low", 0))),
-        ("Prompt Tokens",              total_in),
-        ("Completion Tokens",          total_out),
-        ("Total Tokens",               total_in + total_out),
-        ("Avg Tokens per Control",     round((total_in + total_out) / max(n_processed, 1), 1)),
-        ("Estimated Cost (USD)",       f"${est_cost_usd:.4f}"),
-        ("Estimated Cost (AUD)",       f"A${est_cost_aud:.4f}"),
-        ("Total API Calls (batches)",  run_stats.get("api_calls", 0)),
-        ("Runtime",                    run_stats.get("runtime", "")),
-        ("Batch Size",                 BATCH_SIZE),
-        ("Model",                      MODEL),
-        ("Completed At",               datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-    ]
-    metrics_df = pd.DataFrame(metrics_rows, columns=["Metric", "Value"])
-
-    with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
-        assessment_df.to_excel(writer, index=False, sheet_name="Control Assessment")
-        audit_df.to_excel(     writer, index=False, sheet_name="LLM Audit Log")
-        metrics_df.to_excel(   writer, index=False, sheet_name="Run Metrics")
-
-    log.info(f"Output written: {OUTPUT_FILE}")
-    log.info(
-        f"  ITDMC: {int(clf_counts.get('ITDMC',0)):,}  |  "
-        f"MAC: {int(clf_counts.get('MAC',0)):,}  |  "
-        f"Cost: A${est_cost_aud:.4f}"
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  MAIN
-# ─────────────────────────────────────────────────────────────────────────────
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Control Automation Method Assessment"
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Ignore existing checkpoint and restart from scratch.",
-    )
-    args = parser.parse_args()
-
-    log = setup_logging()
-    start_time = datetime.now()
-    log.info("=" * 70)
-    log.info("  Control Automation Assessment — starting")
-    log.info(f"  Model      : {MODEL}")
-    log.info(f"  Batch size : {BATCH_SIZE}")
-    log.info(f"  Started    : {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-    log.info("=" * 70)
-
-    # ── Load input ────────────────────────────────────────────────────────────
-    if not INPUT_FILE.exists():
-        log.error(f"Input file not found: {INPUT_FILE}")
-        sys.exit(1)
-
-    source_df = pd.read_excel(INPUT_FILE, engine="openpyxl", dtype=str)
-    source_df = source_df.fillna("")
-
-    # Normalise column names (the spec uses A/B/C/D but actual names may vary)
-    cols = source_df.columns.tolist()
-    col_map: dict[str, str] = {}
-    if len(cols) >= 4:
-        col_map = {
-            cols[0]: "control_id",
-            cols[1]: "control_name",
-            cols[2]: "control_objective",
-            cols[3]: "description",
-        }
-        source_df = source_df.rename(columns=col_map)
-
-    log.info(f"Input loaded: {len(source_df):,} controls from {INPUT_FILE.name}")
-
-    # ── Resume from checkpoint ────────────────────────────────────────────────
-    completed_indices: set[int] = set()
-    all_results: list[dict]     = []
-
-    if not args.force:
-        checkpoint_df = load_checkpoint(log)
-        if checkpoint_df is not None:
-            # Identify which rows already have a classification
-            clf_col = "Classification"
-            if clf_col in checkpoint_df.columns:
-                done_mask = checkpoint_df[clf_col].isin(VALID_CLASSIFICATIONS)
-                completed_indices = set(checkpoint_df.index[done_mask].tolist())
-                # Re-hydrate all_results from checkpoint
-                for idx in completed_indices:
-                    row = checkpoint_df.iloc[idx]
-                    all_results.append({
-                        "_row_index":                idx,
-                        "manual_control_activities": row.get("Manual Control Activities", ""),
-                        "automated_control_activities": row.get("Automated Control Activities", ""),
-                        "process_steps":             row.get("Process Steps (Non-Control Activities)", ""),
-                        "classification":            row.get("Classification", ""),
-                        "rationale":                 row.get("Rationale", ""),
-                        "confidence_level":          row.get("Confidence Level", ""),
-                        "key_assumptions":           row.get("Key Assumptions", ""),
-                    })
-                log.info(
-                    f"Resuming: {len(completed_indices):,} already done, "
-                    f"{len(source_df) - len(completed_indices):,} remaining"
-                )
-
-    # ── Generate mini classification framework ────────────────────────────────
-    mini_framework = generate_mini_framework(log)
-
-    # ── Build work queue (rows not yet completed) ─────────────────────────────
-    pending_indices = [
-        i for i in range(len(source_df))
-        if i not in completed_indices
-    ]
-    log.info(f"Controls to process: {len(pending_indices):,}")
-
-    if not pending_indices:
-        log.info("All controls already completed. Writing output.")
-        write_output(all_results, [], source_df, {
-            "controls_processed": len(all_results),
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "api_calls": 0,
-            "runtime": "0s",
-        }, log)
-        return
-
-    # ── Batch processing ─────────────────────────────────────────────────────
-    batches = [
-        pending_indices[i:i + BATCH_SIZE]
-        for i in range(0, len(pending_indices), BATCH_SIZE)
-    ]
-    total_batches   = len(batches)
-    audit_log:  list[dict] = []
-    total_in   = 0
-    total_out  = 0
-    api_calls  = 0
-
-    log.info(f"Total batches: {total_batches:,}")
-
-    for batch_num, batch_indices in enumerate(batches, 1):
-        pct  = batch_num / total_batches * 100
-        elapsed = (datetime.now() - start_time).total_seconds()
-        eta_s   = (elapsed / batch_num) * (total_batches - batch_num) if batch_num > 1 else 0
-        eta_str = (
-            f"{int(eta_s // 3600)}h {int((eta_s % 3600) // 60)}m"
-            if eta_s > 60 else f"{int(eta_s)}s"
-        )
-        cost = (
-            (total_in  / 1_000_000 * INPUT_PRICE_PER_M +
-             total_out / 1_000_000 * OUTPUT_PRICE_PER_M) / AUD_USD_RATE
-        )
-        log.info(
-            f"Batch {batch_num}/{total_batches} [{pct:.1f}%]  "
-            f"ETA {eta_str}  A${cost:.3f}"
-        )
-
-        # Build control dicts for this batch
-        controls_in_batch = []
-        for idx in batch_indices:
-            row = source_df.iloc[idx]
-            controls_in_batch.append({
-                "control_name":      str(row.get("control_name", "")),
-                "control_objective": str(row.get("control_objective", "")),
-                "description":       str(row.get("description", "")),
-            })
-
-        batch_ts = datetime.now().isoformat()
-        results, usage = call_batch(
-            controls_in_batch,
-            mini_framework,
-            batch_num,
-            total_batches,
-            log,
-        )
-        api_calls += 1
-        total_in  += usage["prompt_tokens"]
-        total_out += usage["completion_tokens"]
-
-        # Attach row indices to results
-        if results:
-            for local_pos, idx in enumerate(batch_indices):
-                if local_pos < len(results):
-                    results[local_pos]["_row_index"] = idx
-            all_results.extend(results)
-
-        # Audit log entry
-        audit_log.append({
-            "Row Numbers":        str(batch_indices),
-            "Batch Number":       batch_num,
-            "Timestamp":          batch_ts,
-            "Model Used":         MODEL,
-            "Prompt Tokens":      usage["prompt_tokens"],
-            "Completion Tokens":  usage["completion_tokens"],
-            "Total Tokens":       usage["total_tokens"],
-            "Controls in Batch":  len(batch_indices),
-            "Results Returned":   len(results),
-        })
-
-        # Checkpoint after every batch
-        save_checkpoint(all_results, source_df, log)
-
-        time.sleep(SLEEP_BETWEEN)
-
-    # ── Final output ──────────────────────────────────────────────────────────
-    elapsed_total = (datetime.now() - start_time).total_seconds()
-    runtime_str   = (
-        f"{int(elapsed_total // 3600)}h "
-        f"{int((elapsed_total % 3600) // 60)}m "
-        f"{int(elapsed_total % 60)}s"
-    )
-
-    run_stats = {
-        "controls_processed": len(all_results),
-        "prompt_tokens":      total_in,
-        "completion_tokens":  total_out,
-        "api_calls":          api_calls,
-        "runtime":            runtime_str,
-    }
-
-    write_output(all_results, audit_log, source_df, run_stats, log)
-
-    log.info("=" * 70)
-    log.info(f"  Complete. {len(all_results):,} controls assessed in {runtime_str}")
-    log.info(f"  Output  : {OUTPUT_FILE}")
-    log.info("=" * 70)
-
-
-if __name__ == "__main__":
-    main()
+ROLE
+
+You are an elite executive career coach, former Optiver hiring manager, behavioural interview coach, technical interviewer and compensation negotiation expert.
+
+Your task is to prepare me for a 30-minute recruiter screening with Optiver for the following position:
+
+Principal Data Engineer Sydney, Australia
+
+The goal is NOT to prepare me for the technical interview.
+
+The goal is to maximise my chances of successfully progressing past the recruiter screen and into the next stage.
+
+MY BACKGROUND
+
+Current role:
+
+Executive Manager, NFR Analytics and AI Westpac Banking Group
+
+Key facts:
+
+15+ years experience
+Data Engineering
+Data Platforms
+Risk Analytics
+AI and GenAI
+Azure
+Databricks
+Airflow
+Hadoop/HDFS
+Hive
+Spark
+Teradata
+Python
+SQL
+Azure Synapse
+Azure Data Lake
+Governance
+Data Lineage
+Data Quality
+Access Controls
+Regulatory Reporting
+Analytics Platforms
+
+Previous roles include:
+
+Data Analytics Platform Lead
+Lead Data Engineer
+Senior Manager Data Analytics
+
+Experience includes:
+
+Enterprise analytics platform serving 400+ users
+Zero downtime IFRS 9 Azure migration
+Large scale ETL and Data Engineering
+Governance and controls
+Data product ownership
+Production AI systems
+Architecture ownership
+Stakeholder engagement
+JOB DETAILS
+
+The role focuses on:
+
+Databricks
+dbt
+SQL
+PySpark
+Semantic Layers
+Data Products
+DataHub
+Unity Catalog
+Data Governance
+Metadata
+Data Lineage
+Finance Data
+HR Data
+Procurement Data
+Conversational Analytics
+Databricks Genie
+Architectural Ownership
+Building trusted business-facing data products
+
+Key phrase from role:
+
+"Own the problem from conversation to deployed model."
+
+RECRUITER
+
+Recruiter: Lucy Clay Optiver
+
+Interview duration: 30 minutes
+
+Date: 25 September 2026
+
+TASKS
+
+Perform all of the following:
+
+Part 1
+
+List the top 20 recruiter questions most likely to be asked.
+
+Rank them by probability.
+
+Part 2
+
+Generate ideal answers specifically tailored to my background.
+
+Answers should:
+
+sound natural
+sound human
+avoid corporate jargon
+highlight strengths relevant to Optiver
+avoid sounding rehearsed
+Part 3
+
+Identify concerns the recruiter may have.
+
+Examples:
+
+executive manager applying for IC role
+limited DataHub experience
+limited dbt experience
+compensation concerns
+
+For each concern:
+
+explain why it might arise
+provide the optimal response
+Part 4
+
+Provide a brutally honest fit assessment against the role.
+
+Rate:
+
+SQL
+Data Engineering
+Databricks
+Governance
+Semantic Modelling
+Data Products
+Stakeholder Management
+Architecture
+Unified Data Platforms
+
+Identify my strongest selling points.
+
+Identify likely weak points.
+
+Part 5
+
+Create a 90-second "Tell me about yourself" answer.
+
+Part 6
+
+Create a 2-minute "Why Optiver?" answer.
+
+Part 7
+
+Create a 2-minute "Why are you leaving Westpac?" answer.
+
+This answer must remain positive and professional.
+
+Part 8
+
+Create a salary negotiation strategy.
+
+Cover:
+
+first range to quote
+when to avoid providing a number
+how to discuss compensation professionally
+likely Optiver compensation positioning in Sydney
+Part 9
+
+Conduct a mock recruiter interview.
+
+Ask one question at a time.
+
+After every answer:
+
+critique my response
+score it out of 10
+explain what Optiver would think
+improve the answer
+
+Continue until all major recruiter topics have been covered.
+
+Part 10
+
+At the end provide:
+
+estimated probability of progressing
+biggest success factors
+biggest risks
+final preparation checklist
+
+My honest view, Karan:
+
+The recruiter interview is highly winnable.
+
+The strongest narrative is:
+
+"I've spent the last 15 years building data platforms, data products and governed analytical ecosystems. While I've progressed into leadership, what I enjoy most is solving difficult data and architecture problems. This role gives me the opportunity to stay close to architecture, engineering and building trusted data foundations at scale."
+
+That's the story I would consistently tell throughout the conversation.
