@@ -1,207 +1,474 @@
-ROLE
+You are an elite multi-disciplinary panel consisting of:
 
-You are an elite executive career coach, former Optiver hiring manager, behavioural interview coach, technical interviewer and compensation negotiation expert.
+• Chief Risk Officer of a global systemically important bank
+• APRA-style prudential regulator
+• Internal Audit Executive
+• Operational Risk Executive
+• Controls Assurance Specialist
+• Banking Transformation Consultant
+• Enterprise Architect
+• Data Scientist
+• AI Researcher specialising in Large Reasoning Models
+• Product Strategist
+
+Your objective is NOT to design a solution immediately.
+
+Your first responsibility is to determine what problem should actually be solved.
+
+Challenge every assumption.
+
+Assume millions of dollars can be invested into only ONE strategic capability.
+
+Your task is to identify which capability would create the greatest value and why.
+
+----------------------------------------------------------------------
+BACKGROUND
+----------------------------------------------------------------------
+
+A major financial institution has accumulated more than 10 years of operational history and governance data.
+
+The organisation is considering whether AI and Large Reasoning Models (including embedding models) can be used to derive enterprise-level insights that cannot be obtained through conventional reporting, dashboards, controls testing, risk assessments, audits or manual analysis.
+
+The goal is not incremental improvement.
+
+The goal is to identify a genuinely valuable and differentiated capability.
+
+----------------------------------------------------------------------
+AVAILABLE DATASETS
+----------------------------------------------------------------------
+
+Controls
+
+Approximately 6,666 active controls.
+
+Available fields include:
+
+- Control name
+- Control description
+- Control objective
+- Control rationale
+- Control type
+- Control category
+- Control nature
+- Control frequency
+- Control owner
+- Operating effectiveness ratings
+- Design effectiveness ratings
+- Line 2 ratings
+- Assessment history
+- Assessment rationale
+- Review information
+- Creation dates
+- Risk references
+- Rich textual descriptions
 
-Your task is to prepare me for a 30-minute recruiter screening with Optiver for the following position:
+----------------------------------------------------------------------
 
-Principal Data Engineer Sydney, Australia
+Issues
 
-The goal is NOT to prepare me for the technical interview.
+Approximately 24,821 issues.
+
+Available fields include:
+
+- Issue name
+- Issue description
+- Root cause
+- Root cause hierarchy
+- Issue rating
+- Issue type
+- Themes
+- Control gap indicator
+- Control gap details
+- Issue closure summary
+- Associated incidents
+- Associated controls
+- Associated actions
+- Associated risks
+- Associated obligations
+- Owner information
+- Rich textual descriptions
+- Historical dates
 
-The goal is to maximise my chances of successfully progressing past the recruiter screen and into the next stage.
+----------------------------------------------------------------------
 
-MY BACKGROUND
+Incidents
 
-Current role:
+Approximately 139,744 incidents.
 
-Executive Manager, NFR Analytics and AI Westpac Banking Group
+Available fields include:
 
-Key facts:
+- Incident description
+- Incident cause
+- Root cause
+- Root cause hierarchy
+- Impact ratings
+- Customer impact
+- Regulatory impact
+- Social impact
+- Environmental impact
+- Financial impact
+- Product information
+- Process information
+- Business unit information
+- Write-off amounts
+- Closure summary
+- Remediation narrative
+- Rich textual descriptions
+- Historical dates
 
-15+ years experience
-Data Engineering
-Data Platforms
-Risk Analytics
-AI and GenAI
-Azure
-Databricks
-Airflow
-Hadoop/HDFS
-Hive
-Spark
-Teradata
-Python
-SQL
-Azure Synapse
-Azure Data Lake
-Governance
-Data Lineage
-Data Quality
-Access Controls
-Regulatory Reporting
-Analytics Platforms
+Example impact ratings include:
 
-Previous roles include:
+- No Impact
+- Low
+- Medium
+- High
+- Very High
+- Severe
 
-Data Analytics Platform Lead
-Lead Data Engineer
-Senior Manager Data Analytics
+Financial impact values are available.
 
-Experience includes:
+----------------------------------------------------------------------
 
-Enterprise analytics platform serving 400+ users
-Zero downtime IFRS 9 Azure migration
-Large scale ETL and Data Engineering
-Governance and controls
-Data product ownership
-Production AI systems
-Architecture ownership
-Stakeholder engagement
-JOB DETAILS
+Actions
 
-The role focuses on:
+Approximately 67,921 remediation actions.
 
-Databricks
-dbt
-SQL
-PySpark
-Semantic Layers
-Data Products
-DataHub
-Unity Catalog
-Data Governance
-Metadata
-Data Lineage
-Finance Data
-HR Data
-Procurement Data
-Conversational Analytics
-Databricks Genie
-Architectural Ownership
-Building trusted business-facing data products
+Available fields include:
 
-Key phrase from role:
+- Action name
+- Action description
+- Closure summary
+- Action owner
+- Completion date
+- Rich remediation narrative
 
-"Own the problem from conversation to deployed model."
+Example:
 
-RECRUITER
+Issue identified
+↓
+Action created
+↓
+Action implemented
+↓
+Action closed
 
-Recruiter: Lucy Clay Optiver
+----------------------------------------------------------------------
 
-Interview duration: 30 minutes
+Processes
 
-Date: 25 September 2026
+Process architecture exists.
 
-TASKS
+Available through Holocentric-style process data.
 
-Perform all of the following:
+Includes:
 
-Part 1
+- Process hierarchy
+- Process descriptions
+- Process ownership
+- Activities
+- Tasks
+- Process relationships
+- Historical process information
 
-List the top 20 recruiter questions most likely to be asked.
+----------------------------------------------------------------------
 
-Rank them by probability.
+Applications
 
-Part 2
+Application architecture exists.
 
-Generate ideal answers specifically tailored to my background.
+Includes:
 
-Answers should:
+- Application inventory
+- Application descriptions
+- Process-to-application relationships
+- Application ownership
+- Related metadata
 
-sound natural
-sound human
-avoid corporate jargon
-highlight strengths relevant to Optiver
-avoid sounding rehearsed
-Part 3
+----------------------------------------------------------------------
 
-Identify concerns the recruiter may have.
+Products
 
-Examples:
+Product information exists partially.
 
-executive manager applying for IC role
-limited DataHub experience
-limited dbt experience
-compensation concerns
+Products may be available through:
 
-For each concern:
+- Process data
+- Incident data
+- Issue data
+- Text descriptions
 
-explain why it might arise
-provide the optimal response
-Part 4
+Product relationships may not be fully structured.
 
-Provide a brutally honest fit assessment against the role.
+----------------------------------------------------------------------
 
-Rate:
+Relationship Data
 
-SQL
-Data Engineering
-Databricks
-Governance
-Semantic Modelling
-Data Products
-Stakeholder Management
-Architecture
-Unified Data Platforms
+A cross-reference table exists.
 
-Identify my strongest selling points.
+Relationships may be available between:
 
-Identify likely weak points.
+- Controls
+- Issues
+- Incidents
+- Actions
+- Risks
+- Obligations
+- Processes
+- Applications
+- Other governance objects
 
-Part 5
+IMPORTANT:
 
-Create a 90-second "Tell me about yourself" answer.
+The relationships were created by humans.
 
-Part 6
+They may be:
 
-Create a 2-minute "Why Optiver?" answer.
+- Incomplete
+- Missing
+- Incorrect
+- Inconsistent
+- Outdated
 
-Part 7
+Treat them as evidence.
 
-Create a 2-minute "Why are you leaving Westpac?" answer.
+Do not assume they represent truth.
 
-This answer must remain positive and professional.
+----------------------------------------------------------------------
 
-Part 8
+DATA CHARACTERISTICS
+----------------------------------------------------------------------
 
-Create a salary negotiation strategy.
+Strengths:
 
-Cover:
+- Rich text exists across almost all object types.
+- More than 10 years of history.
+- Large volume of incidents.
+- Large volume of remediation actions.
+- Large volume of governance information.
 
-first range to quote
-when to avoid providing a number
-how to discuss compensation professionally
-likely Optiver compensation positioning in Sydney
-Part 9
+Constraints:
 
-Conduct a mock recruiter interview.
+- LLM context windows are limited.
+- Entire datasets cannot be placed into context.
+- Traditional governance relationships may be imperfect.
+- Product data may require extraction from text.
+- Not every object will be perfectly linked.
 
-Ask one question at a time.
+----------------------------------------------------------------------
 
-After every answer:
+CRITICAL INSTRUCTION
+----------------------------------------------------------------------
 
-critique my response
-score it out of 10
-explain what Optiver would think
-improve the answer
+Do NOT assume that controls are the most important analytical entity.
 
-Continue until all major recruiter topics have been covered.
+Consider whether the most valuable unit of analysis is:
 
-Part 10
+- Control
+- Issue
+- Incident
+- Action
+- Risk
+- Obligation
+- Process
+- Product
+- Application
+- Business capability
+- Customer outcome
+- Failure pattern
+- Remediation pattern
+- Operating model
+- Something else entirely
 
-At the end provide:
+Challenge traditional operational risk thinking.
 
-estimated probability of progressing
-biggest success factors
-biggest risks
-final preparation checklist
+Challenge current control frameworks.
 
-My honest view, Karan:
+Challenge conventional audit approaches.
 
-The recruiter interview is highly winnable.
+Assume a blank-sheet design.
 
-The strongest narrative is:
+----------------------------------------------------------------------
 
-"I've spent the last 15 years building data platforms, data products and governed analytical ecosystems. While I've progressed into leadership, what I enjoy most is solving difficult data and architecture problems. This role gives me the opportunity to stay close to architecture, engineering and building trusted data foundations at scale."
+QUESTIONS TO ANSWER
+----------------------------------------------------------------------
 
-That's the story I would consistently tell throughout the conversation.
+PART 1
+
+What is the highest-value business problem that could be solved using this data?
+
+Provide:
+
+- Problem statement
+- Why it matters
+- Why existing approaches struggle
+- Why AI changes the outcome
+
+----------------------------------------------------------------------
+
+PART 2
+
+Identify at least 15 possible use cases.
+
+For each use case provide:
+
+- Description
+- Business value
+- Regulatory value
+- Executive value
+- Novelty
+- Difficulty
+- Estimated impact
+
+Score each use case from 1-10.
+
+----------------------------------------------------------------------
+
+PART 3
+
+Rank the use cases.
+
+Provide:
+
+- Top 5
+- Why #1 wins
+- Why the others lose
+
+Challenge your own ranking.
+
+----------------------------------------------------------------------
+
+PART 4
+
+What insight would make executives say:
+
+"Wow, we did not know that."
+
+Provide 10 examples.
+
+The insight must be difficult or impossible to discover using traditional analytics.
+
+----------------------------------------------------------------------
+
+PART 5
+
+Determine the optimal unit of analysis.
+
+Choose ONE:
+
+- Control
+- Issue
+- Incident
+- Action
+- Process
+- Product
+- Customer outcome
+- Failure pattern
+- Risk
+- Obligation
+- Operating model
+- Other
+
+Defend your choice.
+
+----------------------------------------------------------------------
+
+PART 6
+
+If you were building only one capability, what would it be?
+
+Provide:
+
+- Name of capability
+- Objective
+- Expected users
+- Expected outputs
+- Why it matters
+
+----------------------------------------------------------------------
+
+PART 7
+
+Design a minimum viable methodology.
+
+Do NOT provide implementation details or code.
+
+Provide only:
+
+Step 1
+Step 2
+Step 3
+...
+
+and explain why each step exists.
+
+----------------------------------------------------------------------
+
+PART 8
+
+Act as a sceptical regulator.
+
+Explain:
+
+- Blind spots
+- Risks
+- Potential misuse
+- Where the analysis could mislead decision makers
+
+----------------------------------------------------------------------
+
+PART 9
+
+Act as a Chief Risk Officer.
+
+You have budget for ONE initiative.
+
+Would you build:
+
+A. Control Intelligence Platform
+
+B. Failure Intelligence Platform
+
+C. Risk Prediction Platform
+
+D. Operational Digital Twin
+
+E. Something Else
+
+Choose only one.
+
+Provide a rigorous justification.
+
+----------------------------------------------------------------------
+
+PART 10
+
+Ignore all existing governance frameworks.
+
+If you had a blank sheet of paper and access to all available data:
+
+What is the most strategically valuable capability that could be built?
+
+Think beyond:
+
+- Controls
+- Issues
+- Incidents
+- Actions
+- Risk management
+
+Describe the capability that could fundamentally change how a bank understands and manages operational risk.
+
+----------------------------------------------------------------------
+
+SUCCESS CRITERIA
+----------------------------------------------------------------------
+
+Do not simply optimise existing governance processes.
+
+Do not assume current operational risk practices are correct.
+
+Do not assume controls are the centre of the universe.
+
+Challenge everything.
+
+Your goal is to identify the single highest-value capability that could be created from the available data.
