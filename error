@@ -1,144 +1,696 @@
-Response to the team’s final amendments
+Thank you. We accept v1.1, the frozen scope and the decision to begin with data profiling.
 
-Verdict: accept all of them, with four refinements. The scope stays frozen, and the amended specification becomes v1.1.
+We also accept your proposed product distinction:
 
-Where I refined or disagreed
-Point	Verdict	Refinement
-3. Per-dimension gating	Accept	D1 to D4 each get their own minimum evidence test from the D0 sub-items. A case can show Mechanism: Misaligned alongside Verification: Insufficient evidence.
-4. D6 labels	Accept	The case card carries the fixed sentence “Failure to identify a relevant event is not evidence that no event occurred.”
-5. D3/D4 evidence classes	Accept, with a consequence for the rules baseline	See below.
-8. Scope coverage	Accept, with a fix to my own wording	See below.
-9. LLAC	Accept	“Final required action completion” is retired. A required-action flag, if one exists, becomes an alternative anchor tested in sensitivity.
-10. Descriptive temporal design	Accept	I remove “compared against the P1 window” entirely. Periods are shown side by side with observable days and no comparison language.
-11. Bedding-in	Accept	30 days is the single pre-registered display configuration. 0 and 90 days are recorded for every case, and no one picks between them after seeing results.
-13. Duplicates and bulk	Accept	D6 thresholds apply to deduplicated occurrences. A bulk incident counts as one occurrence and carries a flag. A Severe or Very High member makes the occurrence Severe.
-14. Privacy scrubbing	Accept, add a test	Label a sample of cases on original and scrubbed text in the secure layer, and report how often D1 or D2 changes. A material change blocks the scrubbing version.
-15. Time boxes	Partly accept	See below.
-16. Split G2	Accept	G2C is run as three arms (current process, rules-assisted, AI-assisted) only if G2B shows the model beats the rules. Otherwise it runs as two arms.
-17. Outcome codes	Accept	Codes become multi-select, except “No concern identified”, which is exclusive.
-18. No-action cohort	Accept	If the pilot has fewer than about 30 such cases, they are reported descriptively with no gate.
-19 and 20. Stages and value test	Accept	Stage 3 can start once G1 passes, overlapping Stage 2, because retrieval depends on validated weakness extraction, not on the workflow experiment.
+1. Outcome-Informed Remediation Assurance Triage, if both Tier 1 and Tier 2 are validated.
 
-Point 5, and the rules baseline. The team is right that an absent phrase does not establish “not evidenced”. But my B1 baseline used exactly that. Both stand if I separate two things. B1 emits a flag (“no recognised verification term”), which is a screening proxy. A D4 value of “Not evidenced in the record” in the product requires model assessment with expert confirmation. If rules win G2B, the deployed rules product shows the flag wording, not the D4 value.
+2. Remediation Documentation Alignment Review, if only Tier 1 is validated.
 
-Point 8, a correction to my own spec. I defined Partial as “some but not all”. That conflicts with silence becoming Unclear. A cleaner structure is a per-element state:
+The Data-Profiling Specification is the correct first artefact because it can invalidate the proposition early, identify the best pilot domain and expose design assumptions that the physical data cannot support.
 
-Covered: the record expressly or structurally supports coverage.
-Expressly limited: the record names a narrower scope, or the only action covering it was cancelled.
-Not established: silence.
+However, several corrections are required before Artefact 2 is executed.
 
-Case-level scope is then Complete if all are covered. It is Partial only if at least one element is expressly limited. It is Unclear if the rest are merely not established. Parent-to-descendant process inheritance counts only under an agreed rule or expert confirmation.
+======================================================================
+1. THE PHYSICAL SCHEMA HAS ALREADY BEEN PROVIDED
+======================================================================
 
-Point 15. Agreed for ground-truth labelling: no forced decisions, and “cannot determine within allocated time” is a recorded outcome. I would keep the fixed time box in the G2C workflow arms, because comparing review processes without a common time limit measures nothing. The distinction is that labelling is untimed and the workflow experiment is timed.
+The physical schema has already been supplied in schema.xlsx.
 
-Where I would change the plan
+It includes physical table and column names for:
 
-1. Sequence the pack so real data is touched first. Fifteen documents before anyone looks at the data is the wrong order, because G0 is the cheapest way to kill the proposition. The data profile and pilot scorecard should run in the first fortnight, in parallel with the drafting.
+- A008E1_ACTN_R
+- A008E1_DIM_CONTROL_R
+- A008E1_DIM_INCIDENT_R
+- A008E1_DIM_ISSUE_R
 
-2. Deliver one artefact at a time. Each one gets your team’s review before the next is built. A fifteen-document drop tends to produce shallow review of all of them.
+The schema includes, among many others:
 
-3. Source-to-target mapping needs your physical schema. I can define logical fields, but not column names. Please send the table and column list (a data dictionary, or even field names only) before artefact 1.
+Issues:
+- ISS_ID
+- ISS_NAME
+- ISS_DESC
+- ISS_RTNG
+- ORGNL_ISU_RTNG
+- IS_THR_CTRL_GAP
+- ISU_DTLS_OF_CTRL_GAP
+- ISS_ROOT_CAS_LVL_1
+- ISS_ROOT_CAS_LVL_2
+- ISS_ISS_RISD_DT
+- ISS_IDNTFCTN_DT
+- ISS_CRTD_DT
+- ISS_CLSD_DT
+- ISS_ISU_CLOSER_SUMMARY
+- ACTN_ID
+- ACTN_COMPLTN_DT
+- ISS_INC_ASSOC_LIST
+- ISS_CTRL_ASSOC_LIST
+- ISS_SRC_CTGR_1
+- ISS_SRC_CTGR_2
+- ISS_ISS_SRC_CTGR_3_LIST
+- AUDIT_FNDNG
+- SOX_DEFCIENCY_TYPE
+- RELTED_TO_SOX
+- ISS_TECHNLGY_THEMATIC
 
-Proposed order:
+Actions:
+- ACT_ID
+- ACT_NAME
+- ACT_DESC
+- ACT_STATUS
+- ACT_EXPECTED_CLOSURE_DT
+- ACT_CLOSURE_DT
+- ACT_CREATION_DT
+- ACT_MODIFICATION_DT
+- ACT_CLOSURE_SUMMARY
+- ACT_REASON_FOR_CANCELLATION
+- ACT_UPDATE_COMMENTARY
+- ACT_TRACKING
+- ACT_FOLDER_LVL_1 through ACT_FOLDER_LVL_6
 
-Order	Artefact	Reason
-1	2. Data-profiling specification	Feeds G0 and pilot selection (delivered below)
-2	13. Pilot-domain scorecard	Consumes the profile
-3	15. Model-risk and intended-use statement	Approvals can start in parallel
-4	3. Eligibility rules template	Needs sponsor policy decisions, which take time
-5	1. Source-to-target mapping	Needs your data dictionary
-6 to 8	4 and 5. Weakness and action-claim schemas, 6. Date and aggregation rules	Define the case object
-9 to 11	7 and 8. Labelling designs, 11. Sampling plan	Gated on schema decisions
-12 to 15	9. Baselines, 10. Prompt contracts, 12. Case card, 14. Decision log	Last, because they depend on everything above
-Artefact 2: Data-profiling specification (v1.0)
+Incidents:
+- INC_ID
+- INC_NAME
+- INC_DESC
+- INC_STUS
+- INC_IMPCT_RTNG
+- INC_INCDNT_CAUSE
+- INC_ROOT_CAUSE
+- INC_ROOT_CAUSE_LVL_1
+- INC_ROOT_CAUSE_LVL_2
+- INC_DT_INCDNT_OCCRD
+- INC_DT_INCDNT_IDNTIFIED
+- INC_ENTRY_DT
+- INC_CLOSURE_DT
+- INC_NET_AMT_WRITTEN_OFF_TO_DATE
+- NUM_OF_CUST_IMPCTD
+- CUS_IMPCT_RTNG
+- FINNCL_IMPCT_RTNG
+- REG_IMPCT_RTNG
+- INC_PRCSS
+- INC_PRD_LVL_1
+- INC_PRD_LVL_2
+- INC_OTHR_SYS
+- INC_DUPLICATE_INCIDENT_ID
+- INC_BULK_INC
+- NEAR_MISS
+- INC_CLSR_SUMMARY
+- ACTNS_TO_PRVNT_REOCURNC
 
-Purpose: establish, for each candidate domain, whether G0 can pass and which design assumptions hold. Output is aggregate only.
+All four principal tables also contain REPORTING_DATE.
 
-Handling rules:
+Therefore, do not wait for another schema submission before starting the logical-to-physical mapping.
 
-Runs in the secure layer. No row-level text leaves it.
-Counts below 10 are suppressed.
-Owner fields are excluded entirely.
-Each check reports the denominator alongside the count.
-A. Population and eligibility
-Check	Measure
-A1	Closed issues per domain by closure year and current rating
-A2	Original versus current rating, and share downgraded before closure
-A3	Eligible count under each entry route R1 to R7 (using placeholder thresholds), plus overlap between routes
-A4	Closed fewer than 90 days before extract
-A5	Umbrella candidates: distribution of linked action count, with the top 1% listed by count only
-A6	Issues with zero linked actions (no-action cohort size)
-A7	Existence and reliability of any structured independent-review field (population rate and value distribution)
-B. Narrative usability
-Check	Measure
-B1	Population rate and length distribution for issue description, root cause, control-gap detail, issue closure summary
-B2	Action description and action closure summary population rate and length distribution
-B3	Boilerplate rate: share of text appearing verbatim or near-verbatim in more than 20 records
-B4	Control-gap detail population when the indicator is set (tests indicator reliability)
-B5	Rater-confirmed usable narrative: two analysts read 50 random eligible cases per domain and mark each narrative component usable or not. Length is only a screening proxy. The G0 figure comes from the rater result.
-C. Action sets
-Check	Measure
-C1	Actions per eligible issue (distribution), and share of issues with 1, 2 to 3, 4 or more
-C2	Action status distribution, and cancelled share
-C3	Cancellation reason populated rate
-C4	Completion date populated for completed actions, and conflicting statuses
-C5	Whether status history and revised due dates exist (decides whether cancellations and extensions can be reconstructed)
-C6	Whether any “required for closure” or dependency field exists (decides LLAC versus an explicit anchor)
-C7	Share of actions that are generic types (training, reminder, procedure update)
-D. Dates
-Check	Measure
-D1	Population and format consistency for each date in the temporal model
-D2	Order violations: completion before action creation, closure before identification, completion in the future
-D3	Issue closed before LLAC, and actions completed after closure
-D4	Share with all linked actions cancelled
-D5	Share of eligible cases with at least 6 months of post-LLAC observation before the extract
-E. Links
-Check	Measure
-E1	Eligible issues with at least one recorded incident link, and with an action link
-E2	Link plausibility signals: incident dated before issue identification, link counts per issue, orphaned references
-E3	Link table duplicates and one-to-many patterns
-F. Incidents
-Check	Measure
-F1	Description and cause population rate and length distribution
-F2	Occurrence, identification and logging date population and lag distribution
-F3	Duplicate identifier and bulk indicator population and prevalence
-F4	Impact and financial field population
-F5	Process and application reference coverage, and share that resolve to the process and application tables
-F6	Pool size: for each eligible issue, the in-scope incident count by process hierarchy and application. Report the share of issues with fewer than 20 or more than 2,000 candidates.
-F7	History depth: share of eligible issues with at least 12 months of incident history before identification
-F8	Source continuity: monthly incident counts per process, with gaps and step changes flagged for system or definition changes
-G. Scope references
-Check	Measure
-G1	Process and application references populated on issues and on actions
-G2	Hierarchy level at which references sit, and share that do not resolve
-G3	Share of issues whose scope is a single process (scope comparison not applicable)
-H. Taxonomy and eras
-Check	Measure
-H1	Root cause hierarchy value counts by year, with additions, retirements and relabelling
-H2	Change log of field definitions, closure requirements and source systems (a document request to data owners, not a query)
-H3	Proposed era boundaries, derived from H1 and H2 and agreed before any sampling
-I. Snapshots and duplicates
-Check	Measure
-I1	Multiple versions or snapshots per issue, action or incident
-I2	Near-duplicate issues (same text, different identifiers)
-J. Reporting indicators
-Check	Measure
-J1	Per process-quarter: median logging lag, share logged as No Impact or Low, logging volume. Feasibility only, not interpretation.
-K. Privacy
-Check	Measure
-K1	Personal names in free text: rate on a rater-reviewed sample of 100 records across issue, action and incident text
-K2	Customer identifiers, account numbers or other sensitive content in incident text, same sample
-K3	Share of entity mentions (applications, products, vendors, channels) that a candidate scrubber would wrongly remove, tested on the same sample
-G0 mapping
-G0 condition	Source checks
-Usable issue and action narrative in at least 80%	B5
-Valid closure dates in at least 90%	D1, D2
-Issue-action link or explicit no-action record in at least 80%	E1, A6
-Usable incident narrative in at least 80%	F1 and a rater check on 50 incidents
-At least 6 months post-window for at least 50%	D5
+What is still outstanding is not the principal object schema. It is:
 
-Checks with no threshold (F6, F7, F8, C5, C6, A7) decide design choices, not pass or fail. Each one gets an “implication” line in the output.
+- The Cross Ref relationship table schema
+- Any action-status history table
+- Any issue-rating history table
+- Process and application table schemas
+- Domain-scoping logic
+- Taxonomy and source-system change documentation
 
-Output
+Please revise the artefact order accordingly.
 
-One page per domain, a G0 table with pass, fail or borderline per condition, a list of design implications (for example “no required-action flag, so LLAC applies”), and a data-quality defect list for the data owners. Defects found here are a deliverable in themselves.
+======================================================================
+2. DISTINGUISH CURRENT SNAPSHOT DATA FROM HISTORICAL STATE DATA
+======================================================================
+
+We have confirmed that REPORTING_DATE determines the snapshot.
+
+However, the profiling specification assumes that several histories can be reconstructed:
+
+- Action status history
+- Revised action due-date history
+- Issue rating history
+- Independent-review history
+- Issue and action scope changes
+- Cancellation timing
+- The action set as it existed when the issue closed
+
+These histories may be reconstructable from repeated REPORTING_DATE snapshots, but that has not been established.
+
+Before using “history” fields, profile:
+
+1. Number of reporting dates available per table.
+2. Reporting-date frequency and gaps.
+3. Number of distinct versions per object ID.
+4. Whether changes to relevant fields persist between snapshots.
+5. Whether old snapshots contain the full text or only current values.
+6. Whether objects disappear after closure.
+7. Whether effective dates and reporting dates produce conflicting versions.
+8. Whether snapshot history begins significantly later than object history.
+
+Create two separate concepts:
+
+- Current-state analysis snapshot:
+  The maximum agreed REPORTING_DATE.
+
+- Reconstructed object history:
+  Changes observed across available REPORTING_DATE snapshots.
+
+Do not assume that reconstructed snapshot history is equivalent to full business-event history.
+
+If historical snapshots are not adequate, revise the MVP to use currently available dates and values only, and remove unsupported history-based tests.
+
+======================================================================
+3. ADD THE CROSS REF TABLE TO THE FIRST DATA REQUEST
+======================================================================
+
+The Cross Ref table is central to the product and should be profiled alongside the four object tables.
+
+The first additional data request should obtain:
+
+- Cross Ref table name
+- Source object type
+- Source object ID
+- Target object type
+- Target object ID
+- Relationship type
+- Relationship status, if available
+- Relationship creation and modification dates, if available
+- REPORTING_DATE, if applicable
+
+Profile:
+
+- Relationship counts by source and target object type
+- Duplicate relationships
+- Self-links
+- Orphaned source and target IDs
+- Directionality
+- Active and historical relationships
+- Many-to-many distributions
+- Link stability over reporting snapshots
+- Differences between Cross Ref links and association-list fields held in the Issue table
+
+The Cross Ref table should be treated as the principal relationship source if its structure and quality support that role. Association-list fields should remain comparison and reconciliation sources.
+
+======================================================================
+4. DO NOT ASSUME A READY-MADE “DOMAIN” FIELD
+======================================================================
+
+The specification repeatedly requires profiling “per domain”, but the physical mechanism for assigning each issue, action and incident to a candidate domain has not been defined.
+
+Possible scoping fields include:
+
+- Folder hierarchy
+- Business unit hierarchy
+- Process
+- Product
+- Risk
+- Data domain
+- Application
+- Existing Payments population rules
+- Cross-reference relationships
+
+Before comparing three candidate domains, define a versioned domain-population rule for each candidate.
+
+For every candidate domain, report:
+
+- Inclusion rule
+- Included object types
+- Number included through each rule
+- Overlaps between rules
+- Orphaned objects
+- Ambiguous objects assigned to several domains
+- Objects included only from narrative text
+- Estimated precision from a reviewed sample
+
+Do not allow domain membership to become an undocumented filter.
+
+Payments is a plausible candidate because an existing population and related process work are available, but it must still be evaluated using the same scorecard as other candidate domains.
+
+======================================================================
+5. SEPARATE G0 DATA READINESS FROM PILOT ATTRACTIVENESS
+======================================================================
+
+Some checks determine whether the data can support the method. Others determine whether a domain is strategically worthwhile.
+
+Keep these separate.
+
+Data-readiness dimensions:
+
+- Narrative usability
+- Date validity
+- Issue-action linking
+- Incident narrative
+- Observation history
+- Process and application resolution
+- Source continuity
+- Privacy feasibility
+
+Pilot-attractiveness dimensions:
+
+- Number of material closed issues
+- Material incident volume
+- Financial and customer consequence
+- SME availability
+- Existing review forum
+- Sponsor commitment
+- Decision capacity
+- Current difficulty of closure challenge
+- Potential to transfer to another domain
+
+A domain may be data-ready but strategically weak.
+
+Another domain may be strategically attractive but fail G0.
+
+The scorecard should show both dimensions rather than combining them into one score.
+
+======================================================================
+6. REVISE THE ACTION-HISTORY CHECKS
+======================================================================
+
+The supplied Action schema confirms fields such as:
+
+- ACT_STATUS
+- ACT_EXPECTED_CLOSURE_DT
+- ACT_CLOSURE_DT
+- ACT_CREATION_DT
+- ACT_MODIFICATION_DT
+- ACT_REASON_FOR_CANCELLATION
+- ACT_UPDATE_COMMENTARY
+- ACT_TRACKING
+
+It does not, from the supplied schema alone, establish dedicated fields for:
+
+- Cancellation date
+- Revised due-date history
+- Status-event history
+- Superseded-action relationships
+- Required-for-closure indicator
+- Action dependencies
+
+Therefore classify these items as:
+
+A. Directly available:
+Current values and explicit dates in the Action table.
+
+B. Potentially reconstructable:
+Changes observed from REPORTING_DATE snapshots.
+
+C. Unavailable unless another table exists:
+Dedicated event history, formal dependencies or required-action flags.
+
+The profiling output must state which category applies.
+
+Do not derive a cancellation date from modification date unless the business meaning is confirmed.
+
+Do not derive an action dependency merely because one action mentions another in free text.
+
+======================================================================
+7. CLARIFY LLAC WHEN ACTIONS ARE MISSING OR CANCELLED
+======================================================================
+
+We accept Latest Linked Action Completion as the neutral default anchor.
+
+Use these states:
+
+- LLAC available:
+  At least one non-cancelled linked action has a valid completion date.
+
+- No completed linked action:
+  Linked actions exist, but none has a valid completion date.
+
+- All linked actions cancelled:
+  No linked action contributes to LLAC.
+
+- No linked action recorded:
+  Separate no-action cohort.
+
+- Action-link uncertainty:
+  Cross Ref and association fields disagree materially.
+
+Issue closure date may be used as an analytical fallback anchor only if clearly labelled as such.
+
+Do not present a fallback issue-closure anchor as the completion of remediation.
+
+======================================================================
+8. ADD TEXT-QUALITY CHECKS BEYOND LENGTH
+======================================================================
+
+The random rater review is essential and should determine narrative usability.
+
+Add checks for:
+
+- Placeholder text such as “N/A”, “refer attached”, “as discussed” or equivalent
+- Text consisting largely of IDs, URLs or system-generated content
+- Duplicated title and description
+- Closure summaries copied from action descriptions
+- Issue descriptions copied across many records
+- Truncated text
+- HTML or formatting artefacts
+- Encoding problems
+- Excessively long lifecycle commentary
+- Contradictory statements within the same object
+- Embedded tables or list structures
+- References to attachments that are unavailable
+
+For each text field, classify usability for its intended task:
+
+- Suitable for weakness extraction
+- Suitable for action-claim extraction
+- Suitable for implementation-evidence review
+- Suitable for verification-evidence review
+- Suitable for incident retrieval
+- Not suitable
+
+A narrative may be useful for one task and unusable for another.
+
+Therefore, one overall “usable narrative” percentage is not sufficient by itself.
+
+======================================================================
+9. CHANGE THE BOILERPLATE CHECK
+======================================================================
+
+“Appears verbatim or near-verbatim in more than 20 records” is a useful screening rule but should not be treated as inherently defective.
+
+Standard wording may be expected for:
+
+- Repeated control-gap templates
+- Standard action requirements
+- Regulatory programmes
+- Bulk incidents
+- Common closure attestations
+- System-generated records
+
+The profile should distinguish:
+
+- Identical full-text records
+- Shared template with meaningful variable content
+- Generic wording with little case-specific content
+- Repeated text caused by duplicate records
+- Legitimate standard statements
+
+Measure how much unique case-specific information remains after removing common template language.
+
+This residual content is more informative than the frequency of repeated text alone.
+
+======================================================================
+10. ADD DATA-LEAKAGE AND LABEL-LEAKAGE CHECKS
+======================================================================
+
+Some fields may directly reveal the target judgement.
+
+Examples include:
+
+- Closure commentary explicitly stating independent verification
+- An action category that already labels the intervention
+- A control-gap field containing the expected remediation
+- Lifecycle comments written after later incidents occurred
+- Current fields updated after issue closure
+- Incident links added retrospectively
+
+Before modelling, identify:
+
+- Fields created or modified after the analytical anchor
+- Fields visible to the current reviewer but not available at closure
+- Fields that directly encode review outcomes
+- Retrospective relationship changes
+- Post-closure lifecycle commentary
+
+Maintain two views:
+
+1. Review-current view:
+Everything legitimately available to the reviewer today.
+
+2. Historical-as-at-closure view:
+Only information known by the relevant date, where reconstructable.
+
+The initial decision product may use the review-current view because it is triaging reviews today.
+
+However, any later historical performance or predictive experiment must use an as-at view to avoid leakage.
+
+======================================================================
+11. REFINE INCIDENT POOL PROFILING
+======================================================================
+
+F6 should profile more than candidate count.
+
+For each eligible issue, report incident-pool size under:
+
+- Exact process match
+- Descendant-process match
+- Application match
+- Exact process or application match
+- Domain-wide pool
+- Existing recorded issue-to-incident links
+
+Also report:
+
+- Number of deduplicated occurrences
+- Number of bulk incidents
+- Number missing occurrence date
+- Number missing usable narrative
+- Number outside continuous data-history periods
+- Candidate counts by temporal period
+
+This will determine whether scope filtering is:
+
+- Too restrictive
+- Too permissive
+- Inconsistent across eras
+- Dependent mainly on one reference type
+
+Do not finalise the retrieval architecture until this distribution is known.
+
+======================================================================
+12. REFINE PROCESS AND APPLICATION RESOLUTION
+======================================================================
+
+A populated process or application field is not the same as a successfully resolved enterprise entity.
+
+Profile separately:
+
+- Field populated
+- Identifier present
+- Name only
+- Exact match to master data
+- Multiple possible matches
+- Historic or retired entity
+- Free-text value
+- Unresolved value
+- Hierarchy node available
+- Entity relationship current at the relevant time, where history exists
+
+Application and process names can change. Preserve stable identifiers where available.
+
+If stable identifiers are absent, entity resolution becomes a separate risk and should not be hidden inside the retrieval pipeline.
+
+======================================================================
+13. REVISE THE PRIVACY CHECK
+======================================================================
+
+The privacy sample should not be limited to personal names, account numbers and obvious identifiers.
+
+It should test whether text contains:
+
+- Customer names
+- Employee names
+- Email addresses
+- Telephone numbers
+- Account and reference numbers
+- Addresses
+- Free-text health or vulnerability information
+- Complaint details
+- Other sensitive customer information
+- Legal or investigation material
+
+The product team should not independently define policy for these fields.
+
+The profile should identify occurrence and recommend review by the appropriate privacy, data and model-risk functions.
+
+The output should not reproduce sample sensitive content. Report only categories, rates and false-removal behaviour.
+
+======================================================================
+14. COUNTS BELOW 10: DISTINGUISH INTERNAL ANALYSIS FROM SHARED OUTPUT
+======================================================================
+
+Suppressing counts below 10 may be appropriate in shared artefacts, but blanket suppression can prevent internal quality analysis.
+
+Use:
+
+- Secure analytical output:
+  Exact counts accessible only to authorised analysts.
+
+- Shared profiling output:
+  Suppressed or banded low counts where required.
+
+The controlling privacy and disclosure standard should determine the threshold.
+
+Do not treat 10 as universal unless it is confirmed by the relevant policy owner.
+
+======================================================================
+15. ADD ESTIMATED TOKEN AND COST PROFILING
+======================================================================
+
+Because the later stages use embeddings and reasoning models, profile:
+
+- Character count
+- Word count
+- Estimated embedding tokens
+- Estimated reasoning-model input tokens
+- Distribution by object type and field
+- Number of cases exceeding proposed payload limits
+- Duplicate text that should not be reprocessed
+- Hash-based unchanged records
+- Expected candidate-incident text volume per issue
+
+This is not only a cost exercise.
+
+It determines:
+
+- Whether element extraction requires chunking
+- Whether action sets fit in a single reasoning call
+- Whether lifecycle commentary should be reduced
+- Whether retrieved incidents need staged summarisation
+- Whether selected fields add useful evidence or only token volume
+
+Keep structured metadata outside narrative payloads wherever possible.
+
+======================================================================
+16. ADD SNAPSHOT-SPECIFIC DEDUPLICATION RULES
+======================================================================
+
+The business has confirmed that REPORTING_DATE identifies the snapshot.
+
+For current-state profiling:
+
+1. Select the agreed maximum REPORTING_DATE independently for each table.
+2. Confirm whether all tables share that date.
+3. If not, report the date mismatch rather than silently mixing snapshots.
+4. Within the selected snapshot, test one-row-per-business-ID.
+5. If duplicates remain, identify the differentiating fields.
+6. Do not automatically select one duplicate without a documented rule.
+7. Preserve original row counts and deduplicated object counts.
+
+For historical profiling:
+
+- Retain each object by REPORTING_DATE.
+- Do not confuse repeated snapshots with a newly created issue, action or incident.
+- Use business IDs, not dimensional surrogate keys, for longitudinal tracking unless data owners state otherwise.
+
+======================================================================
+17. PROFILE THE NO-ACTION COHORT SEPARATELY
+======================================================================
+
+For closed issues with no linked action, profile:
+
+- Count by domain, era and issue rating
+- Source category
+- Control-gap indicator
+- Closure-summary usability
+- Whether closure text explains why no action was required
+- Whether an alternate remediation reference appears
+- Whether Cross Ref and Issue association fields agree that no action exists
+
+Do not include this cohort when calculating issue-action link accuracy or Tier 1 action-alignment feasibility.
+
+Report it as a separate potential product branch.
+
+======================================================================
+18. DO NOT LIST THE TOP 1% OF UMBRELLA CASES BY COUNT ONLY AS THE MAIN TEST
+======================================================================
+
+Many linked actions may indicate an umbrella issue, but it may also indicate a legitimately complex material issue.
+
+Use multiple signals:
+
+- Action count
+- Description breadth
+- Number of distinct mechanisms identified during later labelling
+- Scope breadth
+- Programme language
+- Multiple products, processes or applications
+- Long duration
+- Large number of linked incidents
+
+At profiling stage, call these “complex or potential umbrella candidates”.
+
+Do not automatically exclude them until the sponsor and SMEs agree on an operational definition.
+
+For the first labelling experiment, complex cases may be excluded if action-set size makes comparison impractical, but the exclusion must be transparent.
+
+======================================================================
+19. REVISED FIRST ARTEFACTS
+======================================================================
+
+We accept an iterative one-artefact-at-a-time approach, but the first deliverable should contain two tightly related components:
+
+Artefact 1A: Logical-to-physical mapping draft
+
+Use the supplied schema to map every currently known logical concept to:
+
+- Physical table
+- Physical column
+- Availability status
+- Current versus historical meaning
+- Required business definition
+- Profiling check using the field
+
+Mark unresolved items rather than waiting for another schema.
+
+Artefact 1B: Executable data-profiling specification
+
+Revise the proposed profile using:
+
+- Confirmed physical fields
+- Explicit unknowns
+- Current-state versus historical checks
+- Cross Ref schema request
+- Domain-scoping definition
+- Task-specific narrative usability
+- Privacy and leakage checks
+- Token-volume profiling
+- Duplicate and snapshot rules
+
+Artefact 2: Pilot-domain scorecard
+
+This should consume the profiling output and separately report:
+
+- Data readiness
+- Strategic attractiveness
+- SME and sponsor readiness
+- Likelihood of transferable learning
+
+Artefact 3: Intended-use and model-risk statement
+
+This can begin in parallel using the frozen v1.1 scope.
+
+======================================================================
+20. FINAL DECISION
+======================================================================
+
+We accept:
+
+- The frozen v1.1 strategic scope
+- The profiling-first sequence
+- The revised evidence treatment
+- Per-dimension gating
+- LLAC terminology
+- Descriptive temporal periods
+- Duplicate and bulk handling
+- Scrubbing impact testing
+- Untimed ground-truth labelling
+- Common time limits in workflow comparison
+- Failure-specific gates
+- One artefact at a time
+
+We do not need another strategic use-case proposal.
+
+Before executing the profile, incorporate the corrections concerning:
+
+- Existing physical schema availability
+- Cross Ref schema
+- Snapshot-history feasibility
+- Domain population rules
+- Task-specific narrative usability
+- Current versus historical data views
+- Leakage
+- Token volume
+- No-action cases
+- Complex or umbrella cases
+- Privacy-controlled aggregation
+
+After these amendments, Artefact 1A and Artefact 1B should be produced.
+
+Do not expand the use case or reintroduce controls, enterprise clustering, prediction or causal claims.
