@@ -1,270 +1,580 @@
-Response to the team’s refinement
+Thank you. We accept the proposed first decision product and agree with the narrower decision:
 
-Choice: A. Confirm Remediation Scope and Mechanism Alignment Review as the first decision product, with two changes.
+“Which closed material issues should receive an independent closure-quality review this quarter?”
 
-Narrow the decision. The decision is not “alignment”. It is which closed material issues receive an independent closure-quality review this quarter. That is a real selection problem with finite review capacity.
-Reverse the experiment order. Your Gate 1 (pattern clustering against the taxonomy) is not a prerequisite for this product. Running it first delays the first decision for no gain.
+We also accept the reversal of the original experiment order. It is sensible to test issue-to-action alignment before constructing an enterprise failure-pattern catalogue.
 
-Why A beats the alternatives:
+However, our acceptance is conditional on several refinements.
 
-Control relevance and rating challenge depend on the weakest links in the data.
-A severe-and-novel product has too few cases to validate.
-Pattern discovery with no product risks the “interesting but unused” outcome you already flagged.
-Remediation alignment can be checked by an expert reading two documents. It needs no denominators for its core classes and sits directly on a decision someone already owns.
+The proposed product is highly practical, but it now risks becoming too narrow and losing the strategic value that motivated Failure Pattern Intelligence in the first place.
 
-Why reverse the order: classes A to D compare what the issue said was wrong with what the action and closure note say was done. That needs no clustering, no incidents and no exposure data. Class E (similar events after closure) needs targeted retrieval: given the issue’s mechanism and scope, find later incidents that plausibly share it. That is a retrieval task, not a catalogue. Mechanism-labelling feasibility is still tested, inside the alignment labelling. The pattern catalogue stays the strategic foundation, and the expert labels from this work become its seed data.
+======================================================================
+OVERALL VERDICT
+======================================================================
 
-Where AI will and will not add value: some of C (implementation unclear) and D (no verification) can be caught by simple rules, such as an empty or very short closure note. Language understanding is needed mainly for A, B and E. The experiment must test this, because if rules capture most of the value, that is a finding in its own right and a cheaper product.
+Accept the first decision product, but rename and strengthen it.
 
-Response to each point
-Team point	Verdict
-1. MVP too broad, two gates	Accept the two-gate idea, re-sequenced as above
-2. Define “beat”	Accept, thresholds in section 2
-3. Decompose the pattern object	Accept
-4. Role of issues	Accept, with a separate weakness statement
-5. Alignment as first use case	Accept, tiered
-6. Controls as a separate track	Accept, fully deferred from the MVP
-7. Enterprise embedding	Reject Approach A, recommend B
-8. Exposure as a data gate	Accept, applies to Tier 2 only
-9. Two evidence layers	Accept, add one state
-10. Explicit gates	Accept
-1. Experiment and product structure
-A. Experiment: can we reproduce expert judgement of issue-to-action alignment, and retrieve post-closure similar incidents better than current methods?
-B. Usable product: a ranked shortlist for one named reviewer in one existing forum.
-C. Postponed: pattern clustering, controls, rating challenges, products, tasks, structural hypotheses, prediction.
+Recommended name:
 
-Two gates are preferable to the full MVP. The full MVP would leave a failure hard to attribute to pattern validity, link quality, narrative quality or the model.
+Outcome-Informed Remediation Assurance Triage
 
-2. What “beat” means
+The product should identify closed material issues requiring independent review using two complementary evidence layers:
 
-Thresholds are starting proposals to agree with model risk before any results are seen. They are judgements, not derived values.
+1. Internal remediation alignment:
+   Does the action set address the weakness, mechanism and scope described by the issue?
 
-Baselines
+2. Post-closure outcome evidence:
+   Were potentially similar adverse events observed after the remediation was completed?
 
-B1: structural rules (missing or short closure text, single action, standard wording).
-B2: existing taxonomy match (root cause hierarchy).
-B3: keyword and BM25 search on descriptions.
-B4: existing human cross-references.
-B5: a subject-matter expert (SME) with current tools and a fixed time box. This is the real test of “would not readily identify”.
+The second layer must not be treated as proof that the remediation succeeded or failed. However, it should be part of the first usable product rather than an optional later enhancement.
 
-Metrics and thresholds
+Without the outcome layer, the product primarily assesses documentation quality.
 
-Alignment classes: model agreement with adjudicated expert labels at least 80% of the experts’ own agreement, and macro-F1 at least 0.15 above B1.
-Retrieval: at k=20, at least 25% more expert-confirmed relevant incidents than the best baseline at equal or better precision. Relevance is judged blind on pooled results from all methods, so the new method is not favoured.
-Stability: the above holds on a locked test set made up of the most recent closures.
+With both layers, it assesses whether closure evidence appears aligned with the stated weakness and whether subsequent observed outcomes warrant further review.
 
-Minimum expert agreement: kappa or alpha of at least 0.6.
+This preserves the strategic connection to Failure Intelligence.
 
-Stop:
+======================================================================
+1. WHAT WE ACCEPT
+======================================================================
 
-Agreement is below 0.4 after one redefinition of the labelling guidance.
-The model does not beat the best baseline.
-Rules match the model on every class.
+We accept the following elements:
 
-Proceed despite modest improvement: only if the cases unique to the new method are expert-confirmed as material (cross-label or cross-business hits the baselines cannot reach), or review time falls by at least half at equal quality.
+- The primary decision is which closed material issues receive independent review.
+- The primary user is the Line 2 role responsible for independent issue and remediation oversight.
+- The remediation alignment case is the correct primary analytical object for the initial product.
+- Controls and rating challenges should be deferred.
+- Enterprise-wide clustering should be deferred.
+- Development should begin in one domain and transfer should later be tested in a second.
+- Model performance must be compared against rules, taxonomy, keyword retrieval, cross-references and a time-boxed SME baseline.
+- Expert agreement and decision usefulness must be tested before scaling.
+- Issue weakness statements should remain distinct from incident failure mechanisms.
+- The system must not conclude that remediation failed.
+- Owner, individual and team ranking must remain prohibited.
+- If rules perform as well as the reasoning model, the organisation should implement the rules-based method.
+- The work should create labelled mechanism and alignment data that can later seed Failure Pattern Intelligence.
 
-3. Decomposing the pattern object
+These decisions make the proposition more executable and governable.
 
-Yes, decompose. A composite object clusters on noise from context and consequence. Use six elements:
+======================================================================
+2. TIER 2 SHOULD NOT BE OPTIONAL FOR THE USABLE PRODUCT
+======================================================================
 
-Mechanism: a short structured statement (what failed, at which step, in which direction). This is the thing embedded and compared.
-Occurrence: the incident or issue record.
-Operating context: process, application, product and scope, attached separately.
-Enabling condition: change, hand-off or third party, attached separately.
-Consequence: used for materiality only.
-Intervention: the action or response.
+We agree that the first analytical experiment can begin with Tier 1:
 
-A “failure pattern” becomes a derived view: a mechanism within a defined context slice. It is not a stored object. Recurrence then means recurrence of a mechanism in a stated context. Records may carry several mechanism tags. This is more stable because mechanism text embeds without context noise. The cost is more labelling objects, but each label is shorter.
+- Issue narrative
+- Control-gap details
+- Stated root cause
+- Action descriptions
+- Action closure summaries
+- Issue closure summary
 
-The MVP uses mechanism, occurrence, context (process and application only) and intervention. Consequence is used only to rank.
+However, we do not agree that the final usable product should proceed using Tier 1 evidence alone.
 
-4. Role of issues
-Issues do not join incident clusters. Each gets its own weakness statement, built mainly from the control-gap detail and description.
-An issue without incidents can be assessed for alignment but cannot form a failure mechanism.
-IS_THR_CTRL_GAP is a stratifier and a filter. Test its precision on the labelled sample before relying on it.
-Issue-to-action links are the strongest cross-reference, because actions are raised from issues, but verify them on the sample. Issue-to-control links are weak evidence and out of the MVP.
-Umbrella and programme issues are detected from signals such as many linked actions, broad text, several mechanisms and programme wording. They are excluded from the first release and reported separately.
-The stated root cause is recorded as a claim with its source. It is never used as truth.
-Yes, weakness statements are a separate vocabulary. The link between a weakness and a failure mechanism is a model-derived hypothesis (“this weakness would permit this mechanism”).
-5. Remediation alignment
+Tier 1 can identify:
 
-Compare the issue description, stated root cause and control-gap detail against the action description and closure summary, then against incidents before and after closure within the same process and application scope. Dates: action completion, issue closure, incident occurrence.
+- Mechanism mismatch
+- Scope mismatch
+- Implementation uncertainty
+- Verification evidence gaps
 
-Use your seven classes as tags with one primary tag per case:
+These are important findings, but they are primarily based on what the organisation documented.
 
-Tier 1 (document-internal): A, B, C, D and G.
-Tier 2 (needs incidents): E.
-Deferred: F, because proving movement of a problem into another scope is hard.
+The defining value proposition of Failure Intelligence is to compare the organisation’s stated remediation with subsequently observed outcomes.
 
-Data readiness risk: if most closure notes lack verification wording, D will fire on nearly everything and stop discriminating. Measure that base rate first. If it is very high, report D as a population finding for the issue-management policy owner and rank individual cases on A, B and E.
+Therefore:
 
-6. Controls
+- Tier 1 should be the first experiment.
+- Tier 2 should be the second gate.
+- Both should be required before calling the result the first usable Failure Intelligence product.
 
-Fully deferred. Control display in the case card is context only. When the track opens, it runs as six separate gates:
+If Tier 1 succeeds but Tier 2 retrieval fails, the organisation may still deploy a narrower:
 
-Relevance retrieval.
-Role classification (prevent, detect, mitigate, recover).
-Scope alignment.
-Temporal alignment.
-Assessment alignment.
-Rating-challenge candidates.
+“Remediation Documentation Alignment Review”
 
-Gates 4 and 5 are mostly deterministic date and field rules, not LLM judgements. Only 1 to 3 need a model.
+However, it should not be described as Outcome-Informed Remediation Assurance or Failure Intelligence.
 
-7. Approach B, single domain first
+Please make this distinction explicit.
 
-Approach A produces many unreviewable clusters, widens privacy and governance scope, and calibrates against taxonomy drift across domains that behave differently. Build and validate in one domain, then test transfer to a second. The transfer test is itself informative.
+======================================================================
+3. THE PRODUCT MUST ASSESS THE ACTION SET, NOT ONLY INDIVIDUAL ACTIONS
+======================================================================
 
-Ideal pilot domain
+One issue may have multiple actions.
 
-Characteristic	Target
-Closed material issues with actions	Enough to label several hundred cases
-Incident volume	Thousands, so post-closure retrieval is meaningful but reviewable
-Narrative quality	Closure notes with real content in most records
-Issue-action link coverage	Present for most closed material issues
-Impact	Meaningful financial or customer consequence
-Process and application data	Available for scope labels
-SME availability	Two independent reviewers plus an adjudicator
-Existing taxonomy	Moderate quality, neither trivially good nor absent
-Sponsor	A named reviewer who owns closure challenge
+The remediation response must therefore be assessed at three levels:
 
-Payments is plausible because process and linkage work exists and exposure data such as transaction volumes is likely. Existing work also means the domain may be unrepresentative. Profile three candidate domains against this table for a week, then choose.
+1. Individual action alignment:
+   What specific element of the weakness does this action address?
 
-8. Exposure normalisation
-Tier 1: no exposure data needed.
-Tier 2 essential: a period-matched measure of overall incident activity in the domain, and reporting indicators (below).
-Desirable: transaction or customer volumes for the scope, change and release counts, application usage, provider volumes.
+2. Collective action-set coverage:
+   Do all actions together address the issue’s identified mechanisms and affected scope?
 
-Can be reported without exposure data:
+3. Dependency and sequencing:
+   Are certain actions dependent on other actions, and was the complete remediation set closed before the issue itself was closed?
 
-Counts of retrieved similar events in equal-length windows before and after closure.
-Dates, severity and loss.
+A single action may appear narrow while the complete action set is appropriate.
 
-Must not be claimed:
+Conversely, several actions may each seem relevant while collectively leaving an important mechanism or scope unaddressed.
 
-Rates, improvement or deterioration, comparative effectiveness, “reduced risk”.
+Please define the remediation alignment case as:
 
-Process and application footprint (number of steps, systems touched) measures complexity, not exposure. Do not use it as a denominator.
+- One issue
+- The complete linked action set
+- Individual action statuses
+- Action creation and completion dates
+- Cancellation reasons where applicable
+- Action closure evidence
+- Issue closure evidence
+- Relevant operating scope
+- Post-closure incident candidates
 
-Reporting indicators, at process level only: median lag from occurrence to logging, share of incidents logged as No Impact or Low, and logging volume trend.
+The model should assess both individual-action alignment and collective remediation coverage.
 
-Raw counts are still decision-useful when similar events appear after closure in the same scope with none in an equal prior window, or for any single Severe event. Tier 1 uses no counts.
+======================================================================
+4. DEFINE THE TEMPORAL ANCHOR CORRECTLY
+======================================================================
 
-9. Evidence layers
+The proposal refers to incidents before and after action closure, but an issue may have several actions with different completion dates.
 
-I would add a fifth executive state: Inferred, not yet reviewed. Without it, unreviewed model output blends into confirmed findings. “Inferred and expert-confirmed” should require agreement from two reviewers, or one plus adjudication.
+Please define the relevant dates separately:
 
-Analytical	Executive
-Observed [O]	Directly recorded
-Model-derived [M], reviewed	Inferred and expert-confirmed
-Model-derived [M], unreviewed	Inferred, not yet reviewed
-Statistical association [S]	Statistically associated
-Expert judgement [E]	Expert assessment
-Causal [C]	Causal conclusion not established (always shown)
-10. Gates
+- Issue identification date
+- Issue creation date
+- Original expected closure date
+- Revised expected closure date
+- Each action completion date
+- Latest required action completion date
+- Issue closure date
+- Incident occurrence date
+- Incident identification date
+- Incident logging date
 
-Thresholds are proposals to be agreed up front. Method repair is permitted at G1 to G3 and G4 only within the stated limits. The test set is touched once.
+The post-remediation observation period should not automatically begin at the first action completion date.
 
-Gate	Metric and threshold	Approver	If missed
-G1 Data readiness	Usable narrative in at least 80% of in-scope issues and actions, valid closure dates in at least 90%, issue-action link in at least 80%	Sponsor and data owner	One retry with another domain or extraction fix, then stop
-G2 Labelling feasibility	Kappa or alpha of at least 0.6 on alignment class and mechanism match. 0.4 to 0.6 allows one redefinition.	Independent SME lead and model risk	Stop below 0.4 after redefinition
-G3 Performance	As in section 2, on the locked test set	Model risk	Two tuning cycles on development data, then stop
-G4 Usefulness	At least 70% of confirmed cases lead the reviewer to name a distinct review action. Classes with no distinct action are merged.	Primary user	Redefine classes once
-G5 Decision yield	At least 50% of the top 30 judged “worth review” by the reviewer, and at least 5 confirmed cases that B5 did not surface	Primary user and sponsor	Stop the product, keep the analytics
-G6 Adoption	Named reviewer commits to use the queue in an existing forum for two consecutive cycles and logs decisions	Primary user’s manager	Stop. No repair, since the cause is organisational.
-Final use-case specification
+Candidate anchors include:
 
-1. Use case. For closed, material issues in one pilot domain, compare what the issue said was wrong with what the actions and closure note say was done, and with similar incidents after closure, and produce an evidence-graded shortlist for independent review. It does not conclude that remediation failed.
+- Date of the final non-cancelled required action completion
+- Issue closure date
+- A model-derived implementation date supported by closure text
+- A combination based on the remediation structure
 
-2. Primary user. The Line 2 lead for remediation and issue-closure oversight in the pilot domain. They hold independent challenge authority and do not own the actions being reviewed.
+Please recommend a default temporal rule and specify exceptions.
 
-3. Primary decision. Which closed material issues receive an independent closure-quality review this quarter.
+The system must also identify cases where:
 
-4. Primary analytical object. The remediation alignment case: an issue, its closed action set, closure evidence, scope, and a post-closure incident retrieval set. Mechanism statements are supporting objects.
+- The issue closed before all actions completed
+- Actions completed after issue closure
+- Actions were cancelled
+- Closure dates conflict across records
+- The action set changed near closure
+- Implementation may require a bedding-in period
 
-5. Source tables.
+These may be valuable review signals in their own right.
 
-Issues
-Actions
-Issue-action cross-reference
-Incidents (Tier 2 only)
-Incident-to-process and incident-to-application references
-Process and application tables for scope names only
+======================================================================
+5. ‘MATERIAL ISSUE’ REQUIRES AN EXPLICIT DEFINITION
+======================================================================
 
-Excluded: controls, assessments, obligations, products, tasks.
+The entire product depends on selecting closed material issues, but “material” remains undefined.
 
-6. Required fields.
+Please define a transparent eligibility framework using available fields such as:
 
-Issues: identifier, description, root cause and hierarchy, rating, type, IS_THR_CTRL_GAP and detail, closure summary, open and close dates, scope references.
-Actions: identifier, description, closure summary, completion date, linked issue.
-Incidents: description, cause and root cause hierarchy, occurrence, detection and logging dates, impact ratings, financial impact, scope references.
-Owner fields: dropped at ingestion.
+- Issue rating
+- Original issue rating
+- Control-gap indicator
+- Audit finding status
+- Technology issue score
+- Financial impact from associated incidents
+- Customer impact
+- Regulatory impact
+- Number and severity of associated incidents
+- Issue closure date
+- Issue type
+- SOX or other relevant classifications where appropriate
 
-7. First experiment.
+Avoid creating one opaque materiality score.
 
-1a, alignment: two SMEs label alignment classes from issue and action text, blind to the model. Compare the model and the rules baseline with the adjudicated labels. Then rank the remaining cases and have SMEs review the top of the list plus a random sample of unflagged cases to find misses.
-1b, retrieval: only if 1a passes. For each sampled issue, retrieve post-closure incidents with each method and judge the pooled results blind.
-Why this can invalidate the concept: 1a alone fails it if experts cannot agree or if rules do as well as the model.
+Instead, define clear entry routes, for example:
 
-8. Validation sample. Size comes from the precision needed, not from a round number. As a planning assumption, use about 400 double-labelled issue-action cases and about 80 retrieval pools, revised after the first 100 labels reveal agreement and class prevalence.
+- High-rated issue
+- Issue associated with a Severe or Very High incident
+- Issue associated with material financial or customer impact
+- Audit or regulatory issue
+- Explicit control-gap issue meeting defined criteria
 
-Stratify by issue rating, closure year (to cover taxonomy changes), sub-process and closure note length.
-Oversample rare classes so each of A to F has about 30 examples.
-Keep a separate simple random sample of about 150 cases for prevalence estimates, because oversampling distorts prevalence.
-Split into development, calibration and a locked test set of the most recent closures.
-Two independent labellers, a third to adjudicate, and record labelling time.
+Specify which fields determine eligibility and which fields only influence prioritisation.
 
-9. Baselines. B1 to B5 from section 2. Alignment is compared with B1 and B5. Retrieval is compared with B2 to B5.
+======================================================================
+6. DOCUMENTATION QUALITY MUST BE SEPARATED FROM REMEDIATION QUALITY
+======================================================================
 
-10. Success measures.
+A short or unclear closure summary does not necessarily mean the remediation itself was poor.
 
-Analytical: inter-expert agreement, model agreement against adjudicated labels, gain over B1 and B5, retrieval gain, stability on the locked set.
-Decision usefulness: precision of the top 30, confirmed cases baselines missed, reviewer time per case, distinct review actions named, and the share of completed reviews that find a real gap.
+Likewise, a detailed and polished closure summary does not establish that the remediation was effective.
 
-11. Stop conditions.
+The product must maintain separate dimensions:
 
-G1 fails twice.
-Agreement is below 0.4 after redefinition.
-The model does not beat the best baseline and has no material unique hits.
-Fewer than 5 confirmed cases beyond what B5 finds.
-No named user commits to a forum.
+A. Documentation sufficiency:
+Does the record explain what was implemented?
 
-Materially redesign if rules match the model (ship the rules) or if all value sits in one class (narrow to it).
+B. Mechanism alignment:
+Does the described remediation address the identified weakness?
 
-12. MVP output (illustrative, invented figures).
+C. Scope alignment:
+Does the remediation cover the affected population, process, application or channel?
 
-Case card: ISS-0000, rated High, closed [date]
+D. Implementation evidence:
+Does the record indicate that the remediation was implemented?
 
-Executive layer
+E. Verification evidence:
+Does the record indicate how implementation was tested or confirmed?
 
-Directly recorded: the action was a procedure update and refresher training. The closure note contains no verification statement.
-Inferred and expert-confirmed (2 of 2 reviewers): the issue describes a system detection weakness, and the action addresses staff behaviour. The issue references three channels, and the action names one.
-Inferred, not yet reviewed: four later incidents in two channels may share the mechanism.
-Expert assessment: independent review recommended.
-Causal conclusion not established: we cannot say whether the action worked.
+F. Post-closure outcome evidence:
+Were similar potentially relevant events observed afterwards?
 
-Analytical layer
+These dimensions should never be collapsed into one “remediation quality score”.
 
-Tags: A (mechanism mismatch), B (scope mismatch), D (no verification wording), E (post-closure similar events). Primary tag: A.
-Counts: 4 retrieved incidents in the 18 months after closure and 6 in the prior 18. No exposure adjustment, no rate computed.
-Confidence: moderate.
-Unknowns: a system change outside the action record, volume changes, reporting changes.
+The output should show each dimension separately, including “insufficient evidence”.
 
-13. Claim boundaries.
+======================================================================
+7. REVISE THE ALIGNMENT TAXONOMY
+======================================================================
 
-Can conclude: what the documents say, whether the action text addresses the stated weakness and scope, whether verification is evidenced, and whether similar events were observed after closure, with counts.
-Cannot conclude: that remediation failed or worked, an incidence rate or trend, that a control is ineffective, that semantic similarity proves a relationship, or anything about people or teams.
+The proposed A-to-G classes are useful as findings, but they may not be mutually exclusive.
 
-14. Deferred scope.
+For example, one case may have:
 
-Pattern clustering and the enterprise catalogue.
-Controls, assessments and rating challenges.
-Class F (expansion into other scopes).
-Products, tasks, obligations and structural hypotheses.
-Prediction and any causal or twin modelling.
-Owner, team or business-unit comparisons.
-Umbrella and programme issues.
+- Mechanism mismatch
+- Scope mismatch
+- No verification evidence
+- Potential recurrence
 
-15. Expansion path. If the MVP passes G6, the next capability is a validated mechanism catalogue for the pilot domain, built from the expert mechanism labels already collected. It turns Tier 2 from per-issue retrieval into mechanism-level recurrence, and the same labels seed the later control-relevance track.
+Therefore, do not require one primary tag unless the primary tag has a clear decision purpose.
 
-Main risk to watch: raising closure-quality challenge could be read as an audit of Line 1 and discourage issue raising or closure. The owner-field removal, the role-level user and the no-blame wording are the safeguards, and the reporting indicators in section 8 should be monitored from the first cycle.
+Use a multidimensional assessment:
+
+- Mechanism alignment:
+  Aligned, partially aligned, misaligned, insufficient evidence
+
+- Scope coverage:
+  Complete, partial, unclear, not applicable
+
+- Implementation evidence:
+  Evidenced, partially evidenced, not evidenced in the record
+
+- Verification evidence:
+  Evidenced, partially evidenced, not evidenced in the record
+
+- Temporal consistency:
+  Consistent, conflicting, unclear
+
+- Post-closure outcome signal:
+  None retrieved, possible recurrence, strong review signal, not assessed
+
+A separate review reason can then be assigned, such as:
+
+- Review mechanism coverage
+- Review remediation scope
+- Review implementation evidence
+- Review verification evidence
+- Review post-closure outcomes
+- Review date inconsistency
+
+Please assess whether this structure is more reliable than forcing cases into one primary class.
+
+======================================================================
+8. THE ISSUE’S STATED WEAKNESS IS ALSO A CLAIM
+======================================================================
+
+The proposal correctly states that root cause must not be treated as truth.
+
+The same discipline should apply to the issue description and control-gap narrative.
+
+The model is comparing two documented positions:
+
+- What the issue record claims was wrong
+- What the action records claim was done
+
+The output should therefore say:
+
+“The recorded remediation does not clearly align with the recorded weakness”
+
+rather than:
+
+“The remediation does not align with the actual failure.”
+
+Where incident evidence exists, the model may compare the issue’s stated weakness with the mechanisms observed in associated or retrieved incidents.
+
+This introduces an additional useful signal:
+
+Issue formulation mismatch:
+The issue itself may describe the failure too narrowly or identify a mechanism inconsistent with the event evidence.
+
+Please determine whether the MVP should surface this as:
+
+- A review signal, or
+- A research finding only until separately validated.
+
+======================================================================
+9. RETRIEVAL MUST INCLUDE PRE-CLOSURE AND POST-CLOSURE EVENTS
+======================================================================
+
+Post-closure retrieval alone is insufficient.
+
+The system needs a pre-closure reference set to establish what mechanism and scope the issue was intended to address.
+
+For each issue, retrieval should distinguish:
+
+1. Pre-identification events:
+   Potential evidence contributing to issue discovery.
+
+2. During-remediation events:
+   Events occurring while actions remained open.
+
+3. Post-final-action events:
+   Events occurring after the remediation set was completed.
+
+4. Post-issue-closure events:
+   Events occurring after formal issue closure.
+
+These periods must not be mixed.
+
+The system should compare mechanism consistency across periods, but without making causal claims.
+
+This temporal segmentation may reveal:
+
+- Remediation implemented gradually
+- Events continuing while actions were still open
+- Potential recurrence after all actions completed
+- Closure occurring despite continuing events
+- Delayed identification or logging
+
+Please incorporate these temporal populations into Tier 2.
+
+======================================================================
+10. RECONSIDER DROPPING OWNER FIELDS AT INGESTION
+======================================================================
+
+We fully agree that the product must not rank, assess or compare people or teams.
+
+However, permanently dropping owner fields at ingestion may damage:
+
+- Record lineage
+- Data-quality investigation
+- Access control
+- Routing of review cases
+- Auditability
+- Resolution of object ambiguity
+
+A safer approach may be:
+
+- Retain owner identifiers in a restricted source layer.
+- Exclude them from embeddings, model prompts and analytical features.
+- Do not display them in analytical outputs except where operational routing is authorised.
+- Prohibit their use in ranking, scoring or comparison.
+- Log access to identifiable fields.
+
+Please distinguish data minimisation from irreversible removal.
+
+======================================================================
+11. TIGHTEN THE VALIDATION DESIGN
+======================================================================
+
+The proposed validation design is strong, but several details need refinement.
+
+First, alignment labels may not be independent.
+
+A mechanism misalignment may lead reviewers to infer scope misalignment and vice versa.
+
+Please specify whether agreement is measured:
+
+- Per dimension
+- Per overall review recommendation
+- Per individual action
+- Per complete action set
+
+Second, oversampling rare classes requires finding those classes before they are reliably labelled.
+
+Please define how candidate rare cases will be selected without biasing the test data.
+
+Third, the most recent closures may differ systematically from older closures because:
+
+- Field definitions changed
+- Closure requirements changed
+- Narrative quality changed
+- The source system changed
+
+A locked recent test set is useful, but also test temporal transfer from older to newer records.
+
+Fourth, B5 should be precisely defined.
+
+The comparison should not be:
+
+“AI versus an SME with unlimited knowledge.”
+
+It should be:
+
+“AI-assisted review versus the current review process using the current information and a defined time limit.”
+
+Measure:
+
+- Review time
+- Cases surfaced
+- Review precision
+- Missed cases
+- Evidence traceability
+- Reviewer cognitive burden
+
+======================================================================
+12. REFINE THE STOP CONDITIONS
+======================================================================
+
+We accept the stop-or-go framework, but distinguish between:
+
+- Failure of the analytical proposition
+- Failure of the LLM component
+- Failure of the retrieval component
+- Failure of data quality
+- Failure of organisational adoption
+
+Examples:
+
+If rules match the LLM:
+- Reject the LLM component.
+- Retain the rules-based product if it changes decisions.
+
+If alignment works but incident retrieval fails:
+- Retain Documentation Alignment Review.
+- Do not claim outcome-informed assurance.
+
+If experts disagree on mechanism but agree on review need:
+- Consider a simpler review-risk classification.
+- Do not necessarily abandon the entire product.
+
+If the model performs well but no review forum adopts it:
+- Treat this as failure of the product operating model, not analytical invalidity.
+
+If the product surfaces only issues already known to the reviewer:
+- It may still add value if review time materially falls.
+- Otherwise stop.
+
+Please rewrite the gates so that each failure has a specific consequence rather than a single stop decision.
+
+======================================================================
+13. REVISED PRIMARY VALUE PROPOSITION
+======================================================================
+
+We propose the following value proposition:
+
+“For closed material issues in one pilot domain, identify cases where the documented remediation may not fully address the recorded weakness, affected scope or verification expectations, and enrich the review with potentially related events observed before and after closure.”
+
+The product supports this decision:
+
+“Which closed material issues warrant proportionate independent review, and what specifically should the reviewer examine?”
+
+It does not decide:
+
+- Whether remediation succeeded
+- Whether remediation failed
+- Whether a control was effective
+- Whether an employee or team performed adequately
+- Whether risk increased or decreased
+- Whether a later incident was caused by inadequate remediation
+
+Please confirm or refine this statement.
+
+======================================================================
+14. REQUIRED OUTPUT FOR THE NEXT RESPONSE
+======================================================================
+
+We do not require another strategic discussion.
+
+Please now provide the final executable analytical specification in the following structure:
+
+1. Final name of the use case
+
+2. One-sentence value proposition
+
+3. Primary user and governance forum
+
+4. Primary decision
+
+5. Eligibility rules for closed material issues
+
+6. Exact remediation alignment case definition
+
+7. Action-set handling methodology
+
+8. Temporal model:
+   - Issue dates
+   - Action dates
+   - Incident periods
+   - Default post-remediation anchor
+   - Exceptions
+
+9. Assessment dimensions and allowed values
+
+10. Tier 1 evidence requirements
+
+11. Tier 2 evidence requirements
+
+12. Rules baseline
+
+13. Retrieval baseline
+
+14. LLM tasks:
+   - Tasks requiring language reasoning
+   - Tasks that should remain deterministic
+   - Tasks requiring expert judgement
+
+15. Proposed structured output schema
+
+16. Human-labelling guide
+
+17. Sampling and test-set design
+
+18. Evaluation metrics
+
+19. Revised gates and the consequence of failure at each gate
+
+20. Example case card showing:
+   - Action-set assessment
+   - Temporal segmentation
+   - Tier 1 findings
+   - Tier 2 findings
+   - Evidence classes
+   - Unknowns
+   - Review recommendation
+   - Explicit claim boundary
+
+21. Minimum data extract needed to start
+
+22. Deferred scope
+
+23. Exact link from this MVP to the later Failure Pattern Intelligence capability
+
+======================================================================
+FINAL POSITION
+======================================================================
+
+We accept Outcome-Informed Remediation Assurance Triage as the first decision product.
+
+We accept document-internal alignment as the first analytical experiment.
+
+We do not accept document-internal alignment alone as the complete high-value product.
+
+The first usable product should combine:
+
+- Remediation mechanism alignment
+- Collective action-set coverage
+- Scope alignment
+- Implementation and verification evidence
+- Temporal consistency
+- Pre-closure and post-closure event retrieval
+
+The output remains an evidence-graded independent-review candidate, not a conclusion that remediation succeeded or failed.
+
+If Tier 2 cannot be validated, deploy only a clearly labelled Remediation Documentation Alignment Review, provided it still changes decisions or materially reduces review effort.
+
+Please now convert the accepted proposition into the final executable analytical specification without broadening it back into an enterprise platform.
