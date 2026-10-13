@@ -1,676 +1,144 @@
-Thank you. We accept the specification as the basis for the MVP.
-
-The proposed use case is now sufficiently narrow, testable and connected to a real decision:
-
-“Which closed material issues warrant proportionate independent review this quarter, and what should the reviewer examine?”
-
-We also accept the two product names:
-
-1. Outcome-Informed Remediation Assurance Triage, if both Tier 1 and Tier 2 pass validation.
-
-2. Remediation Documentation Alignment Review, if only Tier 1 passes validation.
-
-This distinction is important and should remain non-negotiable.
-
-The specification successfully retains the strategic link to Failure Pattern Intelligence while avoiding unsupported claims about remediation effectiveness, control effectiveness or causality.
-
-We do not require another redesign. However, the following corrections should be incorporated before the design is frozen.
-
-======================================================================
-1. FINAL VERDICT
-======================================================================
-
-Accept, with targeted amendments.
-
-The use case is now valuable because it combines:
-
-- A real decision with finite review capacity
-- A named independent user
-- Materiality-based eligibility
-- Issue-to-action-set alignment
-- Pre-closure and post-closure outcome context
-- Human review and evidence spans
-- Rules, retrieval and SME baselines
-- Explicit fallback products
-- Early stop-or-go gates
-- A labelled-data pathway into later Failure Pattern Intelligence
-
-The product will add value if it can do either of the following:
-
-A. Surface credible review candidates that the current process would not readily identify.
-
-B. Reach comparable review quality with materially less reviewer effort.
-
-Both forms of value are legitimate.
-
-======================================================================
-2. PRESERVE THE PRODUCT’S TRUE PURPOSE
-======================================================================
-
-The purpose is not to score remediation.
-
-The purpose is to improve the selection and preparation of independent closure-quality reviews.
-
-The product should answer:
-
-1. Does the recorded action set appear to address the weakness elements documented in the issue?
-
-2. Does the recorded action set appear to cover the documented operating scope?
-
-3. Does the record contain evidence of implementation and verification?
-
-4. Are the issue, action and closure dates internally consistent?
-
-5. Were potentially related events identified in relevant periods before, during or after remediation?
-
-6. What specifically should an independent reviewer examine?
-
-This framing should appear in all governance, model-risk and user-facing documentation.
-
-======================================================================
-3. REVISE THE DOCUMENTATION GATE
-======================================================================
-
-The current design makes D0 Documentation Sufficiency a precondition that can force D1 Mechanism Alignment and D2 Scope Coverage to “Insufficient evidence”.
-
-This may be too restrictive.
-
-A record may have:
-
-- Limited closure documentation
-- A clear action description
-- An obvious mechanism mismatch
-- A clearly narrow scope
-
-For example, the closure summary may be poor while the action description clearly shows that a training intervention was used for a system defect.
-
-Recommended rule:
-
-- If the source material is insufficient to assess a particular dimension, that dimension becomes “Insufficient evidence”.
-- Do not automatically suppress every mechanism or scope assessment because overall documentation is incomplete.
-- D0 should identify which required document components are missing or inadequate.
-
-Suggested D0 structure:
-
-- Issue weakness sufficiently described: Yes, Partial, No
-- Action change sufficiently described: Yes, Partial, No
-- Action scope sufficiently described: Yes, Partial, No
-- Implementation evidence sufficiently described: Yes, Partial, No
-- Verification evidence sufficiently described: Yes, Partial, No
-
-D1 to D4 should then be gated independently by the evidence required for that dimension.
-
-This will preserve useful findings without overstating certainty.
-
-======================================================================
-4. CHANGE “NONE RETRIEVED” TO A SAFER LABEL
-======================================================================
-
-“None retrieved” may be interpreted by executives as evidence that no similar event occurred.
-
-Retrieval can miss relevant incidents because of:
-
-- Incomplete scope references
-- Different terminology
-- Missing application or process links
-- Poor narrative quality
-- Retrieval-model limitations
-- Reporting gaps
-
-Replace D6 values with:
-
-- Not assessed
-- No relevant event identified by the approved retrieval method
-- Possible post-closure outcome signal
-- Strong post-closure review signal
-
-The case card should always state:
-
-“Failure to identify a relevant event is not evidence that no event occurred.”
-
-This is especially important before retrieval recall can be estimated confidently.
-
-======================================================================
-5. DO NOT CALL D3 AND D4 “DIRECTLY RECORDED” UNLESS THE EVIDENCE IS EXPLICIT
-======================================================================
-
-In the example case, “verification not evidenced in the record” is described as directly recorded.
-
-That is not quite correct.
-
-The record directly contains certain text. The absence of suitable verification evidence is a rule-based or model-assisted assessment of that text.
-
-Use:
-
-- Directly recorded:
-  The closure summary states that user testing was completed on a particular date.
-
-- Inferred and expert-confirmed:
-  Reviewers concluded that the available text does not evidence independent verification.
-
-- Deterministically identified:
-  The relevant closure field is empty.
-
-The evidence class should distinguish:
-
-1. A blank field
-2. An absent phrase
-3. A present but ambiguous statement
-4. Explicit implementation evidence
-5. Explicit verification evidence
-
-Absence of a recognised term alone should not determine D4.
-
-======================================================================
-6. REFINE THE MATERIALITY ENTRY ROUTES
-======================================================================
-
-The proposed eligibility routes are generally appropriate, but R3 and R4 depend on recorded incident links.
-
-Those links are human-created and may be incomplete.
-
-Therefore:
-
-- R3 and R4 are valid positive entry routes when a recorded link exists.
-- Absence of a linked incident must not be used to determine that an issue is immaterial.
-- Tier 2 retrieval may later identify incident context not present in the recorded cross-reference.
-
-The sponsor must define:
-
-- Which issue ratings qualify under R1 and R2
-- Which incident impacts qualify under R3
-- The financial and customer-impact thresholds under R4
-- Which source categories qualify under R5
-- Which designated classifications qualify under R7
-
-These are policy decisions, not model choices.
-
-The eligibility rules should be versioned and retained with each run.
-
-======================================================================
-7. DO NOT ASSUME AN “INDEPENDENTLY REVIEWED” FIELD EXISTS
-======================================================================
-
-The eligibility condition currently says:
-
-“Not already independently reviewed in the last 12 months, if a review field exists.”
-
-This is acceptable as an optional rule, but it must not be assumed.
-
-If there is no reliable structured review field:
-
-- Do not infer independent review from generic lifecycle comments.
-- Do not ask the model to determine whether an independent review occurred.
-- Allow the primary user to mark cases as already reviewed.
-- Store that outcome in the review log for later runs.
-
-The system should gradually build its own reliable review history.
-
-======================================================================
-8. REFINE ACTION-SET COVERAGE
-======================================================================
-
-The action-set approach is correct, but “the union of action scope covers every issue scope entity” may be too mechanical.
-
-A process hierarchy relationship does not always mean that a parent-level action adequately covers every descendant process.
-
-Likewise, the absence of a named scope entity in an action does not prove that it was excluded.
-
-For scope coverage:
-
-- Complete:
-  The recorded action evidence expressly or structurally supports coverage of all recorded issue scope elements.
-
-- Partial:
-  The evidence supports some but not all scope elements.
-
-- Unclear:
-  The action may apply more broadly, but the available record does not allow coverage to be established.
-
-- Not applicable:
-  Scope comparison is not meaningful for the case.
-
-The model should not convert silence into “Partial”. Silence should ordinarily become “Unclear”.
-
-Process hierarchy may support candidate coverage, but broad parent-to-descendant inheritance should require an agreed deterministic rule or expert confirmation.
-
-======================================================================
-9. REFINE THE FINAL REQUIRED ACTION COMPLETION RULE
-======================================================================
-
-FRAC is a sensible default anchor, but “all non-cancelled actions are required” should be described as a conservative analytical assumption, not fact.
-
-The system should retain:
-
-- Latest completion date among all non-cancelled linked actions
-- Issue closure date
-- Any explicit action dependency or requirement field
-- Cancelled or superseded action records
-- The date of any replacement action, if recorded
-
-Recommended anchor wording:
-
-“Default analytical anchor: latest recorded completion date among non-cancelled linked actions.”
-
-Do not call it “final required action completion” unless the data explicitly identifies which actions were required for closure.
-
-If that flag does not exist, use a neutral term such as:
-
-Latest Linked Action Completion, or LLAC.
-
-The product can still flag:
-
-- Issue closed before LLAC
-- Actions completed after issue closure
-- All linked actions cancelled
-- No completed action available
-- Replacement action uncertain
-
-This is more faithful to the available evidence.
-
-======================================================================
-10. CORRECT THE TEMPORAL COMPARISON DESIGN
-======================================================================
-
-The mutually exclusive periods are useful, but the current comparison requires clarification.
-
-P1 is the 12 months before issue identification.
-
-The post window begins after LLAC and bedding-in.
-
-These windows occur at very different stages of the issue lifecycle. Comparing their raw counts is descriptive, not a balanced before-and-after evaluation.
-
-The MVP may show:
-
-- Number of potentially relevant incidents in P1
-- Number during remediation
-- Number between action completion and issue closure
-- Number after both action completion and issue closure
-- Observation time available in each period
-
-It should not imply that P1 is a counterfactual baseline.
-
-For each period report:
-
-- Start date
-- End date
-- Observable days
-- Retrieved event count
-- Number judged likely relevant
-- Impact profile
-- Whether source-system coverage was continuous
-
-If windows differ in observable duration, counts should not be visually compared without showing the duration.
-
-No “before versus after improvement” statement should appear in the MVP.
-
-======================================================================
-11. DEFINE THE BEDDING-IN PERIOD AS A CONFIGURATION
-======================================================================
-
-A fixed 30-day bedding-in period may be reasonable for an initial sensitivity test, but it should not silently become a business rule.
-
-Different remediation types may have different implementation characteristics:
-
-- Immediate system rule
-- Phased technology release
-- Process redesign
-- Training programme
-- Customer remediation
-- Vendor change
-
-For the MVP:
-
-- Use 30 days as the default analysis configuration.
-- Display events during bedding-in rather than discarding them.
-- Run sensitivity at 0, 30 and 90 days.
-- Do not select whichever sensitivity gives the most favourable result.
-- Record the full sensitivity output for reviewers.
-- Do not introduce action-type-specific bedding periods until expert policy is agreed.
-
-======================================================================
-12. REDEFINE THE POST-CLOSURE SIGNAL
-======================================================================
-
-The current D6 rule says:
-
-- Possible recurrence: at least one likely relevant incident
-- Strong review signal: at least two likely incidents, or one Severe or Very High incident
-
-This is simple, which is useful, but the term “recurrence” should be avoided in the MVP.
-
-The product has not yet established stable failure mechanisms or recurrence criteria.
-
-Use:
-
-- Possible post-closure outcome signal
-- Strong post-closure review signal
-
-The incident relevance grades should also be calibrated carefully.
-
-Suggested grades:
-
-- Relevant:
-  Expert-confirmed as materially sharing the recorded mechanism and relevant scope.
-
-- Potentially relevant:
-  Sufficient similarity to warrant review, but mechanism or scope remains uncertain.
-
-- Not relevant:
-  Does not materially share the mechanism or scope.
-
-During model execution, use “likely relevant” only as a model output. Once expert reviewed, convert it to the expert-confirmed terminology.
-
-======================================================================
-13. ADD DUPLICATE AND BULK-INCIDENT HANDLING
-======================================================================
-
-The incident schema contains potential duplicate and bulk-incident indicators.
-
-Tier 2 must prevent a single underlying event from appearing as numerous independent post-closure signals.
-
-Before counting retrieved incidents:
-
-- Apply recorded duplicate identifiers where available.
-- Identify bulk incidents.
-- Distinguish one event affecting many customers from many separate occurrences.
-- Retain both raw-record count and deduplicated occurrence count.
-- Let reviewers inspect the grouping logic.
-- Do not count duplicate records as independent evidence.
-
-This is essential because D6 currently depends on one or two events.
-
-A duplicated incident could incorrectly move a case from “Possible” to “Strong”.
-
-======================================================================
-14. PRIVACY SCRUBBING MUST PRESERVE ANALYTICAL MEANING
-======================================================================
-
-We accept that personal names should be excluded from embeddings and prompts unless strictly necessary.
-
-However, automatic scrubbing must distinguish personal identifiers from potentially relevant entities such as:
-
-- Applications
-- Products
-- Vendors
-- Channels
-- Business services
-- Locations
-- Process names
-
-The privacy process should:
-
-- Remove or tokenise personal identifiers.
-- Preserve stable placeholders when repeated references matter.
-- Retain non-person enterprise entities.
-- Log the scrubbing version.
-- Test whether scrubbing changes mechanism or scope interpretation.
-- Keep the original record in the access-controlled source layer.
-
-Do not allow privacy preprocessing to silently remove important operating context.
-
-======================================================================
-15. REVIEW THE LABELLING EFFORT ASSUMPTIONS
-======================================================================
-
-The labelling methodology is strong, but the proposed time boxes may be optimistic.
-
-A case may contain:
-
-- A substantial issue description
-- Up to five weakness elements
-- Several actions
-- Closure summaries
-- Scope information
-- Status history
-- Multiple retrieved incidents
-
-Ten minutes may be sufficient for simple Tier 1 cases but not complex action sets.
-
-Two minutes per Tier 2 incident judgement may also be insufficient where scope and mechanism are ambiguous.
-
-Treat the time boxes as measurement targets, not mandatory limits.
-
-During calibration capture:
-
-- Median review time
-- Upper-quartile review time
-- Time by action-count band
-- Time by narrative-length band
-- Time by agreement outcome
-- Reviewer fatigue across each batch
-
-Use this evidence to determine sample size and operational capacity.
-
-Do not force reviewers to decide because the time box expired. Allow “cannot determine within allocated review time” as a recorded outcome.
-
-======================================================================
-16. TIGHTEN G2
-======================================================================
-
-G2 currently combines several different propositions:
-
-- Model agreement with expert labels
-- Improvement over rules
-- Improvement over the SME baseline
-- Review efficiency
-
-These should be assessed separately.
-
-Suggested G2 outputs:
-
-G2A Language reasoning quality:
-Does the model reproduce retained Tier 1 dimensions sufficiently well?
-
-G2B Incremental value over rules:
-Does the language model improve on B1 for mechanism and scope analysis?
-
-G2C Workflow value:
-Does the AI-assisted process find more reviewer-confirmed cases, reduce review time or improve evidence traceability compared with B5?
-
-Possible consequences:
-
-- G2A passes and G2B fails:
-  Use rules for the product and retain the model only for evidence extraction if useful.
-
-- G2A and G2B pass but G2C fails:
-  Do not deploy. The analytics do not improve the real process.
-
-- G2C passes through time saving despite no increase in unique findings:
-  Continue as an efficiency product.
-
-- G2C passes through unique material findings:
-  Continue as a decision-improvement product.
-
-This will make the outcome easier to interpret.
-
-======================================================================
-17. EXPAND REVIEWER OUTCOME CODES SLIGHTLY
-======================================================================
-
-The current reviewer outcome codes are good but should capture the real review decision more clearly.
-
-Recommended outcomes:
-
-- Review confirmed mechanism-alignment concern
-- Review confirmed scope-coverage concern
-- Review confirmed implementation-evidence concern
-- Review confirmed verification-evidence concern
-- Review confirmed temporal or record inconsistency
-- Post-closure event context materially affected the review
-- No concern identified
-- Already known and already under management
-- Additional information required
-- Cannot determine from available evidence
-- Case outside intended product scope
-- Data or relationship error
-
-Also capture:
-
-- Review action initiated
-- No action initiated, with reason
-- Existing action confirmed sufficient
-- Further SME or business evidence requested
-- Issue closure decision referred for reconsideration
-
-These outcomes should remain about the case and process, never about employee performance.
-
-======================================================================
-18. ADD A NO-ACTION-SET COHORT
-======================================================================
-
-Issues with no action set are currently eligible and flagged.
-
-These cases may be fundamentally different from remediation-alignment cases.
-
-Possible explanations include:
-
-- No action was required
-- Remediation was completed outside the recorded action structure
-- The issue was accepted
-- The issue record is incomplete
-- The issue was closed through another governance pathway
-
-Do not compare these directly with cases containing actions.
-
-Create a separate cohort:
-
-“No linked remediation action recorded.”
-
-For this cohort the product may assess:
-
-- Whether the closure summary explains why no action was required
-- Whether alternative remediation is recorded
-- Whether risk acceptance was documented
-- Whether potentially relevant later events were identified
-
-Do not apply D1 action-set mechanism alignment where no action exists.
-
-======================================================================
-19. FINAL MVP STRUCTURE
-======================================================================
-
-Subject to the corrections above, freeze the MVP as follows.
-
-Stage 0: Pilot selection and data readiness
-
-Profile three candidate domains and select one using pre-agreed criteria.
-
-Stage 1: Tier 1 analytical experiment
-
-Test whether rules and language reasoning can reproduce independent expert assessment of:
-
-- Recorded weakness elements
-- Action claims
-- Mechanism alignment
-- Scope coverage
-- Implementation evidence
-- Verification evidence
-- Temporal consistency
-
-Stage 2: Tier 1 workflow experiment
-
-Compare the current review process with rules-assisted and AI-assisted review.
-
-Stage 3: Tier 2 retrieval experiment
-
-Test whether hybrid retrieval identifies expert-confirmed relevant event context beyond:
-
-- Recorded links
-- Taxonomy
-- BM25
-- Embeddings alone
-- Current reviewer search
-
-Stage 4: Live decision pilot
-
-Produce a capacity-limited review queue in an existing governance forum and record:
-
-- Cases reviewed
-- Evidence used
-- Decisions made
-- Actions initiated
-- Time required
-- False positives
-- Random-audit false negatives
-
-Stage 5: Product decision
-
-Choose one:
-
-A. Deploy Outcome-Informed Remediation Assurance Triage.
-
-B. Deploy Remediation Documentation Alignment Review.
-
-C. Deploy a rules-based review assistant.
-
-D. Retain as analysis only.
-
-E. Stop.
-
-======================================================================
-20. MAXIMUM-VALUE TEST
-======================================================================
-
-The product should not be considered valuable merely because it classifies text accurately.
-
-The maximum-value test is:
-
-“Did the product improve the allocation or quality of independent review capacity?”
-
-Evidence of value includes:
-
-- Credible review candidates not found through the current process
-- Material concerns confirmed through independent review
-- Better preparation of the reviewer
-- Reduced review time at equal quality
-- Better evidence traceability
-- Identification of data or linkage defects affecting closure oversight
-- A documented change in a closure review or remediation decision
-
-If the model produces accurate labels but does not improve review decisions or efficiency, it should not proceed as a product.
-
-======================================================================
-FINAL DECISION
-======================================================================
-
-We accept the proposed use case and analytical specification.
-
-Freeze the strategic scope.
-
-Incorporate the amendments concerning:
-
-- Dimension-specific documentation gating
-- Safer D6 terminology
-- Action-set scope uncertainty
-- Neutral temporal-anchor terminology
-- Descriptive rather than comparative temporal windows
-- Duplicate and bulk-incident handling
-- No-action-set cases
-- Privacy-preserving entity handling
-- Separated G2 tests
-- Expanded reviewer outcomes
-
-Do not introduce controls, control ratings, enterprise pattern clustering, products, obligations, prediction or causal effectiveness claims into the MVP.
-
-The next task is not another conceptual proposal.
-
-The next task is to produce the implementation pack consisting of:
-
-1. Source-to-target field mapping
-2. Data-profiling specification
-3. Materiality eligibility rules template
-4. Issue weakness-element schema
-5. Action-claim schema
-6. Deterministic date and aggregation rules
-7. Tier 1 labelling workbook design
-8. Tier 2 relevance-labelling design
-9. Baseline specifications
-10. Prompt and structured-output contracts
-11. Validation and sampling plan
-12. Case-card specification
-13. Pilot-domain selection scorecard
-14. Decision-log schema
-15. Model-risk and intended-use statement
-
-No additional strategic expansion is required before beginning those artefacts.
+Response to the team’s final amendments
+
+Verdict: accept all of them, with four refinements. The scope stays frozen, and the amended specification becomes v1.1.
+
+Where I refined or disagreed
+Point	Verdict	Refinement
+3. Per-dimension gating	Accept	D1 to D4 each get their own minimum evidence test from the D0 sub-items. A case can show Mechanism: Misaligned alongside Verification: Insufficient evidence.
+4. D6 labels	Accept	The case card carries the fixed sentence “Failure to identify a relevant event is not evidence that no event occurred.”
+5. D3/D4 evidence classes	Accept, with a consequence for the rules baseline	See below.
+8. Scope coverage	Accept, with a fix to my own wording	See below.
+9. LLAC	Accept	“Final required action completion” is retired. A required-action flag, if one exists, becomes an alternative anchor tested in sensitivity.
+10. Descriptive temporal design	Accept	I remove “compared against the P1 window” entirely. Periods are shown side by side with observable days and no comparison language.
+11. Bedding-in	Accept	30 days is the single pre-registered display configuration. 0 and 90 days are recorded for every case, and no one picks between them after seeing results.
+13. Duplicates and bulk	Accept	D6 thresholds apply to deduplicated occurrences. A bulk incident counts as one occurrence and carries a flag. A Severe or Very High member makes the occurrence Severe.
+14. Privacy scrubbing	Accept, add a test	Label a sample of cases on original and scrubbed text in the secure layer, and report how often D1 or D2 changes. A material change blocks the scrubbing version.
+15. Time boxes	Partly accept	See below.
+16. Split G2	Accept	G2C is run as three arms (current process, rules-assisted, AI-assisted) only if G2B shows the model beats the rules. Otherwise it runs as two arms.
+17. Outcome codes	Accept	Codes become multi-select, except “No concern identified”, which is exclusive.
+18. No-action cohort	Accept	If the pilot has fewer than about 30 such cases, they are reported descriptively with no gate.
+19 and 20. Stages and value test	Accept	Stage 3 can start once G1 passes, overlapping Stage 2, because retrieval depends on validated weakness extraction, not on the workflow experiment.
+
+Point 5, and the rules baseline. The team is right that an absent phrase does not establish “not evidenced”. But my B1 baseline used exactly that. Both stand if I separate two things. B1 emits a flag (“no recognised verification term”), which is a screening proxy. A D4 value of “Not evidenced in the record” in the product requires model assessment with expert confirmation. If rules win G2B, the deployed rules product shows the flag wording, not the D4 value.
+
+Point 8, a correction to my own spec. I defined Partial as “some but not all”. That conflicts with silence becoming Unclear. A cleaner structure is a per-element state:
+
+Covered: the record expressly or structurally supports coverage.
+Expressly limited: the record names a narrower scope, or the only action covering it was cancelled.
+Not established: silence.
+
+Case-level scope is then Complete if all are covered. It is Partial only if at least one element is expressly limited. It is Unclear if the rest are merely not established. Parent-to-descendant process inheritance counts only under an agreed rule or expert confirmation.
+
+Point 15. Agreed for ground-truth labelling: no forced decisions, and “cannot determine within allocated time” is a recorded outcome. I would keep the fixed time box in the G2C workflow arms, because comparing review processes without a common time limit measures nothing. The distinction is that labelling is untimed and the workflow experiment is timed.
+
+Where I would change the plan
+
+1. Sequence the pack so real data is touched first. Fifteen documents before anyone looks at the data is the wrong order, because G0 is the cheapest way to kill the proposition. The data profile and pilot scorecard should run in the first fortnight, in parallel with the drafting.
+
+2. Deliver one artefact at a time. Each one gets your team’s review before the next is built. A fifteen-document drop tends to produce shallow review of all of them.
+
+3. Source-to-target mapping needs your physical schema. I can define logical fields, but not column names. Please send the table and column list (a data dictionary, or even field names only) before artefact 1.
+
+Proposed order:
+
+Order	Artefact	Reason
+1	2. Data-profiling specification	Feeds G0 and pilot selection (delivered below)
+2	13. Pilot-domain scorecard	Consumes the profile
+3	15. Model-risk and intended-use statement	Approvals can start in parallel
+4	3. Eligibility rules template	Needs sponsor policy decisions, which take time
+5	1. Source-to-target mapping	Needs your data dictionary
+6 to 8	4 and 5. Weakness and action-claim schemas, 6. Date and aggregation rules	Define the case object
+9 to 11	7 and 8. Labelling designs, 11. Sampling plan	Gated on schema decisions
+12 to 15	9. Baselines, 10. Prompt contracts, 12. Case card, 14. Decision log	Last, because they depend on everything above
+Artefact 2: Data-profiling specification (v1.0)
+
+Purpose: establish, for each candidate domain, whether G0 can pass and which design assumptions hold. Output is aggregate only.
+
+Handling rules:
+
+Runs in the secure layer. No row-level text leaves it.
+Counts below 10 are suppressed.
+Owner fields are excluded entirely.
+Each check reports the denominator alongside the count.
+A. Population and eligibility
+Check	Measure
+A1	Closed issues per domain by closure year and current rating
+A2	Original versus current rating, and share downgraded before closure
+A3	Eligible count under each entry route R1 to R7 (using placeholder thresholds), plus overlap between routes
+A4	Closed fewer than 90 days before extract
+A5	Umbrella candidates: distribution of linked action count, with the top 1% listed by count only
+A6	Issues with zero linked actions (no-action cohort size)
+A7	Existence and reliability of any structured independent-review field (population rate and value distribution)
+B. Narrative usability
+Check	Measure
+B1	Population rate and length distribution for issue description, root cause, control-gap detail, issue closure summary
+B2	Action description and action closure summary population rate and length distribution
+B3	Boilerplate rate: share of text appearing verbatim or near-verbatim in more than 20 records
+B4	Control-gap detail population when the indicator is set (tests indicator reliability)
+B5	Rater-confirmed usable narrative: two analysts read 50 random eligible cases per domain and mark each narrative component usable or not. Length is only a screening proxy. The G0 figure comes from the rater result.
+C. Action sets
+Check	Measure
+C1	Actions per eligible issue (distribution), and share of issues with 1, 2 to 3, 4 or more
+C2	Action status distribution, and cancelled share
+C3	Cancellation reason populated rate
+C4	Completion date populated for completed actions, and conflicting statuses
+C5	Whether status history and revised due dates exist (decides whether cancellations and extensions can be reconstructed)
+C6	Whether any “required for closure” or dependency field exists (decides LLAC versus an explicit anchor)
+C7	Share of actions that are generic types (training, reminder, procedure update)
+D. Dates
+Check	Measure
+D1	Population and format consistency for each date in the temporal model
+D2	Order violations: completion before action creation, closure before identification, completion in the future
+D3	Issue closed before LLAC, and actions completed after closure
+D4	Share with all linked actions cancelled
+D5	Share of eligible cases with at least 6 months of post-LLAC observation before the extract
+E. Links
+Check	Measure
+E1	Eligible issues with at least one recorded incident link, and with an action link
+E2	Link plausibility signals: incident dated before issue identification, link counts per issue, orphaned references
+E3	Link table duplicates and one-to-many patterns
+F. Incidents
+Check	Measure
+F1	Description and cause population rate and length distribution
+F2	Occurrence, identification and logging date population and lag distribution
+F3	Duplicate identifier and bulk indicator population and prevalence
+F4	Impact and financial field population
+F5	Process and application reference coverage, and share that resolve to the process and application tables
+F6	Pool size: for each eligible issue, the in-scope incident count by process hierarchy and application. Report the share of issues with fewer than 20 or more than 2,000 candidates.
+F7	History depth: share of eligible issues with at least 12 months of incident history before identification
+F8	Source continuity: monthly incident counts per process, with gaps and step changes flagged for system or definition changes
+G. Scope references
+Check	Measure
+G1	Process and application references populated on issues and on actions
+G2	Hierarchy level at which references sit, and share that do not resolve
+G3	Share of issues whose scope is a single process (scope comparison not applicable)
+H. Taxonomy and eras
+Check	Measure
+H1	Root cause hierarchy value counts by year, with additions, retirements and relabelling
+H2	Change log of field definitions, closure requirements and source systems (a document request to data owners, not a query)
+H3	Proposed era boundaries, derived from H1 and H2 and agreed before any sampling
+I. Snapshots and duplicates
+Check	Measure
+I1	Multiple versions or snapshots per issue, action or incident
+I2	Near-duplicate issues (same text, different identifiers)
+J. Reporting indicators
+Check	Measure
+J1	Per process-quarter: median logging lag, share logged as No Impact or Low, logging volume. Feasibility only, not interpretation.
+K. Privacy
+Check	Measure
+K1	Personal names in free text: rate on a rater-reviewed sample of 100 records across issue, action and incident text
+K2	Customer identifiers, account numbers or other sensitive content in incident text, same sample
+K3	Share of entity mentions (applications, products, vendors, channels) that a candidate scrubber would wrongly remove, tested on the same sample
+G0 mapping
+G0 condition	Source checks
+Usable issue and action narrative in at least 80%	B5
+Valid closure dates in at least 90%	D1, D2
+Issue-action link or explicit no-action record in at least 80%	E1, A6
+Usable incident narrative in at least 80%	F1 and a rater check on 50 incidents
+At least 6 months post-window for at least 50%	D5
+
+Checks with no threshold (F6, F7, F8, C5, C6, A7) decide design choices, not pass or fail. Each one gets an “implication” line in the output.
+
+Output
+
+One page per domain, a G0 table with pass, fail or borderline per condition, a list of design implications (for example “no required-action flag, so LLAC applies”), and a data-quality defect list for the data owners. Defects found here are a deliverable in themselves.
