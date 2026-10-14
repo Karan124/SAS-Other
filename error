@@ -1,272 +1,37 @@
-Verdict: Accept, with two important amendments
-
-This is the first proposal in the sequence that has found a sensible balance between ambition, evidence and delivery scope. The LRM is right to reject a full four-layer platform at this stage and convert the use case into a small number of evidence-backed Enterprise Diagnosis Briefs.
-
-I would stop redesigning the concept now. The next uncertainty cannot be resolved through further debate. It requires testing against real records and a real decision-maker.
-
-Why I accept it
-1. It identifies an appropriate role for the data
-
-The available data can credibly support:
-
-discovering potential failure families
-reconstructing recorded organisational responses
-exposing fragmentation across business areas
-identifying missing or narrow response coverage
-surfacing shared dependencies for investigation
-showing what is known, inferred, contradicted and missing
-
-The data cannot independently:
-
-prove remediation effectiveness
-determine that an exposure remains active
-select the best intervention
-rank investments
-calculate a funding requirement
-prove that enterprise treatment is superior to local treatment
-
-The revised proposal now respects that boundary.
-
-Its value proposition is no longer:
-
-“The model will tell executives what to fund.”
-
-It is:
-
-“The model will reveal important cross-enterprise patterns that may change the diagnosis, scope or direction of an executive decision.”
-
-That is supportable.
-
-2. The decision brief is a much better output than a dashboard or family catalogue
-
-The most important improvement is:
-
-The unit of output is a decision brief, not a failure family.
-
-That resolves much of the earlier “so what?” problem.
-
-A family catalogue would naturally become another analytical repository. A decision brief forces the analysis to state:
-
-what was discovered
-why it matters
-what is fact versus inference
-what contradicts the hypothesis
-what decision it could affect
-who owns that decision
-what evidence is missing
-what action is supportable now
-
-That last distinction matters. The available data may justify commissioning an enterprise diagnosis without justifying an immediate enterprise remediation programme.
-
-3. The revised decision vocabulary is credible
-
-These are sensible and supportable:
-
-commission an enterprise diagnosis
-widen the scope of an existing remediation
-combine planned diagnostic work
-investigate a shared process or application dependency
-redirect assurance
-defer a local response pending broader diagnosis
-consider raising an issue for an uncovered family
-
-These are more defensible than saying the model will directly decide what to “fund” or “stop”.
-
-Funding may follow, but only after operational experts add:
-
-implementation feasibility
-existing programme context
-cost and effort
-ownership
-strategic dependencies
-intervention alternatives
-risk appetite considerations
-
-The LRM correctly treats those as expert and business-case inputs rather than pretending they exist in the risk records.
-
-4. It properly narrows the meaning of residual evidence
-
-The proposed wording is appropriately careful:
-
-later records inside or outside the response scope
-mechanism components with no identifiable recorded response
-hypotheses clearly labelled as hypotheses
-expert-supplied options clearly labelled as judgement
-
-This avoids both extremes:
-
-Overclaiming
-
-“The actions failed because incidents continued.”
-
-Excessive caution
-
-“We cannot establish causation, so later incidents tell us nothing.”
-
-Later records do provide useful evidence. They simply do not prove why recurrence occurred.
-
-5. It recognises the existing-practice baseline
-
-The solution must outperform existing:
-
-root-cause classifications
-human-created links
-thematic RCA
-problem-management processes
-keyword and label matching
-
-Internal material confirms that root-cause guidance has introduced categories intended to make trends easier to identify and supports thematic examination of issues and incidents.
-
-There is also an internal initiative focused on recurring-pattern identification and proactive problem management.
-
-Therefore, simply finding recurring themes is not enough. The proposed capability must demonstrate incremental value through:
-
-historical matching across classification eras
-discovery across incidents, issues and actions
-cross-business and cross-object matching
-recovery of relationships absent from formal links
-material findings not already known through existing practices
-
-The revised baseline now tests exactly that.
-
-The two amendments I would make
-Amendment 1: Identify the sponsor before running Gate 1
-
-The LRM says:
-
-“Stop revising the strategy and run Gate 1 now.”
-
-I agree with stopping the strategy debate, but not with running Gate 1 before securing the sponsor.
-
-The sponsor is not merely required for Gate 2. The sponsor is needed to:
-
-define which decisions matter
-select meaningful seed families
-record expected findings before analysis
-identify what would constitute a surprising result
-distinguish an interesting pattern from a decision-relevant pattern
-commit to reviewing the resulting briefs
-
-Without a sponsor, Gate 1 could become another technically successful experiment that nobody owns.
-
-Required sponsor characteristics
-
-The sponsor should:
-
-Own, influence or formally advise a relevant decision.
-Have visibility across more than one business area.
-Be willing to document expectations before results are shown.
-Be able to commission diagnosis, assurance or broader investigation.
-Be willing to state whether the result changed a decision.
-
-The sponsor need not personally control a large funding budget. They must control a real next action.
-
-A Head of NFR, senior Line 2 executive, enterprise problem-management executive, operational resilience executive or appropriately mandated risk executive could potentially fill that role. The correct person depends on who can actually commission cross-business diagnosis in your organisation.
-
-Amendment 2: Strengthen the Gate 2 pass condition
-
-“At least one changed decision” is too weak.
-
-A trivial change could satisfy it:
-
-“I would ask someone to take a closer look.”
-
-That would not justify scaling the capability.
-
-Gate 2 should require a specific, attributable and consequential change, such as:
-
-widening the scope of an existing review
-adding a previously excluded application, process or product
-combining two diagnostic exercises
-commissioning cross-business investigation
-changing the priority or scope of assurance
-delaying a local response to investigate a shared dependency
-initiating formal consideration of an unrecorded enterprise problem
-
-The decision record should specify:
-
-before: what would otherwise have happened
-after: what will now happen differently
-evidence: which finding caused the change
-authority: who can approve or implement it
-consequence: what people, scope, timing or resources change
-next step: what will be done and by when
-counterfactual: whether that action would have occurred without the brief
-Better Gate 2 pass rule
-
-I suggest:
-
-At least two validated families must lead to specific changes in diagnostic scope, assurance activity, issue consideration or remediation planning, and at least one change must cross an existing business, process, product or application boundary.
-
-Why two? One successful example may be an unusually obvious family. Two provides modest evidence that the capability can be repeated.
-
-This is still a small pilot. It simply avoids declaring success from one anecdote.
-
-My view of the renamed capability
-Enterprise Failure and Response Intelligence
-
-This is a good name.
-
-It accurately describes what the data supports:
-
-enterprise-wide analysis
-failure-family discovery
-recorded response reconstruction
-no claim that learning occurred
-no assertion that vulnerability has been proven
-no pretence that the system owns an investment portfolio
-Enterprise Diagnosis Brief
-
-Also good.
-
-It makes clear that the output is designed to support a specific decision or investigation, not to declare a final conclusion.
-
-Recommended final use-case statement
-
-I would describe the accepted use case as follows:
-
-Enterprise Failure and Response Intelligence uses reasoning models to identify potentially related incidents and issues that are separated by business boundaries, inconsistent classifications or missing links. It reconstructs the recorded response through issues and actions and produces expert-validated Enterprise Diagnosis Briefs showing the evidence, contradictions, response scope, unknowns and specific decision that may need to change.
-
-Its distinguishing question is:
-
-Are we managing separate records that may actually represent one broader enterprise problem?
-
-Its immediate purpose is not to determine which intervention worked or allocate funding automatically.
-
-Its purpose is to identify when the bank may need to:
-
-diagnose at a broader level
-widen an existing response
-investigate a shared dependency
-direct assurance differently
-reconsider apparently separate remediation activity
-
-That is focused, distinctive and appropriately bounded.
-
-Final assessment of the LRM response
-Component	VerdictRejecting the four-layer initial build	Accept
-Retaining family discovery as the reasoning engine	Accept
-Adding response reconstruction	Accept
-Producing decision briefs rather than family dashboards	Strongly accept
-Removing direct funding and stopping decisions from the MVP	Accept
-Expert-supplied intervention options	Accept
-Descriptive residual view with explicit hypotheses	Accept
-Baseline against RCA and problem management	Strongly accept
-Gate 1 expert-validation test	Accept
-Gate 2 changed-decision test	Accept, but strengthen
-Gate 3 five-to-ten-brief pilot	Accept
-Running Gate 1 before securing a sponsor	Reject
-Further strategic redesign before testing	Reject
-Bottom line
-
-Accept the use case.
-
-Do not broaden it into a complete vulnerability or investment-allocation platform yet. Do not reduce it to a thematic dashboard either.
-
-Build and test:
-
-Enterprise Failure and Response Intelligence, producing Enterprise Diagnosis Briefs for validated cross-enterprise failure families.
-
-Before running the test, secure a sponsor who owns a real decision. Then require evidence of a specific and consequential decision change, not merely surprise or interest.
-
-If it passes, you will have demonstrated something meaningful: the LRM can recover fragmented institutional knowledge and use it to change how the bank scopes diagnosis, assurance or remediation. If it fails, you should stop rather than rename or expand the concept again.
+I asked -> I think this is getting out of hands. All we need is a very simple use case where we have all of this data and we have been given access to Open AI's LRM plus embedding models. Is that the best use case we can come up with?
+
+LRM Responded -> 
+Is this the best use case?
+Yes, it is the best one I have found, and you’re right that it has become too complicated. The idea is simple. The layers of gates, briefs, tiers and decision records came from the debate. They are not needed to start.
+
+The simple version
+The use case: find the same problem hiding under different names.
+
+What we have: about 140,000 incidents, 25,000 issues and 68,000 actions, all with free text, plus OpenAI’s reasoning model and embedding models.
+
+What we do:
+
+Turn the text of every incident, issue and action into embeddings, so records with similar meaning sit close together.
+Find groups of records that are about the same problem but sit in different business units, years or categories.
+Use the reasoning model to read each group and write a short summary: what the problem is, where it appears, and what was done about it.
+Have two or three experts check the top 20 groups and say whether each is one real problem.
+Show the confirmed ones to a senior person and ask whether any of them would change what they do.
+That is all.
+
+Why it is worth doing
+A normal report can only group by labels and hand-entered links, and those are the inconsistent parts of this data. Embeddings and the reasoning model work on meaning, which is the one thing here that a dashboard cannot do. The result is a list of problems the bank is managing as separate pieces.
+
+How we know if it works
+Two questions:
+
+Did it find real problems that the existing labels and categories missed?
+Did anyone with authority say “that changes what we do”?
+If the answer to either is no, we stop.
+
+Alternatives I considered
+Search and Q&A over the data. Simple, but any decent tool does it. Not differentiated.
+Concentration reports. A dashboard does this.
+Which fixes work. The data cannot support that claim reliably.
+Closure review. We lack the closure evidence.
+What I’d do next
+Skip further design. Take a sample of incidents and issues, run steps 1 to 3 and look at what comes out. A week of that will tell us more than another round of debate. If you can share a sample extract, or tell me who can, I can help set it up.
