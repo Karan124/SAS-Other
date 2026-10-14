@@ -1,91 +1,351 @@
-Response to the team
+I would reject Enterprise Learning Intelligence as the final use case, while retaining its two-week test as a useful discovery experiment. The LRM has produced a careful, defensible proposal, but it has optimised away the very ambition you asked for: executive-level decision impact.
 
-Verdict: accept the critique, and choose Candidate C, Enterprise Learning Intelligence, with Candidate B as its engine and Candidate A deferred.
+Verdict: Reject as the primary capability
 
-I should be open about one thing. C is largely the problem-thread idea I proposed two rounds ago, with remediation themes and time added. I dropped threads when they were called “too descriptive”. I am reversing because the team has now given a reason I had not weighed: repeated occurrence and repeated remediation are directly observable, while effectiveness is not. That is an argument about what the data can support, and it is better than the earlier “too small” objection. It also means the intervention study’s own caveats were pointing at the answer.
+The proposal is strong research design. It is not yet a sufficiently strong enterprise product.
 
-Where the team is right
-The “compared to what” problem is fatal for A as a lead product. Its most interesting result (for example “training shows no durable change”) is the one it cannot defend. The design needed a matched comparison, exposure data we may not have, and a no-causal-claims rule that then empties the headline.
-Finding B is easier to act on than Finding A. It is a statement about the organisation’s structure, and it needs no counterfactual.
-Where I would tighten the team’s framing
-“Directly observable” is too strong. Records are observable. That two records describe the same mechanism is model-derived and needs expert confirmation. Using “observable” loosely would repeat the earlier mistake of treating constructed patterns as facts.
-“Continue to appear despite repeated attention” smuggles a causal claim back in. “Despite” implies the attention should have worked. Use “alongside”: the family has had issues and actions recorded, and incidents continued to be recorded.
-“Never been owned or treated as an enterprise problem” cannot be read off the records. What the data can show is that no single issue or action set spans the business units where the family appears. Anything about ownership of people stays out, in line with the guardrails.
-“311 actions” is a count of records, not effort. Action granularity varies by team practice, and the schema list shows no cost or effort field. Report counts as counts, and ask whether a cost or effort field exists.
-Summed impact is dominated by a few events. Show the severe tail separately, as with the earlier lanes.
-The three candidates
+Its core output is:
 
-Judgements are mine, and the pattern matters more than any score.
+“These failure records appear to describe the same recurring problem, but the organisation recorded and treated them separately.”
 
-Criterion	A: Intervention Response	B: Failure Mechanism Intelligence	C: Enterprise Learning Intelligence
-Executive value	High if it works	Medium to high	High
-Regulatory value	High (evidence of learning)	Medium	High (shows how failures and responses recur across the bank)
-Operational value	Medium	Medium	High (consolidating responses)
-Ease of explanation	Low (needs method defence)	High	High
-Defensibility	Low	High	High, if kept to association and expert-confirmed families
-Reliance on causal assumptions	High	Low	Low
-Reliance on missing data	High (exposure, cost)	Medium	Medium (business unit, cost, Cross Ref quality)
-Ability to influence funding	High in theory, weak in practice	Low	Medium to high
-Scale beyond a pilot	Medium	High	High
+That is potentially new and valuable. However, the capability stops before answering the executive’s harder question:
 
-Why C beats B: B stops at the failure side. Its output is “this mechanism has this trajectory”, and the executive response is “interesting”. C adds what the organisation did across issues and actions, which is what makes a funding or ownership decision possible.
+What should I fund, stop, consolidate, accelerate or redesign because of this finding?
 
-Why C beats A: it does not depend on the contested causal step. It is also a prerequisite for A, since mechanism tagging, response classification and family assembly are the first three steps of both. If C works and a later question needs it, A becomes a gated extension, rather than a bet made first.
+Adding issues and actions to failure threads makes them richer and more actionable, but it does not automatically transform them into funding intelligence.
 
-The capability
+Why I am rejecting it
+1. It remains predominantly descriptive
 
-Enterprise Learning Intelligence. For each recurring failure family over ten-plus years: what failed (mechanism), how the organisation named it (issue themes), how it responded (remediation themes), where it appeared (process, application, product, business unit), and when.
+The proposal explicitly limits itself to:
 
-Unit of analysis: the problem family, a validated grouping of incidents and issues sharing a mechanism, with its actions and context attached. Mechanisms from incidents and weaknesses from issues stay separate vocabularies, and the link between them is a hypothesis for experts to confirm.
+what failed
+how it was named
+what responses were recorded
+where it appeared
+when records appeared
+whether an issue or action set spanned the affected areas
 
-What a family shows, all descriptive:
+That produces a high-quality longitudinal reconstruction. It does not establish:
 
-Consequence in the three lanes, not summed
-Spread across years, units, products and systems
-Record counts of issues and actions, and the mix of remediation themes
-Timing: first recorded incident, first issue, first response, and gaps between them (as distributions)
-Whether any single issue or action set spans the units where the family appears
+which vulnerability remains material today
+whether previous responses addressed the mechanism
+whether apparent recurrence represents unresolved exposure
+which intervention would address the common mechanism
+whether one enterprise treatment is better than several local treatments
+what should receive funding ahead of competing priorities
 
-Controls: kept out of the first release. Repeated control weakness themes can later be read from issue narratives and control-gap detail, which does not need ratings or control tables.
+Its own guardrails prohibit most of the propositions that would support those decisions.
 
-An illustrative slide (placeholders only): “One failure family: [N] issues, [M] actions and [K] incidents across [J] business units over [Y] years. [X] of the issues use different root cause labels. No single issue spans the units. Consequence: [lane figures].”
+The result is likely to be:
 
-Decisions that change
-Decision	Decision-maker	Evidence needed
-Establish one enterprise-level treatment for a fragmented family	CRO, executive risk committee	Expert-confirmed family across several units with no spanning issue
-Consolidate or sequence remediation funding by family, not by issue	Executive committee, planning cycle	Family view of consequence against recorded response
-Review a repeatedly used remediation theme for a family	Remediation policy owner	Same theme recorded several times against one family, with incidents continuing
-Raise an issue on a family with material consequence and no issue	Head of Non-Financial Risk	Orphaned family, expert-confirmed
-Direct assurance and audit attention	Internal Audit, Line 2	Family ranked by lane
+“This family has appeared across several units, with many issues and actions.”
 
-None of these needs evidence about closure quality or intervention effectiveness.
+The next executive question will be:
 
-The two-week kill test
+“So what precisely should we do, and why?”
 
-The key design change is seed by family, not by domain. The value is cross-unit fragmentation, and a single-domain pilot would hide it.
+The proposed product cannot yet answer that convincingly.
 
-The sponsor and two experts name about 10 candidate families (for example duplicate payments) and write down what they expect to find, including how many units and years each spans. This is the surprise baseline.
-Build each family two ways: from recorded Cross Ref links plus shared root cause labels, and from text meaning across incidents, issues and actions.
-Two experts independently judge “same problem or not” on a sample. Pre-agree a minimum agreement (proposal: kappa or alpha of at least 0.6).
-Measure the gap between the text method and the label-and-link baseline, and the gap between the result and the sponsor’s prediction.
+2. The claimed decisions are not fully supported by the proposed evidence
+“Establish one enterprise-level treatment”
 
-Proposed pass (to agree before the run): at least five families, each with three or more issues across two or more business units, connected by neither a recorded link nor a shared label, confirmed by both experts, with at least some results the sponsor did not predict.
+Cross-unit recurrence plus the absence of a spanning issue does not demonstrate that one enterprise treatment is appropriate.
 
-Stop:
+The same mechanism may appear across:
 
-The baseline finds most of what the text method finds.
-Experts cannot agree on what counts as one problem.
-The sponsor’s predictions are matched, or the sponsor would change nothing under any outcome.
-Risks
-Similarity is not sameness, and repeated issues may be legitimate (different systems or exposures). Families are hypotheses until experts confirm them, and the output flags candidates, not duplication.
-Record counts reflect practice. Better detection, issue-raising culture and action splitting all inflate counts. Reporting indicators (logging lag, low-impact share, near-miss share) accompany every family.
-Left-censored history understates duration and latency. Show observation windows.
-Business unit data: I do not see a business unit column in the named incident fields. The “across 14 business units” finding depends on one existing and being resolvable. Please confirm.
-No causal or ranking claims. Prohibited wording includes “failed”, “worked”, “despite”, “caused”, “ineffective”. No owner, team or business unit comparisons. Business units appear as spread, not performance.
-Heavy tail: severe events shown separately.
-What carries over and what changes
-Carries over: profiling checks (snapshots, Cross Ref reconciliation, text quality and leakage, entity resolution, eras, privacy, tokens), the evidence classes, the lanes, and the incident-first mapping.
-Changes: the pilot is a seeded set of families across domains, not one domain.
-Shelved: LLAC and period modelling, action-set mapping, eligibility routes, the review queue. The intervention response study stays on file as a gated follow-on if confirmed families show enough episodes.
+different systems
+different process implementations
+different customer journeys
+different control environments
+different underlying technical causes
 
-Next step: if the team agrees, I would draft the two-week kill test specification: the seed-family selection method, the baseline construction, the expert “same problem” labelling guide and the sponsor prediction template. One question first: who is the sponsor who would write the predictions and take a confirmed family to the planning cycle?
+A common family may justify enterprise diagnosis, but not necessarily enterprise treatment.
+
+“Consolidate remediation funding”
+
+Counts and themes of actions do not show that the actions:
+
+overlap
+address the same exposure
+have compatible scope
+remain active
+require the same capability
+can practically be consolidated
+
+The model could identify a candidate for consolidation, but that is still one step removed from changing funding.
+
+“Review a repeatedly used remediation theme”
+
+A repeated theme such as training, monitoring or process change may be too broad to be decision-useful. Its recurrence may reflect text compression by the classification model rather than substantively equivalent interventions.
+
+“Raise an issue where no issue exists”
+
+This is credible as a review trigger, but it is closer to enhanced problem detection than enterprise investment intelligence.
+
+“Direct assurance and audit attention”
+
+This is probably the most defensible decision in the proposal. However, it is not the large, strategically differentiating funding decision originally sought.
+
+3. It is too close to existing problem-management and thematic-RCA practices
+
+There is already an internal focus on moving from repeat incidents towards proactive problem identification, recurring-pattern discovery and prevention. From Repeat Incidents to Proactive Problems explicitly describes earlier identification of recurring patterns, proactive problem identification and reducing repeat incidents.
+
+There is also updated internal root-cause guidance that introduces root-cause categories to make trends easier to identify and supports thematic root-cause analysis of issues and incidents. Update: New & Improved Root Cause Analysis Guidance! states that the guidance includes new root-cause categories for spotting trends and increased focus on understanding why issues and incidents occur.
+
+Enterprise Learning Intelligence may perform this across a broader NFR dataset and use stronger semantic reasoning. Nevertheless, the executive may reasonably perceive it as:
+
+“A more advanced enterprise thematic analysis and problem-management capability.”
+
+That may be worthwhile, but it does not clearly meet your uniqueness threshold.
+
+4. The proposal has mistaken defensibility for value
+
+The LRM’s reasoning is:
+
+Intervention effectiveness cannot be defended.
+Repeated records and response histories can be described.
+Therefore, build the descriptive capability.
+
+Steps 1 and 2 are correct. Step 3 does not necessarily follow.
+
+The better conclusion is:
+
+Use defensible descriptive evidence to generate and prioritise intervention hypotheses, without falsely claiming causal proof.
+
+The choice is not limited to:
+
+making causal claims, or
+stopping at descriptive problem families.
+
+A decision system can remain explicit about uncertainty while still comparing intervention options.
+
+5. “Enterprise Learning Intelligence” overstates what is measured
+
+The proposal does not actually determine whether the enterprise learned.
+
+It observes records of:
+
+incidents
+issues
+actions
+classifications
+timing
+organisational spread
+
+It does not observe directly:
+
+whether lessons were understood
+whether knowledge transferred
+whether behaviour changed
+whether implementation was successful
+whether the risk was accepted
+whether external circumstances changed
+whether recurrence was preventable
+whether the intervention was intended to prevent that particular manifestation
+
+A more accurate name would be:
+
+Cross-Enterprise Failure and Response Intelligence
+
+That is still valuable, but it exposes the true scope. The product reconstructs failure and recorded response. It does not yet measure learning.
+
+What the LRM got right
+
+The proposal contains several elements that should absolutely be preserved.
+
+Preserve the problem-family unit of analysis
+
+This is considerably better than analysing isolated incidents, issues or actions. It allows discovery across administrative boundaries.
+
+Preserve observed versus inferred relationships
+
+The proposal correctly says:
+
+records are observed
+mechanism equivalence is inferred
+family membership requires validation
+human-created links should not be treated as truth
+
+That is critical.
+
+Preserve separate vocabularies
+
+Incident mechanisms, issue weaknesses and action themes should not be collapsed into one generic taxonomy. Their relationship should remain an evidence-backed hypothesis.
+
+Preserve the temporal construction
+
+First incident, first issue, first action, recurrence and cross-unit spread are useful signals. They create a longitudinal organisational history rather than a static dashboard.
+
+Preserve the two-week kill test
+
+The kill test is disciplined and worth running. Comparing:
+
+label-and-link baselines
+semantic family construction
+expert agreement
+sponsor expectations
+genuinely unexpected findings
+
+is an effective way to determine whether the LRM contributes incremental discovery.
+
+However, passing that test would validate family discovery, not the complete executive use case.
+
+The key flaw in the two-week test
+
+The test proves technical and analytical novelty:
+
+“Can the model discover valid cross-unit families that labels and links miss?”
+
+It does not prove decision value:
+
+“Would an executive make a different material decision because the family was found?”
+
+The proposed condition that a sponsor must encounter “some results they did not predict” is not enough.
+
+Surprise is necessary, but surprise is not value.
+
+A sponsor can say:
+
+“I did not know those records were related.”
+
+and still conclude:
+
+“This does not change our plans.”
+
+What the kill test must additionally require
+
+For at least one validated family, the sponsor should be able to identify a specific changed decision such as:
+
+expand the scope of an existing remediation programme
+combine two planned diagnostic exercises
+investigate a shared application or process dependency
+redirect assurance to an overlooked pathway
+create a cross-business problem investigation
+defer a local action pending enterprise diagnosis
+develop one shared intervention capability rather than separate responses
+
+The test should capture:
+
+Decision before seeing the result
+Decision after seeing the result
+The exact evidence that changed the decision
+Who has authority to make it
+What additional evidence is needed
+The approximate funding or resource consequence, if available
+
+Without that, the test validates an insight engine, not a decision capability.
+
+My replacement
+
+I would not discard Candidate C. I would make it the evidence engine inside a more valuable capability:
+
+Enterprise Vulnerability and Intervention Portfolio Intelligence
+
+Its purpose would be:
+
+Identify recurring or emerging operational vulnerability pathways, reconstruct how the organisation has responded, and determine which areas require enterprise diagnosis, intervention redesign or funding consideration.
+
+The important difference is that the output does not stop at a family.
+
+Each validated family should progress through four layers.
+
+Layer 1: Failure-family discovery
+Which records may share a mechanism?
+How confident is the grouping?
+What evidence contradicts it?
+Which relationships are recorded versus inferred?
+
+This is the LRM’s Candidate B.
+
+Layer 2: Response reconstruction
+What issues were raised?
+What actions were recorded?
+Which response themes appeared?
+What organisational scope did they cover?
+Were responses local, shared or enterprise-wide?
+
+This is the strongest part of Candidate C.
+
+Layer 3: Residual-vulnerability assessment
+
+Without claiming causality, ask:
+
+Are similar signals recorded after responses?
+Did signals migrate to different products, processes or applications?
+Are later manifestations within or outside the recorded response scope?
+Does the response appear to target detection, recovery, prevention or governance?
+Is there an evident mechanism component for which no corresponding response can be found?
+What alternative explanations could account for recurrence?
+
+Notice the wording: evidence of unresolved vulnerability, not proof of failed remediation.
+
+Layer 4: Intervention decision case
+
+For each significant family:
+
+what common dependency should be investigated
+whether the next step should be local or enterprise-wide
+which existing initiatives may overlap
+which facts are required before investment
+what intervention options exist
+what decision-maker owns the next decision
+which option appears to address the broadest exposure
+what uncertainty prevents a recommendation
+
+This is where executive value arises.
+
+Revised verdict on the candidates
+Candidate A: Intervention Response Study
+
+Reject as a lead use case.
+
+Its causal ambition exceeds the observable data. Retain only carefully bounded post-response trajectory analysis as supporting evidence.
+
+Candidate B: Failure Mechanism Intelligence
+
+Accept as an analytical engine.
+
+It provides the most important LRM-specific function: discovering latent similarity that labels, IDs and human-created links miss.
+
+Candidate C: Enterprise Learning Intelligence
+
+Reject as the final capability, accept as an intermediate layer.
+
+It improves B by attaching organisational responses, but it still stops too close to thematic analysis.
+
+Recommended Candidate D
+
+Enterprise Vulnerability and Intervention Portfolio Intelligence
+
+B discovers the underlying failure structures.
+ C reconstructs the response history.
+ D converts both into a prioritised portfolio of diagnostic and intervention decisions.
+
+Final answer
+
+I do not accept the LRM’s proposal as the one capability you should build if you only get one opportunity.
+
+It is:
+
+analytically sound
+appropriately cautious
+testable
+more defensible than the intervention study
+likely to uncover missed cross-unit patterns
+
+But it is still too likely to generate:
+
+“Here is a recurring enterprise problem and the history of recorded responses.”
+
+rather than:
+
+“Here is the specific shared vulnerability requiring attention, the operating-model dependency to investigate, the existing responses that do and do not cover it, and the decision that should now change.”
+
+The right decision
+
+Run the proposed two-week family-discovery test, but do not commit to Enterprise Learning Intelligence as the product.
+
+Use the test to validate the evidence engine. Require proof of an actual changed decision before promoting it into a full capability.
+
+The single capability should be an Enterprise Vulnerability and Intervention Portfolio, with failure-family discovery and response reconstruction embedded inside it. That preserves the LRM’s strongest thinking without settling for a sophisticated descriptive system.
