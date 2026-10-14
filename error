@@ -1,73 +1,257 @@
-Response to the challenge
+Strategic Challenge to the Current Direction
 
-Short answer: the concentration study fails your test. I would drop it as the lead use case. The better question is your second one, “where is the organisation repeatedly attempting to solve the same underlying problem?”, and it is where the incident, issue and action data combine in a way a dashboard cannot.
+Thank you for being willing to abandon previous ideas when challenged. That is a positive sign.
 
-Challenging my replacement
-Question	Honest answer
-What does concentration find that BI cannot?	Very little. Ranking incidents and loss by process, product or application is a pivot table. The only AI contribution is grouping by mechanism rather than by label, and that is a small improvement on a question the business already answers.
-What decision changes?	Weak. “Look harder at the top loss areas” is already the default.
-What would surprise a risk executive?	Probably not the hotspots. Concentration tells them where it hurts, and says nothing about whether the organisation is learning.
+However, I am becoming increasingly concerned that we may be systematically underestimating the value of the available data estate and optimising for problems that are easier to validate rather than problems that are genuinely important.
 
-I also pushed the work toward a cell view (process by product by application) because it was easier to build and validate. That was the same mistake as the closure triage, in a different direction.
+I would like you to step back completely from the current proposals and answer a more fundamental question.
 
-Why the second question is better
+Concern 1: We are sitting on an unusually valuable dataset
 
-BI works on what is tagged and linked. Here, the tags are per object type, the taxonomies drifted over ten years, and the human cross-references are incomplete. So no dashboard can follow one problem from the incidents that exposed it, through the issues raised, to the actions taken and the incidents that came after. Reading the text across all four object types and joining by meaning is the one thing here that is hard without a language model. The unit of analysis is a problem thread: a failure mechanism in a stated context, with every incident, issue and action that touches it, ordered in time.
+Let's inventory what is actually available.
 
-The closure triage looked at one link (issue to action). The thread looks at the whole chain, and it asks about the organisation’s learning rather than the quality of one closure.
+We have approximately:
 
-What a thread can show that a dashboard cannot
+140,000 incidents
+25,000 issues
+68,000 actions
+6,600 active controls
+10+ years of history
+Rich textual descriptions
+Issue root causes
+Incident causes
+Financial impacts
+Customer impacts
+Regulatory impacts
+Control ratings
+Process architecture
+Application relationships
+Product information
+Business capability information
+Value streams
+Cross-reference relationships
 
-These are hypotheses. The data may show the opposite.
+This is not a normal governance dataset.
 
-Candidate insight	Why BI cannot see it
-Fragmented ownership of one problem: the same mechanism raised as many separate issues across business units and years, each closed locally, never treated as one	Issues are counted by unit and label. Different labels and units hide the sameness.
-Orphaned mechanisms: a mechanism with material consequence and no issue ever raised against it	Needs a match by meaning between incident text and issue text, not by recorded links
-Repeated intervention class: the same type of action (for example training or procedure update) applied against the same mechanism several times, with incidents still recorded afterwards	Needs action text classified and tied to the mechanism. This is an association, not proof the actions failed.
-Learning latency: time from the first recorded incident of a mechanism to the first issue, and from first issue to any enterprise-level response	Needs the thread to know when the mechanism first appeared
-Migrating problems: a mechanism addressed in one process that later appears in another	Needs mechanism matching across processes
-Relabelled reopenings: the same problem raised again under a new issue with a different root cause label	Needs text-based matching
+This is potentially a historical record of:
 
-An illustrative slide (placeholders only, not findings): “One failure mechanism: [N] issues and [M] actions across [J] business units over [Y] years, under [K] root cause labels, never managed as one problem. [X] incidents were recorded over the same period.”
+How a large bank fails, recognises those failures, responds to them, and changes over time.
 
-A CRO would say “we did not know that” because the finding is about how the organisation learns, not where it hurts.
+Yet we have progressively moved through:
 
-Decisions that change
-Decision	Decision-maker	Trigger
-Assign one enterprise owner and one remediation approach to a fragmented problem	CRO, executive risk committee	A thread with many independent issues across units, expert-confirmed
-Change the intervention for a problem where the same action type has been repeated	Remediation policy owner, thread owner	Repeated intervention class with continued recorded events
-Raise a new issue on an orphaned high-consequence mechanism	Head of Non-Financial Risk	Orphan thread confirmed
-Fund or stop effort at problem level instead of issue level	Executive committee at planning	Thread-level view of effort against consequence
+Control sufficiency
+Closure review
+Incident concentration
+Failure threads
 
-These decisions need no evidence about closure. They need the pattern across issues, which the data does hold.
+Each step feels narrower than the available opportunity.
 
-The kill test, before building anything
+I want you to challenge whether we are unconsciously converging on what is easiest to prove rather than what is most valuable to know.
 
-The risk is that the existing structure already connects most of this. So first measure how much the AI adds.
+Concern 2: Failure Threads Are Better Than Closure Review, But May Still Be Too Small
 
-Build threads two ways: from recorded Cross Ref links plus shared root cause labels (the baseline), and from text meaning.
-Count threads that the text method connects and the baseline does not. These are the candidate surprises.
-Have two experts independently judge a sample: is this one problem, and did they already know it was?
-Proposed pass (to agree before the run): at least five threads of three or more issues across two or more business units, connected by no recorded link or shared label, confirmed by both experts, and judged by the sponsor as not previously known.
+The new "problem thread" concept is much better than closure review.
 
-If the baseline already finds most of them, or experts cannot agree on what counts as one problem, the proposition fails cheaply, and that is useful to know.
+However, I am still not convinced it is the highest-value use case.
 
-Risks I would hold to
-Similar text is not the same problem. Threads are model-derived and need expert confirmation. A thread is a hypothesis until confirmed.
-Repeated attempts can be legitimate. Different systems, products or exposures may justify separate issues. The output flags candidates, not duplication.
-No claims about effectiveness. “Recorded events continued after the action” is an association. It does not say the actions failed.
-Left-censored history. If the data starts partway through a problem’s life, latency figures understate it.
-Reporting bias affects which events appear, as before.
-Action counts are a poor proxy for effort. Use them as counts only, not as cost.
-No people or team ranking. Threads cross units by design, so ownership findings are about structure, not performance.
-Would I fund it?
+My concern is that we are now asking:
 
-Yes, as a time-boxed study with the kill test, ahead of any platform. It is more complex than the concentration study, because it needs mechanism tagging and thread assembly. It is simpler than the closure triage, because there is no temporal anchoring, no action-set mapping and no review queue.
+"Can we identify where the same underlying problem appears repeatedly?"
 
-Controls stay out, as you asked. They could attach to a confirmed thread later.
+That is certainly useful.
 
-I would keep two earlier pieces: concentration as a supporting materiality view (to rank threads, not as a finding), and the closure-review design on the shelf for threads where fragmented remediation is confirmed.
+But it still feels descriptive.
 
-One decision for you
+It still focuses on:
 
-Name a sponsor who would take a confirmed thread to the planning cycle and say what they would change. If no one will, even this use case struggles. If one will, I would start with a two-week design for the kill test: how to build the baseline, how to select the expert sample, and how experts will label “same problem”.
+Plain Text
+Failure
+↓
+Issue
+↓
+Action
+↓
+Failure
+
+I want you to challenge whether there is a more powerful question available.
+
+For example:
+
+Which types of operating models generate failure?
+Which combinations of process, product and application are consistently fragile?
+Which intervention types actually change outcomes?
+Which organisational assumptions appear repeatedly wrong?
+Which control strategies consistently correlate with better outcomes?
+Which business capabilities are structurally resilient versus structurally fragile?
+
+We are still looking at symptoms.
+
+Should we be looking at system characteristics instead?
+
+Concern 3: We May Be Ignoring the Most Valuable Question
+
+Suppose a CRO gives you this challenge:
+
+"I don't care where we have the most incidents.
+
+I don't care which issue closure might be weak.
+
+I want to know something that changes how we invest our next dollar of remediation."
+
+What would we build?
+
+I am not convinced that:
+
+closure review,
+concentration analysis, or
+problem threads
+
+are necessarily the answer.
+
+If we had to recommend where to spend:
+
+remediation funding,
+control investment,
+technology improvement funding,
+process redesign effort,
+assurance effort,
+
+what insight would give the greatest return?
+
+That may be a more important design question than identifying recurring threads.
+
+Concern 4: The Current Ideas Still Depend Heavily on Governance Artefacts
+
+Almost every proposal so far relies on:
+
+issues,
+actions,
+controls,
+ratings,
+relationships.
+
+These are all human-created governance objects.
+
+Incidents are arguably the closest thing we have to observable reality.
+
+Yet even the failure-thread concept still depends heavily on the governance layer.
+
+Challenge yourself:
+
+If issues, controls, actions and ratings disappeared tomorrow and only incidents remained, what valuable intelligence could still be derived?
+
+That thought experiment may expose where the real information content sits.
+
+Concern 5: Are We Underutilising Time?
+
+One thing we rarely discuss is:
+
+We possess more than ten years of organisational history.
+
+That is potentially more valuable than the object relationships themselves.
+
+Examples:
+
+How long does organisational learning take?
+How long does a failure mechanism survive?
+How long after incidents does action occur?
+How long after action does similar behaviour recur?
+How long do remediation approaches remain effective?
+How quickly does concern migrate between business areas?
+Which interventions produce durable change?
+
+Most current proposals use time only as context.
+
+Should time be a first-class analytical dimension?
+
+Concern 6: What Would Truly Surprise a CRO?
+
+I do not want:
+
+"The same problem appeared across five business units."
+
+Interesting.
+
+But perhaps not transformational.
+
+The test should be:
+
+What finding would genuinely change the way the bank thinks about operational risk?
+
+For example:
+
+We repeatedly address symptoms rather than causes.
+Most remediation effort is applied to problems that are already declining.
+A small number of failure mechanisms account for the majority of customer harm.
+The organisation repeatedly solves local manifestations of enterprise-wide problems.
+Certain intervention types rarely lead to durable change.
+Organisational learning is significantly slower than assumed.
+A handful of operating-model characteristics explain a disproportionate share of adverse outcomes.
+
+These are only examples.
+
+I want you to identify the strongest candidate.
+
+Challenge
+
+Forget:
+
+Closure review.
+Incident concentration.
+Failure-threads.
+
+Temporarily set them aside.
+
+Given the full data estate, answer:
+
+1.
+
+What is the single most valuable insight that this data could reveal?
+
+2.
+
+What is the single most important decision that insight would change?
+
+3.
+
+Which executive would care the most?
+
+4.
+
+Would that executive allocate funding based on the output?
+
+5.
+
+Could the same insight be produced using conventional BI, SQL and dashboards?
+
+If yes, reject it.
+
+6.
+
+What capability would make a CRO say:
+
+"We did not know that, and we need to act on it."
+
+7.
+
+Are we still underestimating the strategic value of:
+
+Incidents
+Issues
+Actions
+Processes
+Applications
+Products
+Time
+
+when viewed together?
+
+8.
+
+If you had only one opportunity to use this entire data estate and could never build a second capability, what would you build?
+
+You are allowed to reject every proposal produced so far, including your own.
+
+Do not optimise for ease of implementation.
+
+Optimise for value.
