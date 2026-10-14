@@ -1,252 +1,82 @@
-Challenge to Current MVP Direction
+Response to the challenge
 
-First, thank you for the amount of rigour that has gone into the design. The methodology is now significantly more mature, defensible and governable than where it started.
+Short answer: the challenge is largely right. I would not fund Outcome-Informed Remediation Assurance Triage as the single capability. I would replace it with an incident-led study, and keep the triage design on the shelf as a possible later product.
 
-However, I want to step back and challenge whether we have unintentionally optimised for a use case that is technically feasible rather than one that creates the greatest value from the available data.
+I should also own part of the drift. At each step I accepted a narrowing that made the work easier to validate, and I never tested whether the narrower thing was still the most valuable one. Validatability is a good reason to pick a first experiment. It is a poor reason to pick the strategy.
 
-Concern 1: We may be solving the wrong problem
+How I weigh the six concerns
+Concern	Verdict	Weight
+2. Missing closure evidence	Right, and decisive	High
+4. Incidents underused	Right	High
+3. Adoption	Right, and follows from 2	High
+6. Complexity	Right	Medium
+5. Operating model underused	Right in principle, one correction below	Medium
+1. Wrong problem	Right in effect. The decision is real but small relative to the data.	Follows from the above
 
-The original opportunity was based on access to:
+Concern 2 is the one that breaks the case. The product exists to inform a decision about closure, and that is exactly where our evidence is thinnest. Closure rests on testing, release approvals and attestations that sit outside these tables. The claim boundary I wrote (“the recorded remediation does not clearly align with the recorded weakness”) is honest, but it is weak. A reviewer will reasonably ask what they are getting beyond “go and look at the evidence”. That is also the likely Line 1 response (Concern 3): “the closure was approved, and the evidence is elsewhere”. Framing the output as a request for evidence rather than a challenge helps at the margin. It does not change the fact that the product’s value is bounded by how much review capacity exists and how often a partial-view flag is right.
 
-~140,000 incidents
-~25,000 issues
-~68,000 actions
-~6,600 controls
-Process architecture
-Application relationships
-Product information
-10+ years of history
+Concern 4 is also right. My first answer said incidents are the only dataset that records what happened. The current design uses them for one retrieval step. The closure-review product mostly analyses documents about documents.
 
-This is an unusually rich dataset.
+Concern 5, one correction. I earlier treated product as unstructured. The incident schema has INC_PRD_LVL_1 and INC_PRD_LVL_2, INC_PRCSS, and INC_OTHR_SYS. If those fields are populated and resolvable (unverified, per profile checks P8 and P9), the operating-model context for an incident sits on the incident itself. That removes the dependency on Cross Ref for the outcome side and makes concentration analysis much simpler than I assumed.
 
-Yet the proposed MVP has progressively narrowed into:
+What the one slide should say
 
-"Which closed issues should receive an independent closure-quality review?"
+Roughly: “[X]% of loss and customer harm over [N] years comes from [M] process, application and product combinations, and [K] failure mechanisms recur across [J] business units. [Y]% of those combinations have had no issue or action activity in the last [Z] years, while [W]% of remediation effort goes to areas accounting for [V]% of harm.” That is a format with placeholders, not a finding.
 
-While this is practical and measurable, it feels disconnected from the scale of the data opportunity.
+The decision it supports is where to direct remediation funding and assurance effort next planning cycle, and which cross-cutting mechanisms deserve an enterprise-level owner. That is a decision a CRO and executive committee actually own.
 
-I am concerned we have moved from:
+Alternatives reconsidered
+Use case	Value	Simplicity	Main problem
+Incident-led consequence concentration and attention gap	High	Moderate	Needs resolvable process, product and application fields. Risk teams may already know the top loss areas.
+Cross-business failure mechanisms hidden by taxonomy	High	Moderate	Needs mechanism tagging on incidents. Part of the study above.
+Severe-novel structural exposure transfer	High	Low	Few cases, hard to validate. Later.
+Control coverage against observed failure	High	Low	Weakest links in the data. Later.
+Customer harm hidden in low-rated incidents	High	Moderate	Narrow, but could be a strong sub-finding.
+Closure triage (current MVP)	Moderate	Low	See concerns 2 and 3.
+The replacement: incident-led concentration and attention study
 
-"What can we learn from 10+ years of organisational failures?"
+Unit of analysis: the incident, grouped into operating-model cells (process, application, product) and failure mechanisms. This returns to the original logic.
 
-to:
+Three outputs, in order:
 
-"Which issue closures should be reviewed?"
+Concentration: where consequence sits, reported in the three lanes from earlier (material and recurring, severe and novel, frequent and low impact), never summed.
+Cross-cutting mechanisms: the same mechanism appearing across several cells or business units under different labels. This is where text reasoning adds something structured fields cannot.
+Attention gap: how issue and action activity (via Cross Ref) lines up against consequence by cell. Both directions matter: high consequence with little attention, and heavy attention on low consequence.
 
-The latter is operationally useful but may not justify the richness and breadth of the available data estate.
+Controls stay out of the first study. They can become a coverage lens once the cells are validated.
 
-Please challenge whether we have unintentionally converged on the easiest decision rather than the most valuable one.
+Why this is simpler than the current MVP: it needs one text-reasoning task (mechanism tagging on incidents), no temporal anchoring, no action-set mapping, no review queue, and no history reconstruction. It is a time-bound study, not a platform. It also challenges no one’s decision, which sidesteps the adoption problem. Findings are about operating arrangements, not about whether a closure was sound.
 
-Concern 2: We may not possess the information required to challenge issue closure decisions
+A cheap kill test first (about two weeks, structured fields only):
 
-A major concern is that issue closure is typically supported by far more evidence than exists in JUNO.
+Concentration of write-offs, customer impact and severity by process and by product, with no text work.
+Cross Ref issue and action counts against the same cells.
+Question for the head of risk: would any of this surprise them?
 
-For example:
+If concentration is already well known and attention already tracks it, the insight is thin and I would stop, or narrow to the cross-cutting mechanisms alone.
 
-Issue:
+Risks I would hold to:
 
-Weakness identified
+Chance concentrations. Thousands of cells will produce many apparent hotspots by chance. Find concentrations on data up to year T and test whether they persist afterwards. Report only the ones that do.
+Reporting bias. Concentration partly reflects where people log incidents. Use the reporting indicators already specified (logging lag, low-impact share, near-miss share) as caveats on every cell.
+Heavy tails. A few events will dominate loss. Keep the lanes separate and show the severe tail on its own.
+Write-offs understate cost, and process fields may be free text. Both are profile questions, not assumptions.
+Cell size. Minimum cell counts, and no owner or team views, as before.
+Claims. Associations only. “Attention” is activity recorded, not effectiveness.
+Would I fund the current MVP as the one capability?
 
-Action:
+No. If the incident-led study works, it produces what the triage product could not: an enterprise view of where the operating model fails and whether effort follows. Closure triage then becomes a possible follow-on, targeted at cells the study shows are under-served, and by then the closure-evidence question can be asked of specific cases rather than a whole population.
 
-Remediation defined
+What carries over from the work so far:
 
-Closure:
+Profiling checks P0 (snapshots), P4 (Cross Ref reconciliation), P5 (text quality and leakage), P8 (incident pools and reporting indicators), P9 (entity resolution), P10 (eras), P11 (privacy), P12 (tokens).
+The evidence classes, the no-causal-claims rules, the lane structure and the no-people-ranking guardrails.
+The 1A mapping, extended for incident fields.
 
-Formal closure approved
+What I would shelve: LLAC and the temporal period model, action-set mapping, the eligibility routes, the review queue and the reviewer outcome codes.
 
-But closure decisions may also involve:
+One caution on my own recommendation
 
-Independent validation
-Closure memoranda
-Testing evidence
-Technology release evidence
-CAB approvals
-UAT sign-offs
-Process redesign evidence
-External evidence repositories
-Operational metrics
-Management attestations
+The closure-review product had a clear owner and checkable ground truth. The incident-led study has a clearer value story but a softer owner. Before committing, name the executive who would take the slide to the planning cycle and say what they would change. If no one will, I would fall back to the narrow cross-cutting mechanisms piece.
 
-Many of these artefacts may not exist in the available datasets.
-
-Therefore:
-
-I am not convinced that the system can credibly identify whether:
-
-"the issue was truly resolved"
-
-or
-
-"the issue should be reopened"
-
-because it may not have access to the evidence that informed the closure in the first place.
-
-At best it may identify:
-
-"The recorded closure evidence appears incomplete, misaligned or worthy of further review."
-
-That is a much weaker claim.
-
-Please assess whether the current use case risks challenging governance decisions using a partial view of the underlying evidence.
-
-Concern 3: Organisational adoption may be harder than the technical problem
-
-Suppose the system produces 50 candidates.
-
-What happens next?
-
-A Line 1 team may reasonably respond:
-
-"We followed the approved issue-management process."
-
-"The closure was formally reviewed."
-
-"The closure evidence exists outside the datasets analysed."
-
-"The finding is based on incomplete information."
-
-This creates a risk that the product becomes:
-
-Technically impressive
-Analytically sound
-Organisationally difficult to use
-
-Please evaluate whether the output is likely to be accepted as a legitimate challenge by:
-
-Line 1
-Line 2
-Issue management teams
-Internal Audit
-Risk Committees
-
-Or whether it is more likely to be seen as:
-
-"AI second-guessing approved issue closures."
-
-Concern 4: We may be underutilising incidents
-
-Throughout the design process we repeatedly observed:
-
-Incidents are the closest thing we have to observed outcomes.
-
-The current MVP now spends most of its effort analysing:
-
-Issue → Action → Closure
-
-while incidents have become supporting evidence.
-
-This feels like a reversal of the original logic.
-
-Please reassess whether the largest and most valuable dataset:
-
-139,744 incidents
-
-is being used appropriately.
-
-Should incidents remain the primary analytical asset?
-
-If not, explain why.
-
-Concern 5: We may be underutilising process, application and product data
-
-The available operating-model data includes:
-
-Value streams
-Business capabilities
-L2 processes
-L3 processes
-Tasks
-Applications
-Products
-Channels
-
-These datasets potentially allow questions such as:
-
-Which operating arrangements most frequently generate failures?
-Which process/applications combinations appear repeatedly in adverse outcomes?
-Which products generate recurring failure mechanisms?
-Which business capabilities exhibit concentrations of incidents, issues or remediation activity?
-
-The current MVP uses these largely as contextual attributes and scope filters.
-
-Please challenge whether this is leaving significant value unrealised.
-
-Concern 6: Simplicity matters
-
-A core design objective is:
-
-Keep the first use case relatively simple.
-
-If the MVP requires:
-
-Multi-stage retrieval
-Temporal anchoring
-Historical reconstruction
-Weakness extraction
-Action-set mapping
-Review queues
-Outcome retrieval
-Validation campaigns
-Multiple evidence layers
-
-then I worry we may be introducing a great deal of complexity before proving value.
-
-A simpler use case that delivers meaningful insights may be preferable.
-
-Please reassess whether a simpler and more impactful use case exists.
-
-Challenge Question
-
-Imagine the following constraint:
-
-You are allowed only one slide to an executive audience.
-
-The audience does not care about:
-
-Embeddings
-LLMs
-Retrieval
-Validation frameworks
-Closure-quality methodologies
-
-They care only about:
-
-"What did we learn that we did not know before?"
-
-What is the single most valuable insight or decision the organisation could make using:
-
-Issues
-Incidents
-Actions
-Processes
-Applications
-Products
-Controls
-
-and 10+ years of history?
-
-Now ask yourself:
-
-Would the current MVP be the best route to that insight?
-
-Or has the MVP become too focused on issue-closure governance and not focused enough on extracting enterprise-level learning from the available data?
-
-Requested Response
-
-Please answer:
-
-Have we optimised for practicality at the expense of value?
-Is closure-review triage genuinely the highest-value decision product available?
-What alternative use cases should be reconsidered given the full data estate?
-Which use case would create the greatest executive value while remaining reasonably simple?
-If you were the CRO and could build only one capability from this data, would you still fund Outcome-Informed Remediation Assurance Triage?
-
-If yes, explain why despite the concerns above.
-
-If no, propose the replacement use case and explain why it creates greater value.
-
-Be willing to abandon the current MVP if the evidence points elsewhere.
-
-
-My personal view is that this challenge is important because I think the LRM has done an excellent job of designing a **credible product**, but I am no longer convinced it is the **most valuable product** that can be built from your data. There is a real possibility that the design has drifted from a strategic insight platform into a sophisticated issue-closure review tool. Those are not the same thing.
+Next step, if the team agrees: I would replace the pilot scorecard with a two-week specification for the kill test above (fields, cells, lanes, the Cross Ref attention measure and the “would this surprise you” review), and update the profiling checks for the incident-first view.
