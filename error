@@ -1,257 +1,100 @@
-Strategic Challenge to the Current Direction
+Response to the challenge
 
-Thank you for being willing to abandon previous ideas when challenged. That is a positive sign.
+Short answer: yes, I think we converged on what was easiest to validate. I would set aside closure review, concentration and threads as the lead idea. The strongest candidate I can find is an intervention response study: across the full history, what happens to a failure mechanism’s consequence after the organisation responds, by type of response, and does remediation effort go where consequence is rising or where it is already falling?
 
-However, I am becoming increasingly concerned that we may be systematically underestimating the value of the available data estate and optimising for problems that are easier to validate rather than problems that are genuinely important.
+One honest note first. My recommendation has changed with each round of challenge. Some of that was justified (closure evidence really is thin). Some of it was following the strongest pushback. So I have tried to answer from the structure of the data instead. The stable core across all my answers has been: incidents are the outcomes, governance objects are the organisation’s responses, and claims must stay at the level of association.
 
-I would like you to step back completely from the current proposals and answer a more fundamental question.
+The thought experiment
 
-Concern 1: We are sitting on an unusually valuable dataset
+If issues, actions, controls and ratings disappeared, incidents would still give you a catalogue of mechanisms, their consequence over time, severity migration, precursors, and which process, product and application combinations they sit in. That is real value, and it is also what a good analytics team could partly approximate.
 
-Let's inventory what is actually available.
+What incidents cannot tell you is what the organisation did about any of it. The unusual property of this estate is the combination: roughly 140,000 timestamped outcomes and roughly 68,000 timestamped responses, over ten years. That is a log of natural experiments. Incidents are the dependent variable, actions and issues are the interventions, process, application and product are the modifiers, and time is the thing that joins them. No single object type is the asset. The join is.
 
-We have approximately:
+The eight questions
 
-140,000 incidents
-25,000 issues
-68,000 actions
-6,600 active controls
-10+ years of history
-Rich textual descriptions
-Issue root causes
-Incident causes
-Financial impacts
-Customer impacts
-Regulatory impacts
-Control ratings
-Process architecture
-Application relationships
-Product information
-Business capability information
-Value streams
-Cross-reference relationships
+1. The most valuable insight. Whether, and for which kinds of failure and response, the bank’s remediation is associated with a durable reduction in consequence. The sharpest sub-findings would be:
 
-This is not a normal governance dataset.
+how much remediation effort goes to mechanisms already declining before the response (some of that is regression to the mean, so the question is the excess over what would happen anyway);
+which intervention classes (system change, process redesign, training, procedure update, and so on) show durable change and which show none;
+how long learning takes, from first recorded incident to first response to durable change.
 
-This is potentially a historical record of:
+I am not claiming any of these is true. The data may show the opposite, or may be unable to tell.
 
-How a large bank fails, recognises those failures, responds to them, and changes over time.
+2. The decision it changes. Where the next remediation dollar and the next unit of redesign effort go, and what standard a remediation has to meet before it is approved. For example: stop funding a response class that shows no durable change for a mechanism family, or fund first the rising mechanisms with no response.
 
-Yet we have progressively moved through:
+3. The executive. The CRO, together with whoever holds remediation and technology change funding (for example the COO or chief transformation officer). The CRO alone can change standards. The funding holder is the one who can move money.
 
-Control sufficiency
-Closure review
-Incident concentration
-Failure threads
+4. Would they allocate funding? Only if the evidence is credible enough to survive challenge, and this is the weak point. I would not expect funding to follow a single number. More realistic is a change in how proposals are assessed, and a few prospective tests (for example a staggered rollout of one response class) where the study cannot tell. A caveat: no action cost field appears in the schema list. Without cost or effort data, “return” can only mean change in consequence, never return on spend. Please confirm whether any cost or effort field exists.
 
-Each step feels narrower than the available opportunity.
+5. Could BI produce it? The crude version, yes: incident counts by root cause label before and after actions of a given category, using recorded links. That is the baseline, and it is what we should test against. A dashboard cannot easily do the rest:
 
-I want you to challenge whether we are unconsciously converging on what is easiest to prove rather than what is most valuable to know.
+define the same mechanism across ten years of label drift;
+connect responses to mechanisms where links are missing or wrong;
+classify intervention type from text;
+compare each mechanism’s trajectory with matched mechanisms that had no response, to separate real change from regression to the mean.
 
-Concern 2: Failure Threads Are Better Than Closure Review, But May Still Be Too Small
+If the label-and-link baseline finds the same things, this idea should be rejected as well.
 
-The new "problem thread" concept is much better than closure review.
+6. What would make a CRO say “we did not know that and we need to act”? Any of these, if confirmed:
 
-However, I am still not convinced it is the highest-value use case.
+most remediation effort lands on mechanisms already in decline;
+a response class that makes up a large share of actions shows no durable difference from doing nothing;
+the typical time from a mechanism’s first recorded incident to an enterprise-level response is far longer than assumed;
+material rising mechanisms have had no response at all.
 
-My concern is that we are now asking:
+I would ask the sponsor to write down predictions for each before any results are shown. The gap between prediction and result is the surprise measure, and it is more honest than judging surprise afterwards.
 
-"Can we identify where the same underlying problem appears repeatedly?"
+7. Are we underestimating the combination? Yes. Two things were underused: time (as the thing that links response to outcome, not just a filter) and the process, application and product fields as modifiers, so the question becomes “does this response class work differently in different operating arrangements?” That is a much stronger question than “where are incidents highest?”
 
-That is certainly useful.
+8. If I could build only one thing. The intervention response study, scoped as below. I would not build it as a platform.
 
-But it still feels descriptive.
+Why this and not the other candidates in your list
+Candidate	Assessment
+Operating models that generate failure	Valuable but sparse. Few events per process, application and product cell, no exposure denominators, and structural links are the weakest data. I would keep it as a modifier inside the study and promote it only if the cell counts support it.
+Control strategies correlating with outcomes	Controls are a type of intervention. The same framework can take them later using creation dates. Left out, as you asked, and because control scope links are the weakest.
+Which organisational assumptions are wrong	Too vague to test directly. It emerges from the study if it exists.
+Structurally resilient versus fragile capabilities	Same limits as the first row.
+Problem threads	Useful as a component. Thread assembly becomes step 2 below. By itself it is descriptive.
+Time as a first-class dimension
 
-It still focuses on:
+Four time quantities, each a distribution and not an average:
 
-Plain Text
-Failure
-↓
-Issue
-↓
-Action
-↓
-Failure
+Learning latency: first recorded incident of a mechanism to first issue, and to first response.
+Response timing: how far into a mechanism’s trajectory the response arrives (rising, peak or already falling).
+Durability: how long consequence stays lower after a response before returning, where it returns.
+Migration lag: how long before a mechanism appears in another process or product after a response elsewhere.
+Minimum design (concept level, no implementation)
+Tag mechanisms on incidents, validated by experts. This gives the outcome series.
+Classify responses (issue and action text) by intervention class and target mechanism, with recorded links as one signal among several.
+Build response episodes: a mechanism, a response event, and the consequence trajectory before and after, with observation time shown.
+Compare with matched mechanisms that had no response at a similar point in their trajectory. Use placebo dates and mechanisms where no response could plausibly act as negative controls.
+Estimate by intervention class and by operating-model modifier, with intervals and with “cannot distinguish” as a legitimate result.
+Expert review of the leading findings before anything is shown.
+Kill test, before any build
 
-I want you to challenge whether there is a more powerful question available.
+Thresholds are proposals to agree in advance.
 
-For example:
+Test	Stop condition
+Feasibility	Fewer than a few hundred response episodes with at least 24 months of incident history around them, or fewer than five intervention classes with about 30 episodes each. Stop.
+Beats the baseline	The text-based method does not link materially more episodes than labels and recorded links, confirmed by two experts. Stop.
+Regression to the mean	Matched no-response mechanisms show declines as large as the responded ones, in every class. Then the finding is “the data cannot show that remediation changes trajectories”. That is a legitimate result, but a different product (a measurement gap) and a weaker case for funding. Decide at that point whether it is enough.
+Decision pre-commitment	The sponsor states in advance what they would change under three outcomes: classes differ, no classes differ, effort chases declining mechanisms. If the answer is nothing in all three, stop.
 
-Which types of operating models generate failure?
-Which combinations of process, product and application are consistently fragile?
-Which intervention types actually change outcomes?
-Which organisational assumptions appear repeatedly wrong?
-Which control strategies consistently correlate with better outcomes?
-Which business capabilities are structurally resilient versus structurally fragile?
+The first two can be tested within weeks, using only structured fields and a small expert-labelled sample.
 
-We are still looking at symptoms.
+Risks and claim boundaries
+Causation. Observed association only. I would prohibit “worked”, “failed”, “caused” and “return on investment” in all outputs. Use “associated with a lower or higher consequence trajectory, relative to matched comparison”.
+Selection and timing. Problems that get certain responses differ from those that do not, and responses follow spikes. The matched comparison reduces this and does not remove it.
+Concurrent change. System changes, volume shifts and reporting changes can coincide with a response. Reporting indicators accompany every estimate.
+Mechanism definition. Results depend on how mechanisms are cut. Stability testing across definitions is part of the study.
+Left-censored and right-censored history, which understates latency and durability. Show observation windows.
+Heavy tails. A few severe events dominate loss. Report the lanes separately and keep the severe tail visible.
+People. No owner, team or business-unit comparison. Findings are about intervention classes and operating arrangements.
+Honest limit. This has the weakest causal footing of anything we have discussed, and the hardest validation. I think it is also the only candidate where the answer could change how money is spent, which is why I would accept that risk and test it cheaply first.
+What carries over, and what is shelved
+Carries over: profiling checks for snapshots, Cross Ref reconciliation, text quality and leakage, incident pools, entity resolution, eras, privacy and tokens; evidence classes; lanes; the no-people guardrails.
+Becomes a component: thread assembly (step 2 above); concentration as a covariate.
+Shelved: LLAC and the period model, action-set mapping, the eligibility routes, the review queue.
+Next step
 
-Should we be looking at system characteristics instead?
-
-Concern 3: We May Be Ignoring the Most Valuable Question
-
-Suppose a CRO gives you this challenge:
-
-"I don't care where we have the most incidents.
-
-I don't care which issue closure might be weak.
-
-I want to know something that changes how we invest our next dollar of remediation."
-
-What would we build?
-
-I am not convinced that:
-
-closure review,
-concentration analysis, or
-problem threads
-
-are necessarily the answer.
-
-If we had to recommend where to spend:
-
-remediation funding,
-control investment,
-technology improvement funding,
-process redesign effort,
-assurance effort,
-
-what insight would give the greatest return?
-
-That may be a more important design question than identifying recurring threads.
-
-Concern 4: The Current Ideas Still Depend Heavily on Governance Artefacts
-
-Almost every proposal so far relies on:
-
-issues,
-actions,
-controls,
-ratings,
-relationships.
-
-These are all human-created governance objects.
-
-Incidents are arguably the closest thing we have to observable reality.
-
-Yet even the failure-thread concept still depends heavily on the governance layer.
-
-Challenge yourself:
-
-If issues, controls, actions and ratings disappeared tomorrow and only incidents remained, what valuable intelligence could still be derived?
-
-That thought experiment may expose where the real information content sits.
-
-Concern 5: Are We Underutilising Time?
-
-One thing we rarely discuss is:
-
-We possess more than ten years of organisational history.
-
-That is potentially more valuable than the object relationships themselves.
-
-Examples:
-
-How long does organisational learning take?
-How long does a failure mechanism survive?
-How long after incidents does action occur?
-How long after action does similar behaviour recur?
-How long do remediation approaches remain effective?
-How quickly does concern migrate between business areas?
-Which interventions produce durable change?
-
-Most current proposals use time only as context.
-
-Should time be a first-class analytical dimension?
-
-Concern 6: What Would Truly Surprise a CRO?
-
-I do not want:
-
-"The same problem appeared across five business units."
-
-Interesting.
-
-But perhaps not transformational.
-
-The test should be:
-
-What finding would genuinely change the way the bank thinks about operational risk?
-
-For example:
-
-We repeatedly address symptoms rather than causes.
-Most remediation effort is applied to problems that are already declining.
-A small number of failure mechanisms account for the majority of customer harm.
-The organisation repeatedly solves local manifestations of enterprise-wide problems.
-Certain intervention types rarely lead to durable change.
-Organisational learning is significantly slower than assumed.
-A handful of operating-model characteristics explain a disproportionate share of adverse outcomes.
-
-These are only examples.
-
-I want you to identify the strongest candidate.
-
-Challenge
-
-Forget:
-
-Closure review.
-Incident concentration.
-Failure-threads.
-
-Temporarily set them aside.
-
-Given the full data estate, answer:
-
-1.
-
-What is the single most valuable insight that this data could reveal?
-
-2.
-
-What is the single most important decision that insight would change?
-
-3.
-
-Which executive would care the most?
-
-4.
-
-Would that executive allocate funding based on the output?
-
-5.
-
-Could the same insight be produced using conventional BI, SQL and dashboards?
-
-If yes, reject it.
-
-6.
-
-What capability would make a CRO say:
-
-"We did not know that, and we need to act on it."
-
-7.
-
-Are we still underestimating the strategic value of:
-
-Incidents
-Issues
-Actions
-Processes
-Applications
-Products
-Time
-
-when viewed together?
-
-8.
-
-If you had only one opportunity to use this entire data estate and could never build a second capability, what would you build?
-
-You are allowed to reject every proposal produced so far, including your own.
-
-Do not optimise for ease of implementation.
-
-Optimise for value.
+Name the sponsor who would write the predictions and make the allocation call. If there is no such person, none of the candidates is fundable. If there is, I would draft the two-week design for the first two kill tests: the fields needed, how to pick the expert sample, and the definitions of “response episode” and “same mechanism” that the experts will label against.
