@@ -1,280 +1,444 @@
-Response to the team
+project:
+  name: Outcome-Informed Remediation Assurance Triage
+  version: input_data_v1
+  status: use_case_scope_frozen
+  objective: >
+    Provide all currently available metadata, schemas, value dictionaries,
+    operating model data and known constraints needed to produce Artefact 1A
+    (Logical-to-Physical Mapping) and Artefact 1B (Executable Data Profiling Specification).
 
-Verdict: accept all 20 points. Two of them change the design: snapshot history now gates everything else, and the Cross Ref table becomes the principal link source.
+known_constraints:
 
-One correction on my side. I cannot see schema.xlsx in this conversation. No files are attached, so I could not open it. The team’s message names the columns, and I have mapped from those names. Data types, nullability, any columns not named in your message, and the value dictionaries are unverified. Please re-attach the file and I will reconcile the mapping to it.
+  payments_population_methodology:
+    status: unavailable
+    comment: >
+      No documented Payments population methodology currently exists or is
+      unavailable at this stage.
+      This should not be treated as a blocking dependency.
 
-Refinements to your amendments:
+  source_system_change_documentation:
+    status: unavailable
+    comment: >
+      No formal documentation currently available describing source-system
+      changes, taxonomy changes or field-definition changes.
+      History feasibility must therefore be derived from:
+      - REPORTING_DATE
+      - EFF_START_DT
+      - EFF_END_DT
+      - LAST_UPDATED_DT
+      - object lifecycle dates
 
-Point	Refinement
-2. Snapshot history	Profile it first (P1 below), because the result removes or keeps whole test families. Reconstructed history only ever yields “first observed at reporting date X”, which is an upper bound on when something changed. It never yields an event date.
-6. Cancellation timing	Agreed. ACT_MODIFICATION_DT is recorded as “last modified” and is never used as a cancellation date. Whether ACT_CLOSURE_DT is populated for cancelled actions is a profiling question, and its meaning needs a data-owner answer.
-8. Task-specific usability	Raters score the same 50 cases per domain, and each field is rated only against the tasks it feeds. This keeps rater load near the original.
-10. Leakage	Two fields are both useful signals and leakage candidates: ACTNS_TO_PRVNT_REOCURNC (incident) and ISS_INC_ASSOC_LIST. Profile when they changed relative to issue closure, using first-appearance across snapshots if history allows.
-14. Small counts	Secure output carries exact counts. Shared output carries banded counts, with the threshold set by the privacy policy owner. I use 10 as a placeholder only.
+  historical_snapshots:
+    available: true
+    basis: REPORTING_DATE
+    warning: >
+      Repeated snapshots provide first observed date, not necessarily business
+      event date.
 
-Revised order: 1A and 1B (below), then 3 (intended use and model risk, in parallel), then 2 (scorecard, which needs the profile output), then the remaining pack in the earlier order.
+cross_reference_table:
 
-Artefact 1A: Logical-to-physical mapping (draft v0.1)
+  table_name: A008E1_DIM_CROSS_REFERENCE_2_R
 
-Status codes: P = column name seen in the team’s list, meaning to confirm. X = not in the supplied names. State: Cur = current value at the snapshot, Dat = explicit date column, Rec = might be reconstructable from repeated REPORTING_DATE snapshots (unproven), Una = unavailable unless another table exists.
+  columns:
+    - REPORTING_DATE
+    - DAILY_FLAG
+    - WEEKLY_FLAG
+    - MONTHLY_FLAG
+    - LATEST_DWM_FLAG
+    - OBJECT_SYSTEM_ID
+    - PARENT_SYSTEM_ID
+    - CROSS_REF_2_KEY
+    - OBJECT_TYPE
+    - OBJECT_ID
+    - PARENT_OBJECT_TYPE
+    - PARENT_ID
+    - FILE_AS_OF_DT
+    - LAST_UPDATED_DT
 
-All four principal tables carry REPORTING_DATE. Current-state analysis uses the agreed maximum date per table.
+  notes:
+    - Treat as candidate authoritative relationship source.
+    - Must be profiled before assuming authority.
+    - Must be reconciled against:
+      - ISS_INC_ASSOC_LIST
+      - ISS_CTRL_ASSOC_LIST
+      - ACTN_ID
+    - Relationship directionality unknown.
+    - Relationship status field unavailable.
+    - Effective dating unavailable.
 
-Issues (A008E1_DIM_ISSUE_R)
-Logical concept	Physical column	Status	State	Business definition needed	Check
-Issue identifier	ISS_ID	P	Cur	Business ID, not surrogate?	P0
-Title, description	ISS_NAME, ISS_DESC	P	Cur	None	P5
-Current rating	ISS_RTNG	P	Cur, Rec	Value dictionary and ordering	A2
-Original rating	ORGNL_ISU_RTNG	P	Cur	At which lifecycle point is it fixed?	A2
-Control-gap flag and detail	IS_THR_CTRL_GAP, ISU_DTLS_OF_CTRL_GAP	P	Cur	Who sets the flag, and values	P5.4
-Claimed root cause	ISS_ROOT_CAS_LVL_1, ISS_ROOT_CAS_LVL_2	P	Cur	Hierarchy versions and retirements	P10
-Raised, identified, created, closed dates	ISS_ISS_RISD_DT, ISS_IDNTFCTN_DT, ISS_CRTD_DT, ISS_CLSD_DT	P	Dat	Meaning of “raised” versus “created”	P7
-Issue closure summary	ISS_ISU_CLOSER_SUMMARY	P	Cur	None	P5
-Issue-level action fields	ACTN_ID, ACTN_COMPLTN_DT	P	Cur	Single action or list? Earliest, latest or primary?	P4
-Association lists	ISS_INC_ASSOC_LIST, ISS_CTRL_ASSOC_LIST	P	Cur	Delimiter and format. The control list is not used in the MVP.	P4
-Source, audit, SOX	ISS_SRC_CTGR_1, ISS_SRC_CTGR_2, ISS_ISS_SRC_CTGR_3_LIST, AUDIT_FNDNG, SOX_DEFCIENCY_TYPE, RELTED_TO_SOX	P	Cur	Value mapping for routes R5 and R7 (sponsor policy)	P3
-Technology theme	ISS_TECHNLGY_THEMATIC	P	Cur	Context only, not an eligibility field	P3
-Issue status	not named	X	Cur	Is “closed” a status value or ISS_CLSD_DT populated?	P3
-Expected and revised closure dates	not named	X	Rec at best	Existence	P1
-Issue scope (process, application, product)	not named	X	via Cross Ref	Source of scope	P4, P9
-Issue domain	not named	X	none	Population rule (P2)	P2
-Independent-review marker	not named	X	none	Existence	P3
-Owner fields	not named in supplied list	X	Cur	Restricted layer only	P11
-Actions (A008E1_ACTN_R)
-Logical concept	Physical column	Status	State	Business definition needed	Check
-Action identifier	ACT_ID	P	Cur	Business ID?	P0
-Name, description	ACT_NAME, ACT_DESC	P	Cur	None	P5
-Status	ACT_STATUS	P	Cur, Rec	Value dictionary, including cancelled and superseded states	P6
-Created, expected closure, closure, modified	ACT_CREATION_DT, ACT_EXPECTED_CLOSURE_DT, ACT_CLOSURE_DT, ACT_MODIFICATION_DT	P	Dat	Is ACT_CLOSURE_DT completion, or any closure including cancellation?	P7
-Closure summary	ACT_CLOSURE_SUMMARY	P	Cur	None	P5
-Cancellation reason	ACT_REASON_FOR_CANCELLATION	P	Cur	None	P6
-Lifecycle commentary	ACT_UPDATE_COMMENTARY	P	Cur	Appended over time? Truncated?	P5, P5.5
-Tracking	ACT_TRACKING	P	Cur	Unknown meaning	P6
-Folder hierarchy	ACT_FOLDER_LVL_1 to ACT_FOLDER_LVL_6	P	Cur	What do the folders represent? Possible scope or domain proxy.	P2
-Action-to-issue link	not on the action table	X	via ISSUE.ACTN_ID or Cross Ref	Authoritative source	P4
-Cancellation date	none	Una		Not derived from modification date	P1
-Revised due-date history, status events	none	Rec at best		Depends on P1	P1
-Superseded link, required-for-closure flag, dependencies	none	Una		Do not infer from free text	P6
-Incidents (A008E1_DIM_INCIDENT_R)
-Logical concept	Physical column	Status	State	Business definition needed	Check
-Identifier, status	INC_ID, INC_STUS	P	Cur	Status values	P0
-Name, description	INC_NAME, INC_DESC	P	Cur	None	P5
-Cause, root cause	INC_INCDNT_CAUSE, INC_ROOT_CAUSE, INC_ROOT_CAUSE_LVL_1, INC_ROOT_CAUSE_LVL_2	P	Cur	Difference between cause and root cause fields	P10
-Occurrence, identified, entry, closure dates	INC_DT_INCDNT_OCCRD, INC_DT_INCDNT_IDNTIFIED, INC_ENTRY_DT, INC_CLOSURE_DT	P	Dat	Is INC_ENTRY_DT the logging date?	P7, P8
-Impact	INC_IMPCT_RTNG, CUS_IMPCT_RTNG, FINNCL_IMPCT_RTNG, REG_IMPCT_RTNG	P	Cur	Value dictionary	P3
-Customers affected, write-off	NUM_OF_CUST_IMPCTD, INC_NET_AMT_WRITTEN_OFF_TO_DATE	P	Cur	Currency and cumulative meaning	P3
-Process	INC_PRCSS	P	Cur	Identifier, name or free text?	P9
-Product	INC_PRD_LVL_1, INC_PRD_LVL_2	P	Cur	Context only in the MVP	P9
-Application or system	INC_OTHR_SYS	P	Cur	Is this the application reference, and does it resolve to the inventory?	P9
-Duplicate, bulk, near miss	INC_DUPLICATE_INCIDENT_ID, INC_BULK_INC, NEAR_MISS	P	Cur	Semantics of each. NEAR_MISS feeds reporting indicators.	P8
-Closure summary	INC_CLSR_SUMMARY	P	Cur	None	P5
-Actions to prevent recurrence	ACTNS_TO_PRVNT_REOCURNC	P	Cur	Added when?	P5.5
-Not yet supplied
-Object	Needed for	Status
-Cross Ref table (schema and data)	Principal issue-action, issue-incident and scope links	X, request below
-Process and application master tables	Entity resolution, hierarchy	X
-Action-status or issue-rating history tables	History	X, P1 will say whether they matter
-Domain-scoping logic, taxonomy and source-system change log	P2, P10	X
-A008E1_DIM_CONTROL_R	Deferred. Not profiled.	Out of scope
-Artefact 1B: Executable data-profiling specification (v2.0)
+holocentric_schema:
 
-Handling rules
+  description: >
+    Holocentric process hierarchy, business capability, value stream,
+    product, application and task metadata.
 
-Runs in the secure layer. Owner fields are excluded.
-Every count carries its denominator.
-Secure output: exact counts, authorised analysts only.
-Shared output: banded counts below a threshold set by the privacy policy owner (placeholder: 10).
-No sample text leaves the secure layer.
-Prior thresholds remain proposals.
+  columns:
 
-Stages run in this order. P0 and P1 can change the design, so they run before everything else.
+    - l3_activity_uuid
+    - Flag
+    - l3_activity_name
+    - l3_activity_description
+    - l3_master_activity_uuid
 
-P0. Snapshot and key integrity
-Maximum REPORTING_DATE per table, and whether the four tables share it. If not, report the mismatch and do not mix snapshots.
-Within the selected snapshot, rows per business ID. Where duplicates remain, list the differentiating fields and apply no automatic selection.
-Report raw row counts and deduplicated object counts.
-Confirm that business IDs (ISS_ID, ACT_ID, INC_ID) are stable and are not surrogate keys.
-P1. History feasibility (gate for all history-based tests)
+    - l3_activity_applications
+    - l3_activity_channels
+    - l3_activity_customer_segments
 
-For each of the four tables:
+    - l3_activity_component_uuid
+    - l3_activity_component_id
+    - l3_activity_component_name
+    - l3_activity_component_description
+    - l3_activity_component_channels
+    - l3_activity_component_customer_segments
+    - l3_activity_component_products
 
-Number of reporting dates, frequency and gaps.
-Distinct versions per object ID.
-Whether changed values persist between snapshots.
-Whether old snapshots hold full text or current values only.
-Whether objects disappear after closure.
-Conflicts between effective dates and reporting dates.
-Whether snapshot history begins materially later than object history.
+    - l2_process_uuid
+    - l2_process_id
+    - l2_process_name
+    - l2_process_description
 
-Classification output for each item below: A (directly available), B (potentially reconstructable), C (unavailable unless another table exists).
+    - value_stream_uuid
+    - value_stream_order
+    - value_stream_name
 
-Action status events, revised due dates, cancellation timing
-Issue rating history
-Action set as it stood at closure
-Scope changes
-Independent-review history
+    - vcm_library_id
+    - vcm_library_name
+    - vcm_library_type
 
-Decision rule, agreed before the run: if history is not adequate, the MVP uses current values and explicit dates only. History-based tests are removed, not approximated. Reconstructed history is labelled “first observed at reporting date X” and kept separate from business-event history.
+    - Value_Chain
+    - Value_Chain_Uuid
 
-P2. Domain population rules (before any domain comparison)
+    - Business_Capability_ID_BCM
+    - Business_Capability_Name_BCM
 
-For each candidate domain, define a versioned rule, then report:
+    - Application_Name
 
-The inclusion rule, with each rule family tried (folder hierarchy via ACT_FOLDER_LVL_*, process via INC_PRCSS, product, Cross Ref relationships, existing Payments population)
-Object types included
-Count per rule, and overlaps between rules
-Orphaned objects, and objects assigned to several domains
-Objects included only through narrative text
-Precision on a reviewed sample of 50 included objects per object type
+    - Task_Uuid
+    - Task_Name
 
-Payments goes through the same scorecard as the others.
+    - l3_activity_product_service
 
-P3. Population and eligibility
-ID	Measure
-P3.1	Closed issues by closure year and rating. Closure is defined by status if a status field exists, otherwise by ISS_CLSD_DT, and both rules are reported if both exist.
-P3.2	ORGNL_ISU_RTNG against ISS_RTNG, and share downgraded
-P3.3	Eligible counts per route R1 to R7 using placeholder thresholds, with overlaps. Source fields: ISS_SRC_CTGR_*, AUDIT_FNDNG, SOX_DEFCIENCY_TYPE, RELTED_TO_SOX.
-P3.4	Closed in the last 90 days
-P3.5	Existence of any structured independent-review marker, and its value distribution
-P3.6	Incident impact value dictionaries and write-off distribution, for route R3 and R4 threshold setting
-P4. Links (Cross Ref as principal source)
-Counts by source and target object type and relationship type.
-Duplicates, self-links, orphaned source and target IDs, directionality.
-Active versus historical relationships, if a status field exists.
-Many-to-many distributions.
-Link stability across snapshots (subject to P1).
-Reconciliation: Cross Ref issue-action links against ISSUE.ACTN_ID, and Cross Ref issue-incident links against ISS_INC_ASSOC_LIST. Report agreement, one-sided links and conflicts. Resolve the meaning of ACTN_ID and ACTN_COMPLTN_DT.
-If Cross Ref quality supports it, designate it the principal source and keep the association fields as reconciliation sources.
-P5. Narrative quality (task-specific)
+  important_notes:
 
-Rater sample: 50 random eligible cases per domain, two raters. Each field is rated only against the tasks it feeds.
+    application_reference:
+      authoritative_field: Application_Name
 
-Tasks: weakness extraction, action-claim extraction, implementation-evidence review, verification-evidence review, incident retrieval. Each rating is Suitable or Not suitable.
+    process_hierarchy:
+      available: true
+      levels:
+        - value_stream
+        - l2_process
+        - l3_activity
+        - task
 
-P5.1 Per-field measures: population rate, length distribution, and rater-confirmed suitability per task. Fields: ISS_DESC, ISU_DTLS_OF_CTRL_GAP, ISS_ISU_CLOSER_SUMMARY, ACT_DESC, ACT_CLOSURE_SUMMARY, ACT_UPDATE_COMMENTARY, INC_DESC, INC_INCDNT_CAUSE, INC_CLSR_SUMMARY.
+    product_information:
+      available: true
+      sources:
+        - l3_activity_product_service
+        - l3_activity_component_products
 
-P5.2 Text defects (rate per field): placeholders (“N/A”, “refer attached”, “as discussed”), mostly IDs or URLs or system text, title duplicated in description, closure summary copied from action description, truncation, HTML or formatting artefacts, encoding problems, very long lifecycle commentary, contradictions within an object, embedded tables or lists, references to unavailable attachments.
+value_dictionaries:
 
-P5.3 Repeated text: classify as identical full text, shared template with variable content, generic with little case-specific content, duplicate-record repetition, or legitimate standard statement. Measure residual case-specific content after removing common template language, which matters more than repetition frequency.
+  ISS_RTNG:
+    values:
+      - High
+      - Medium
+      - Low
+      - Improvement Opportunity
+      - Blank
+    recommended_modelling:
+      include:
+        - High
+        - Medium
+        - Low
+      exclude:
+        - Improvement Opportunity
+        - Blank
 
-P5.4 Control-gap indicator reliability: share of records with IS_THR_CTRL_GAP set and ISU_DTLS_OF_CTRL_GAP populated, and the reverse.
+  ORGNL_ISU_RTNG:
+    values:
+      - High
+      - Medium
+      - Low
+      - Blank
+    recommended_modelling:
+      include:
+        - High
+        - Medium
+        - Low
+      exclude:
+        - Blank
 
-P5.5 Leakage: for each field below, report whether it could reveal a target judgement or contain post-anchor content. Record when it was last modified relative to issue closure, where P1 allows.
+  ISS_STUS:
+    values:
+      - Closure Review
+      - Open
+      - Rejected
+      - Planning and Scoping
+      - Draft
+      - Closed Without Action
+      - Closed
+    recommended_modelling:
+      exclude:
+        - Rejected
 
-ISS_ISU_CLOSER_SUMMARY and ACT_CLOSURE_SUMMARY (explicit verification statements)
-ACT_UPDATE_COMMENTARY (written after later incidents)
-ISU_DTLS_OF_CTRL_GAP (containing the expected remediation)
-ACTNS_TO_PRVNT_REOCURNC
-ISS_INC_ASSOC_LIST (retrospective links)
+  ACT_STATUS:
+    values:
+      - Open
+      - Unable to Complete
+      - Draft
+      - Cancelled
+      - Closed
+    recommended_modelling:
+      exclude:
+        - Cancelled
 
-Two views are maintained. The review-current view is everything the reviewer can see today, and it supports the triage product. An as-at-closure view uses only information known by the relevant date, where reconstructable. Any later historical performance experiment must use the as-at view.
+  INC_STUS:
+    values:
+      - Verification
+      - Rectification
+      - Pending Reopen
+      - Rejected
+      - Unassigned
+      - Pending Ownership
+      - Pending Closure
+      - Closed
+    recommended_modelling:
+      exclude:
+        - Rejected
 
-P6. Action sets and LLAC
-Actions per eligible issue, with the distribution by band (0, 1, 2 to 3, 4+).
-ACT_STATUS distribution, cancelled share, ACT_REASON_FOR_CANCELLATION populated rate, and what ACT_TRACKING contains.
-ACT_CLOSURE_DT populated rate by status. Specifically, whether it is populated for cancelled actions.
-LLAC state for every eligible issue:
-LLAC available: at least one non-cancelled linked action with a valid completion date
-No completed linked action
-All linked actions cancelled
-No linked action recorded (no-action cohort)
-Action-link uncertainty: Cross Ref and association fields disagree materially
-Generic action types (training, reminder, procedure update), identified by a rater-validated keyword screen.
-Category C items (cancellation date, superseded link, required flag, dependency): state “unavailable” in the output and do not infer.
-Complex or potential umbrella candidates (not exclusions). Signals: action count, description breadth, scope breadth, programme language, multiple processes or applications, duration, linked incident count. Mechanism count is added after labelling. Report the distribution of each signal and the overlap.
-P7. Dates
-Population and format consistency for every date column listed in 1A.
-Order violations: completion before creation, closure before identification, closure before raising, dates in the future.
-Issue closed before LLAC, and actions completed after issue closure.
-Share with at least 6 months of post-LLAC observation before the extract date. Where LLAC is unavailable, report separately against the issue closure fallback, labelled as a fallback.
-Issue closure is never reported as remediation completion.
-P8. Incident pools and reporting indicators
+  INC_IMPCT_RTNG:
+    ordered_values:
+      - Severe
+      - Very High
+      - High
+      - Medium
+      - Low
+      - No Impact
+      - Blank
+    recommended_modelling:
+      exclude:
+        - Blank
 
-For each eligible issue, report pool size under each of:
+  CUS_IMPCT_RTNG:
+    ordered_values:
+      - Severe
+      - Very High
+      - High
+      - Medium
+      - Low
+      - No Impact
+      - Blank
+    recommended_modelling:
+      exclude:
+        - Blank
 
-Exact process match
-Descendant-process match
-Application match
-Exact process or application match
-Domain-wide pool
-Recorded issue-to-incident links
+  FINNCL_IMPCT_RTNG:
+    ordered_values:
+      - Severe
+      - Very High
+      - High
+      - Medium
+      - Low
+      - No Impact
+      - Blank
+    recommended_modelling:
+      exclude:
+        - Blank
 
-For each pool report: deduplicated occurrences (using INC_DUPLICATE_INCIDENT_ID), bulk incidents (INC_BULK_INC), missing occurrence date, missing usable narrative, and incidents outside continuous history. Report the candidate counts by temporal period.
+  REG_IMPCT_RTNG:
+    ordered_values:
+      - Severe
+      - Very High
+      - High
+      - Medium
+      - Low
+      - No Impact
+      - Blank
+    recommended_modelling:
+      exclude:
+        - Blank
 
-Also report:
+  INC_BULK_INC:
+    values:
+      - Yes
+      - No
+      - Blank
+    recommended_modelling:
+      exclude:
+        - Blank
 
-Share of issues with fewer than 20 or more than 2,000 candidates, by era and by reference type
-At least 12 months of incident history before identification
-Monthly incident counts per process, with gaps and step changes flagged (source continuity)
-Reporting indicators per process-quarter: median lag from occurrence to INC_ENTRY_DT, share logged as No Impact or Low, NEAR_MISS share, volume. These test feasibility only.
+  NEAR_MISS:
+    values:
+      - Yes
+      - No
+      - Blank
+    recommended_modelling:
+      exclude:
+        - Blank
 
-The retrieval architecture is not finalised until this distribution is known.
+  IS_THR_CTRL_GAP:
+    values:
+      - Yes
+      - No
+      - Blank
+    recommended_modelling:
+      exclude:
+        - Blank
 
-P9. Entity resolution
+rating_order_suggestions:
 
-For process and application references on issues (via Cross Ref), actions and incidents (INC_PRCSS, INC_OTHR_SYS), report each of these separately:
+  issue_rating:
+    High: 3
+    Medium: 2
+    Low: 1
 
-State	Measure
-Populated	Field not empty
-Identifier present	Stable ID rather than a name
-Name only	
-Exact match to master data	
-Multiple possible matches	
-Historic or retired entity	
-Free text	
-Unresolved	
-Hierarchy node available	
+  incident_impact:
+    Severe: 6
+    Very High: 5
+    High: 4
+    Medium: 3
+    Low: 2
+    No Impact: 1
 
-If stable identifiers are absent, entity resolution is recorded as a separate risk and is not folded into retrieval.
+known_issue_fields:
 
-P10. Taxonomy and eras
-Value counts by year for ISS_ROOT_CAS_LVL_1/2, INC_ROOT_CAUSE_LVL_1/2, and the rating fields. Flag additions, retirements and relabelling.
-Document request: change log for field definitions, closure requirements and source systems.
-Proposed era boundaries, agreed before any sampling.
-P11. Privacy
+  identifiers:
+    - ISS_ID
 
-Rater-reviewed sample of 100 records across issue, action and incident text. Test for: customer names, employee names, email addresses, telephone numbers, account and reference numbers, addresses, free-text health or vulnerability information, complaint details, other sensitive customer information, legal or investigation material.
+  narrative:
+    - ISS_NAME
+    - ISS_DESC
+    - ISU_DTLS_OF_CTRL_GAP
+    - ISU_ISU_CLOSER_SUMMARY
+    - ISU_LIFECYCLE_COMMNTS
 
-Report category, rate and false-removal behaviour of a candidate scrubber on non-person entities (applications, products, vendors, channels, locations, process names). Do not reproduce sample content. Policy on any finding sits with the privacy, data and model-risk functions.
+  root_cause:
+    - ISS_ROOT_CAS_LVL_1
+    - ISS_ROOT_CAS_LVL_2
 
-P12. Token and payload volume
-Character and word counts, estimated embedding and reasoning-model tokens, by object type and field
-Cases above proposed payload limits
-Duplicate text not to be reprocessed, and hash-unchanged records
-Expected candidate-incident text volume per issue
-A comparison of token volume against rater-assessed usefulness, to show which fields add evidence and which add only volume
+  ratings:
+    - ISS_RTNG
+    - ORGNL_ISU_RTNG
 
-Outputs inform chunking, whether an action set fits one call, whether lifecycle commentary is reduced, and whether retrieved incidents need staged summarisation.
+  dates:
+    - ISS_IDNTFCTN_DT
+    - ISS_ISS_RISD_DT
+    - ISS_CRTD_DT
+    - ISS_CLSD_DT
+    - ISS_EXPTD_CLSR_DT
+    - ISS_ORIG_EXPTD_CLSR_DT
+    - ISS_RVSD_EXPTD_CLSR_DT
+    - ISS_LATST_EXT_DT
 
-P13. No-action cohort (separate branch)
+known_action_fields:
 
-Count by domain, era and rating. Source category, control-gap indicator, closure-summary usability. Share whose closure text explains why no action was required, share that cite an alternative remediation, and whether Cross Ref and the issue-level action fields agree that no action exists. This cohort is excluded from link accuracy and Tier 1 feasibility figures.
+  identifiers:
+    - ACT_ID
 
-G0 data readiness (separate from pilot attractiveness)
-Dimension	Source	Condition (proposal)
-Narrative usability	P5, per task	At least 80% suitable for each of the tasks the MVP needs
-Date validity	P7	At least 90% valid and consistent
-Issue-action linking	P4, P6	At least 80% with a link or a verified no-action record
-Incident narrative	P5, P8	At least 80% suitable for retrieval
-Observation history	P7, P8	At least 6 months post-LLAC for at least 50%, and at least 12 months pre-identification history
-Process and application resolution	P9	Threshold set after the first profile
-Source continuity	P8	No unexplained break across the windows
-Privacy feasibility	P11	Policy owners confirm a workable path
+  narrative:
+    - ACT_NAME
+    - ACT_DESC
+    - ACT_CLOSURE_SUMMARY
+    - ACT_UPDATE_COMMENTARY
 
-Pilot attractiveness (material issue count, incident volume, consequence, SME availability, forum, sponsor, review capacity, current closure-challenge difficulty, transfer potential) is scored separately in Artefact 2.
+  dates:
+    - ACT_CREATION_DT
+    - ACT_EXPECTED_CLOSURE_DT
+    - ACT_CLOSURE_DT
+    - ACT_MODIFICATION_DT
 
-Outputs
+  status:
+    - ACT_STATUS
 
-Per domain: one page per G0 dimension showing pass, fail or borderline; a design implications list (for example “no required-action flag, so LLAC applies” or “history not adequate, so history tests removed”); and a data defect list for the data owners.
+  cancellation:
+    - ACT_REASON_FOR_CANCELLATION
 
-First data request
-Cross Ref table: name, source and target object type and ID, relationship type, status, creation and modification dates, REPORTING_DATE
-Process and application master table schemas, with hierarchy and stable identifiers
-Any action-status or issue-rating history tables
-The existing Payments population rule, plus any rules the team already uses for other domains
-Taxonomy and source-system change log
-Value dictionaries for ISS_RTNG, ACT_STATUS, impact ratings, IS_THR_CTRL_GAP and INC_STUS
-Re-attached schema.xlsx
+known_incident_fields:
 
-Next: once the Cross Ref schema and the value dictionaries arrive, I would issue 1A v0.2 and move to the pilot scorecard (Artefact 2) and the intended-use statement (Artefact 3) together.
+  identifiers:
+    - INC_ID
+
+  narrative:
+    - INC_NAME
+    - INC_DESC
+    - INC_INCDNT_CAUSE
+    - INC_ROOT_CAUSE
+    - INC_CLSR_SUMMARY
+    - ACTNS_TO_PRVNT_REOCURNC
+
+  dates:
+    - INC_DT_INCDNT_OCCRD
+    - INC_DT_INCDNT_IDNTIFIED
+    - INC_ENTRY_DT
+    - INC_CLOSURE_DT
+
+  impacts:
+    - INC_IMPCT_RTNG
+    - CUS_IMPCT_RTNG
+    - FINNCL_IMPCT_RTNG
+    - REG_IMPCT_RTNG
+
+  financial:
+    - INC_NET_AMT_WRITTEN_OFF_TO_DATE
+
+  customer:
+    - NUM_OF_CUST_IMPCTD
+
+  context:
+    - INC_PRCSS
+    - INC_PRD_LVL_1
+    - INC_PRD_LVL_2
+    - INC_OTHR_SYS
+
+  event_characteristics:
+    - INC_DUPLICATE_INCIDENT_ID
+    - INC_BULK_INC
+    - NEAR_MISS
+
+questions_for_profiling:
+
+  - Determine whether INC_PRCSS is:
+      - process_id
+      - process_name
+      - free_text
+      - other
+
+  - Determine whether INC_OTHR_SYS can be resolved against application inventory.
+
+  - Determine whether ACT_CLOSURE_DT is populated for cancelled actions.
+
+  - Determine whether ACTN_ID in issue table is:
+      - single value
+      - concatenated list
+      - primary action
+      - other
+
+  - Determine cross-reference quality relative to association-list fields.
+
+  - Determine whether process/application identifiers can be resolved consistently.
+
+request_to_lrm:
+
+  next_expected_outputs:
+
+    - Artefact_1A_v0_2:
+        Logical_to_Physical_Mapping
+
+    - Artefact_1B_v2_1:
+        Executable_Data_Profiling_Specification
+
+  focus:
+    - Reconcile schema
+    - Reconcile Cross Ref
+    - Profile history feasibility
+    - Profile Holocentric coverage
+    - Profile data readiness
+    - Generate pilot-domain scorecard inputs
+
+  do_not_expand_scope:
+    - controls_assurance
+    - enterprise_pattern_clustering
+    - prediction
+    - digital_twin
+    - causal_modelling
