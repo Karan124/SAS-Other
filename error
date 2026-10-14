@@ -1,351 +1,61 @@
-I would reject Enterprise Learning Intelligence as the final use case, while retaining its two-week test as a useful discovery experiment. The LRM has produced a careful, defensible proposal, but it has optimised away the very ambition you asked for: executive-level decision impact.
+Response to the team
 
-Verdict: Reject as the primary capability
+Verdict: accept the diagnosis and most of the amendments. Reject D as proposed, because it turns a staged capability into a four-layer build. I would choose a narrower version of D, delivered as decision briefs on a small number of families.
 
-The proposal is strong research design. It is not yet a sufficiently strong enterprise product.
+I cannot see the two internal articles the team cites (they are quoted in the message, not attached), so I am treating the overlap with existing problem-management and thematic RCA practice as given. It is a real risk.
 
-Its core output is:
+What I accept
+Team point	Verdict
+1. Descriptive, no “so what”	Accept. A family history invites the question “what do I do?”.
+2. Decisions not supported by the evidence	Accept. “Enterprise diagnosis” is supportable. “Enterprise treatment” is not.
+3. Overlap with existing practice	Accept, and it changes the baseline (below).
+4. Mistaking defensibility for value	Partly. The step “descriptive is all we can do” does not follow. Hypotheses can be generated and prioritised without causal claims.
+5. “Learning” overstates what is measured	Accept. Retire the name.
+Kill test must prove a changed decision	Accept. Surprise is necessary, not sufficient.
+Why I reject D as proposed
+Layer 4 needs information the data does not hold. “Which option addresses the broadest exposure”, “existing initiatives that overlap” and “funding consequence” depend on cost, in-flight programmes and operating-model knowledge. The schema list shows no cost or effort field. The data can establish that a family exists and what was recorded against it. It cannot rank interventions. That has to come from experts and sit in the brief as their judgement.
+Layer 3 smuggles the causal question back in. “Evidence of unresolved vulnerability” after responses is the earlier “despite” in new words. Parts are descriptive and fine (later events inside or outside the recorded response scope, mechanism components with no recorded response). The rest needs the same caveats that sank the intervention study.
+It is a four-layer platform. Earlier rounds set the rule not to blend everything into one platform, and the complexity concern was raised twice. Layers 3 and 4 cannot be validated until layers 1 and 2 work.
 
-“These failure records appear to describe the same recurring problem, but the organisation recorded and treated them separately.”
+“Vulnerability” and “portfolio” also overclaim. We would be asserting that exposures exist, and that we hold a portfolio of options.
 
-That is potentially new and valuable. However, the capability stops before answering the executive’s harder question:
+What I adopt from D
 
-What should I fund, stop, consolidate, accelerate or redesign because of this finding?
+The unit of output is a decision brief, not a family. For each validated family the brief states the decision type, the evidence, the unknowns, and the question for the decision-maker. Content:
 
-Adding issues and actions to failure threads makes them richer and more actionable, but it does not automatically transform them into funding intelligence.
+Failure family: records, confidence, contradicting evidence, recorded versus inferred links
+Recorded responses: issues, actions, themes, scope (local, shared, enterprise-wide)
+Descriptive residual view: later events in or outside recorded response scope, and any mechanism component with no recorded response, labelled as a hypothesis
+The decision it supports, who owns it, and what additional facts are needed
+Expert-supplied intervention options, marked as expert judgement
 
-Why I am rejecting it
-1. It remains predominantly descriptive
+Decision vocabulary changes. Supportable: commission an enterprise diagnosis, widen the scope of an existing remediation, combine planned diagnostics, investigate a shared dependency, redirect assurance, defer a local action pending diagnosis, raise a missing issue. Not supportable from this data: “fund” and “stop”. Funding would follow from a separate business case, which the brief informs. I would drop “consolidate remediation funding” and “review a repeated remediation theme” from the MVP, since broad themes may be artefacts of the classifier.
 
-The proposal explicitly limits itself to:
+Name: Enterprise Failure and Response Intelligence, with the outputs called Enterprise Diagnosis Briefs.
 
-what failed
-how it was named
-what responses were recorded
-where it appeared
-when records appeared
-whether an issue or action set spanned the affected areas
+Revised kill test (two weeks, then staged gates)
 
-That produces a high-quality longitudinal reconstruction. It does not establish:
+Baselines now include the existing thematic RCA categories and any problem-management records. The new categories are probably recent, so they cannot cover ten years of history. The text method’s advantage is retrospective, cross-era and cross-object matching. That claim has to be shown, not assumed.
 
-which vulnerability remains material today
-whether previous responses addressed the mechanism
-whether apparent recurrence represents unresolved exposure
-which intervention would address the common mechanism
-whether one enterprise treatment is better than several local treatments
-what should receive funding ahead of competing priorities
+Gate 1, family discovery. As previously proposed: seeded families, text method against label-and-link and RCA-category baselines, expert agreement of at least 0.6, and results beyond sponsor predictions.
 
-Its own guardrails prohibit most of the propositions that would support those decisions.
+Gate 2, decision test (new, required). For at least one validated family the sponsor records:
 
-The result is likely to be:
+the decision before seeing the result
+the decision after
+the exact evidence that changed it
+who has authority
+what further evidence is needed
+the approximate resource consequence, if known
 
-“This family has appeared across several units, with many issues and actions.”
+No changed decision means we stop at analysis and do not build briefs.
 
-The next executive question will be:
+Gate 3, brief pilot. Briefs for the top five to ten families, with layer 3 limited to the descriptive items above. Stop if sponsors would not act on them.
 
-“So what precisely should we do, and why?”
+Stop rules carry over: the baseline finds most of the same families, experts cannot agree, or the sponsor would change nothing under any outcome.
 
-The proposed product cannot yet answer that convincingly.
+One observation on the process
 
-2. The claimed decisions are not fully supported by the proposed evidence
-“Establish one enterprise-level treatment”
+This is the sixth change of direction, and each has been well argued. The main variable I cannot resolve from here is the one I have asked about twice and not had answered: who is the sponsor, and what decision do they own? Gate 2 cannot run without one. I would stop revising the strategy and run Gate 1 now, because the result will settle more than another round of argument.
 
-Cross-unit recurrence plus the absence of a spanning issue does not demonstrate that one enterprise treatment is appropriate.
-
-The same mechanism may appear across:
-
-different systems
-different process implementations
-different customer journeys
-different control environments
-different underlying technical causes
-
-A common family may justify enterprise diagnosis, but not necessarily enterprise treatment.
-
-“Consolidate remediation funding”
-
-Counts and themes of actions do not show that the actions:
-
-overlap
-address the same exposure
-have compatible scope
-remain active
-require the same capability
-can practically be consolidated
-
-The model could identify a candidate for consolidation, but that is still one step removed from changing funding.
-
-“Review a repeatedly used remediation theme”
-
-A repeated theme such as training, monitoring or process change may be too broad to be decision-useful. Its recurrence may reflect text compression by the classification model rather than substantively equivalent interventions.
-
-“Raise an issue where no issue exists”
-
-This is credible as a review trigger, but it is closer to enhanced problem detection than enterprise investment intelligence.
-
-“Direct assurance and audit attention”
-
-This is probably the most defensible decision in the proposal. However, it is not the large, strategically differentiating funding decision originally sought.
-
-3. It is too close to existing problem-management and thematic-RCA practices
-
-There is already an internal focus on moving from repeat incidents towards proactive problem identification, recurring-pattern discovery and prevention. From Repeat Incidents to Proactive Problems explicitly describes earlier identification of recurring patterns, proactive problem identification and reducing repeat incidents.
-
-There is also updated internal root-cause guidance that introduces root-cause categories to make trends easier to identify and supports thematic root-cause analysis of issues and incidents. Update: New & Improved Root Cause Analysis Guidance! states that the guidance includes new root-cause categories for spotting trends and increased focus on understanding why issues and incidents occur.
-
-Enterprise Learning Intelligence may perform this across a broader NFR dataset and use stronger semantic reasoning. Nevertheless, the executive may reasonably perceive it as:
-
-“A more advanced enterprise thematic analysis and problem-management capability.”
-
-That may be worthwhile, but it does not clearly meet your uniqueness threshold.
-
-4. The proposal has mistaken defensibility for value
-
-The LRM’s reasoning is:
-
-Intervention effectiveness cannot be defended.
-Repeated records and response histories can be described.
-Therefore, build the descriptive capability.
-
-Steps 1 and 2 are correct. Step 3 does not necessarily follow.
-
-The better conclusion is:
-
-Use defensible descriptive evidence to generate and prioritise intervention hypotheses, without falsely claiming causal proof.
-
-The choice is not limited to:
-
-making causal claims, or
-stopping at descriptive problem families.
-
-A decision system can remain explicit about uncertainty while still comparing intervention options.
-
-5. “Enterprise Learning Intelligence” overstates what is measured
-
-The proposal does not actually determine whether the enterprise learned.
-
-It observes records of:
-
-incidents
-issues
-actions
-classifications
-timing
-organisational spread
-
-It does not observe directly:
-
-whether lessons were understood
-whether knowledge transferred
-whether behaviour changed
-whether implementation was successful
-whether the risk was accepted
-whether external circumstances changed
-whether recurrence was preventable
-whether the intervention was intended to prevent that particular manifestation
-
-A more accurate name would be:
-
-Cross-Enterprise Failure and Response Intelligence
-
-That is still valuable, but it exposes the true scope. The product reconstructs failure and recorded response. It does not yet measure learning.
-
-What the LRM got right
-
-The proposal contains several elements that should absolutely be preserved.
-
-Preserve the problem-family unit of analysis
-
-This is considerably better than analysing isolated incidents, issues or actions. It allows discovery across administrative boundaries.
-
-Preserve observed versus inferred relationships
-
-The proposal correctly says:
-
-records are observed
-mechanism equivalence is inferred
-family membership requires validation
-human-created links should not be treated as truth
-
-That is critical.
-
-Preserve separate vocabularies
-
-Incident mechanisms, issue weaknesses and action themes should not be collapsed into one generic taxonomy. Their relationship should remain an evidence-backed hypothesis.
-
-Preserve the temporal construction
-
-First incident, first issue, first action, recurrence and cross-unit spread are useful signals. They create a longitudinal organisational history rather than a static dashboard.
-
-Preserve the two-week kill test
-
-The kill test is disciplined and worth running. Comparing:
-
-label-and-link baselines
-semantic family construction
-expert agreement
-sponsor expectations
-genuinely unexpected findings
-
-is an effective way to determine whether the LRM contributes incremental discovery.
-
-However, passing that test would validate family discovery, not the complete executive use case.
-
-The key flaw in the two-week test
-
-The test proves technical and analytical novelty:
-
-“Can the model discover valid cross-unit families that labels and links miss?”
-
-It does not prove decision value:
-
-“Would an executive make a different material decision because the family was found?”
-
-The proposed condition that a sponsor must encounter “some results they did not predict” is not enough.
-
-Surprise is necessary, but surprise is not value.
-
-A sponsor can say:
-
-“I did not know those records were related.”
-
-and still conclude:
-
-“This does not change our plans.”
-
-What the kill test must additionally require
-
-For at least one validated family, the sponsor should be able to identify a specific changed decision such as:
-
-expand the scope of an existing remediation programme
-combine two planned diagnostic exercises
-investigate a shared application or process dependency
-redirect assurance to an overlooked pathway
-create a cross-business problem investigation
-defer a local action pending enterprise diagnosis
-develop one shared intervention capability rather than separate responses
-
-The test should capture:
-
-Decision before seeing the result
-Decision after seeing the result
-The exact evidence that changed the decision
-Who has authority to make it
-What additional evidence is needed
-The approximate funding or resource consequence, if available
-
-Without that, the test validates an insight engine, not a decision capability.
-
-My replacement
-
-I would not discard Candidate C. I would make it the evidence engine inside a more valuable capability:
-
-Enterprise Vulnerability and Intervention Portfolio Intelligence
-
-Its purpose would be:
-
-Identify recurring or emerging operational vulnerability pathways, reconstruct how the organisation has responded, and determine which areas require enterprise diagnosis, intervention redesign or funding consideration.
-
-The important difference is that the output does not stop at a family.
-
-Each validated family should progress through four layers.
-
-Layer 1: Failure-family discovery
-Which records may share a mechanism?
-How confident is the grouping?
-What evidence contradicts it?
-Which relationships are recorded versus inferred?
-
-This is the LRM’s Candidate B.
-
-Layer 2: Response reconstruction
-What issues were raised?
-What actions were recorded?
-Which response themes appeared?
-What organisational scope did they cover?
-Were responses local, shared or enterprise-wide?
-
-This is the strongest part of Candidate C.
-
-Layer 3: Residual-vulnerability assessment
-
-Without claiming causality, ask:
-
-Are similar signals recorded after responses?
-Did signals migrate to different products, processes or applications?
-Are later manifestations within or outside the recorded response scope?
-Does the response appear to target detection, recovery, prevention or governance?
-Is there an evident mechanism component for which no corresponding response can be found?
-What alternative explanations could account for recurrence?
-
-Notice the wording: evidence of unresolved vulnerability, not proof of failed remediation.
-
-Layer 4: Intervention decision case
-
-For each significant family:
-
-what common dependency should be investigated
-whether the next step should be local or enterprise-wide
-which existing initiatives may overlap
-which facts are required before investment
-what intervention options exist
-what decision-maker owns the next decision
-which option appears to address the broadest exposure
-what uncertainty prevents a recommendation
-
-This is where executive value arises.
-
-Revised verdict on the candidates
-Candidate A: Intervention Response Study
-
-Reject as a lead use case.
-
-Its causal ambition exceeds the observable data. Retain only carefully bounded post-response trajectory analysis as supporting evidence.
-
-Candidate B: Failure Mechanism Intelligence
-
-Accept as an analytical engine.
-
-It provides the most important LRM-specific function: discovering latent similarity that labels, IDs and human-created links miss.
-
-Candidate C: Enterprise Learning Intelligence
-
-Reject as the final capability, accept as an intermediate layer.
-
-It improves B by attaching organisational responses, but it still stops too close to thematic analysis.
-
-Recommended Candidate D
-
-Enterprise Vulnerability and Intervention Portfolio Intelligence
-
-B discovers the underlying failure structures.
- C reconstructs the response history.
- D converts both into a prioritised portfolio of diagnostic and intervention decisions.
-
-Final answer
-
-I do not accept the LRM’s proposal as the one capability you should build if you only get one opportunity.
-
-It is:
-
-analytically sound
-appropriately cautious
-testable
-more defensible than the intervention study
-likely to uncover missed cross-unit patterns
-
-But it is still too likely to generate:
-
-“Here is a recurring enterprise problem and the history of recorded responses.”
-
-rather than:
-
-“Here is the specific shared vulnerability requiring attention, the operating-model dependency to investigate, the existing responses that do and do not cover it, and the decision that should now change.”
-
-The right decision
-
-Run the proposed two-week family-discovery test, but do not commit to Enterprise Learning Intelligence as the product.
-
-Use the test to validate the evidence engine. Require proof of an actual changed decision before promoting it into a full capability.
-
-The single capability should be an Enterprise Vulnerability and Intervention Portfolio, with failure-family discovery and response reconstruction embedded inside it. That preserves the LRM’s strongest thinking without settling for a sophisticated descriptive system.
+Next step: if the team agrees, I will draft the Gate 1 specification (seed family selection, baseline construction including the RCA categories, the expert “same problem” labelling guide, and the sponsor prediction and decision-capture template). Please also confirm whether a business unit field, a cost or effort field, and a problem-management record table exist in the data.
