@@ -1,399 +1,91 @@
-My honest reaction?
+Response to the team
 
-This is the strongest answer the LRM has produced so far, but I still would not approve it yet.
+Verdict: accept the critique, and choose Candidate C, Enterprise Learning Intelligence, with Candidate B as its engine and Candidate A deferred.
 
-The reason is not that it's a bad idea. It is actually intelligent and much closer to the value hidden in your data.
+I should be open about one thing. C is largely the problem-thread idea I proposed two rounds ago, with remediation themes and time added. I dropped threads when they were called “too descriptive”. I am reversing because the team has now given a reason I had not weighed: repeated occurrence and repeated remediation are directly observable, while effectiveness is not. That is an argument about what the data can support, and it is better than the earlier “too small” objection. It also means the intervention study’s own caveats were pointing at the answer.
 
-The problem is that I think it is still trying to answer:
+Where the team is right
+The “compared to what” problem is fatal for A as a lead product. Its most interesting result (for example “training shows no durable change”) is the one it cannot defend. The design needed a matched comparison, exposure data we may not have, and a no-causal-claims rule that then empties the headline.
+Finding B is easier to act on than Finding A. It is a statement about the organisation’s structure, and it needs no counterfactual.
+Where I would tighten the team’s framing
+“Directly observable” is too strong. Records are observable. That two records describe the same mechanism is model-derived and needs expert confirmation. Using “observable” loosely would repeat the earlier mistake of treating constructed patterns as facts.
+“Continue to appear despite repeated attention” smuggles a causal claim back in. “Despite” implies the attention should have worked. Use “alongside”: the family has had issues and actions recorded, and incidents continued to be recorded.
+“Never been owned or treated as an enterprise problem” cannot be read off the records. What the data can show is that no single issue or action set spans the business units where the family appears. Anything about ownership of people stays out, in line with the guardrails.
+“311 actions” is a count of records, not effort. Action granularity varies by team practice, and the schema list shows no cost or effort field. Report counts as counts, and ask whether a cost or effort field exists.
+Summed impact is dominated by a few events. Show the severe tail separately, as with the earlier lanes.
+The three candidates
 
-"What intervention works?"
+Judgements are mine, and the pattern matters more than any score.
 
-when the data you have is probably much better suited to answering:
+Criterion	A: Intervention Response	B: Failure Mechanism Intelligence	C: Enterprise Learning Intelligence
+Executive value	High if it works	Medium to high	High
+Regulatory value	High (evidence of learning)	Medium	High (shows how failures and responses recur across the bank)
+Operational value	Medium	Medium	High (consolidating responses)
+Ease of explanation	Low (needs method defence)	High	High
+Defensibility	Low	High	High, if kept to association and expert-confirmed families
+Reliance on causal assumptions	High	Low	Low
+Reliance on missing data	High (exposure, cost)	Medium	Medium (business unit, cost, Cross Ref quality)
+Ability to influence funding	High in theory, weak in practice	Low	Medium to high
+Scale beyond a pilot	Medium	High	High
 
-"What is the bank repeatedly learning and re-learning?"
+Why C beats B: B stops at the failure side. Its output is “this mechanism has this trajectory”, and the executive response is “interesting”. C adds what the organisation did across issues and actions, which is what makes a funding or ownership decision possible.
 
-Those sound similar, but they are very different.
+Why C beats A: it does not depend on the contested causal step. It is also a prerequisite for A, since mechanism tagging, response classification and family assembly are the first three steps of both. If C works and a later question needs it, A becomes a gated extension, rather than a bet made first.
 
-My Overall Assessment
+The capability
 
-The LRM has finally recognised three important truths:
+Enterprise Learning Intelligence. For each recurring failure family over ten-plus years: what failed (mechanism), how the organisation named it (issue themes), how it responded (remediation themes), where it appeared (process, application, product, business unit), and when.
 
-1. Closure review is not the big opportunity
+Unit of analysis: the problem family, a validated grouping of incidents and issues sharing a mechanism, with its actions and context attached. Mechanisms from incidents and weaknesses from issues stay separate vocabularies, and the link between them is a hypothesis for experts to confirm.
 
-I agree.
+What a family shows, all descriptive:
 
-You don't have:
+Consequence in the three lanes, not summed
+Spread across years, units, products and systems
+Record counts of issues and actions, and the mix of remediation themes
+Timing: first recorded incident, first issue, first response, and gaps between them (as distributions)
+Whether any single issue or action set spans the units where the family appears
 
-closure memo evidence
-testing evidence
-implementation evidence
-change records
-validation packs
+Controls: kept out of the first release. Repeated control weakness themes can later be read from issue narratives and control-gap detail, which does not need ratings or control tables.
 
-Therefore you cannot reliably challenge closure decisions.
+An illustrative slide (placeholders only): “One failure family: [N] issues, [M] actions and [K] incidents across [J] business units over [Y] years. [X] of the issues use different root cause labels. No single issue spans the units. Consequence: [lane figures].”
 
-That use case was always going to run into organisational resistance.
+Decisions that change
+Decision	Decision-maker	Evidence needed
+Establish one enterprise-level treatment for a fragmented family	CRO, executive risk committee	Expert-confirmed family across several units with no spanning issue
+Consolidate or sequence remediation funding by family, not by issue	Executive committee, planning cycle	Family view of consequence against recorded response
+Review a repeatedly used remediation theme for a family	Remediation policy owner	Same theme recorded several times against one family, with incidents continuing
+Raise an issue on a family with material consequence and no issue	Head of Non-Financial Risk	Orphaned family, expert-confirmed
+Direct assurance and audit attention	Internal Audit, Line 2	Family ranked by lane
 
-2. Incident concentration is mostly reporting
+None of these needs evidence about closure quality or intervention effectiveness.
 
-I agree.
+The two-week kill test
 
-If the outcome is:
+The key design change is seed by family, not by domain. The value is cross-unit fragmentation, and a single-domain pilot would hide it.
 
-Plain Text
-Payments had most incidents.
- 
-Technology had most issues.
- 
-Product A had highest losses.
+The sponsor and two experts name about 10 candidate families (for example duplicate payments) and write down what they expect to find, including how many units and years each spans. This is the surprise baseline.
+Build each family two ways: from recorded Cross Ref links plus shared root cause labels, and from text meaning across incidents, issues and actions.
+Two experts independently judge “same problem or not” on a sample. Pre-agree a minimum agreement (proposal: kappa or alpha of at least 0.6).
+Measure the gap between the text method and the label-and-link baseline, and the gap between the result and the sponsor’s prediction.
 
-then you've essentially produced a sophisticated dashboard.
+Proposed pass (to agree before the run): at least five families, each with three or more issues across two or more business units, connected by neither a recorded link nor a shared label, confirmed by both experts, with at least some results the sponsor did not predict.
 
-Useful.
+Stop:
 
-Not transformational.
+The baseline finds most of what the text method finds.
+Experts cannot agree on what counts as one problem.
+The sponsor’s predictions are matched, or the sponsor would change nothing under any outcome.
+Risks
+Similarity is not sameness, and repeated issues may be legitimate (different systems or exposures). Families are hypotheses until experts confirm them, and the output flags candidates, not duplication.
+Record counts reflect practice. Better detection, issue-raising culture and action splitting all inflate counts. Reporting indicators (logging lag, low-impact share, near-miss share) accompany every family.
+Left-censored history understates duration and latency. Show observation windows.
+Business unit data: I do not see a business unit column in the named incident fields. The “across 14 business units” finding depends on one existing and being resolvable. Please confirm.
+No causal or ranking claims. Prohibited wording includes “failed”, “worked”, “despite”, “caused”, “ineffective”. No owner, team or business unit comparisons. Business units appear as spread, not performance.
+Heavy tail: severe events shown separately.
+What carries over and what changes
+Carries over: profiling checks (snapshots, Cross Ref reconciliation, text quality and leakage, entity resolution, eras, privacy, tokens), the evidence classes, the lanes, and the incident-first mapping.
+Changes: the pilot is a seeded set of families across domains, not one domain.
+Shelved: LLAC and period modelling, action-set mapping, eligibility routes, the review queue. The intervention response study stays on file as a gated follow-on if confirmed families show enough episodes.
 
-3. Time is probably the most underutilised dimension
-
-I strongly agree.
-
-For most of the discussion we treated time as:
-
-Plain Text
-filter
-
-rather than
-
-Plain Text
-signal
-
-Yet you have:
-
-Plain Text
-10+ years
-
-of:
-
-Plain Text
-Incidents
-Issues
-Actions
-Controls
-Processes
-Applications
-Products
-
-That is rare.
-
-Where I think the LRM is still missing the mark
-
-This is the key point I would challenge.
-
-The new proposal is:
-
-Intervention Response Study
-
-which is essentially:
-
-Plain Text
-Failure Mechanism
-↓
-Response
-↓
-Outcome Trajectory
-
-Interesting.
-
-But then I asked myself:
-
-What if I discover:
-Plain Text
-Training
- 
-shows no durable reduction
-
-Now what?
-
-Immediately someone will ask:
-
-Plain Text
-Compared to what?
- 
-How do you know?
- 
-What changed in exposure?
- 
-What other changes occurred?
- 
-What happened in the business?
-
-The LRM itself already acknowledges:
-
-Plain Text
-No causal claims
- 
-Regression to mean
- 
-Selection bias
- 
-Concurrent change
-
-which means:
-
-The use case becomes hard to defend operationally
-
-Because its most interesting conclusions are exactly the conclusions it cannot confidently make.
-
-What I would send back
-
-I would challenge the LRM as follows.
-
-Challenge
-
-I think we may still be inadvertently forcing ourselves into a "cause and effect" style problem.
-
-The Intervention Response Study appears to be asking:
-
-Plain Text
-Which intervention types work?
-
-or
-
-Plain Text
-What happened after intervention?
-
-The problem is that your own caveats repeatedly state that the data may not support those conclusions.
-
-Therefore I would like you to challenge the premise entirely.
-
-Alternative lens
-
-Ignore:
-
-remediation effectiveness
-closure quality
-intervention success
-causality
-
-for a moment.
-
-Instead ask:
-
-What persistent organisational knowledge exists in this data?
-
-Examples:
-
-Repeated problem families
-
-Not:
-
-Plain Text
-duplicate payments issue 123
-
-But:
-
-Plain Text
-duplicate payment failures
-
-appearing repeatedly across:
-
-years
-products
-systems
-business units
-Repeated remediation families
-
-Not:
-
-Plain Text
-action ABC
-
-But:
-
-Plain Text
-training
- 
-monitoring
- 
-process update
- 
-system enhancement
- 
-new control
-
-appearing repeatedly against similar failures.
-
-Repeated control weaknesses
-
-Not:
-
-Plain Text
-control XYZ
-
-But:
-
-Plain Text
-manual controls
- 
-reconciliations
- 
-approval controls
- 
-monitoring controls
- 
-exception management controls
-
-appearing repeatedly in issue narratives.
-
-My concern
-
-The Intervention Response Study seems to aim for:
-
-Plain Text
-What worked?
-
-I think the data may be better suited to:
-
-Plain Text
-What repeatedly happens?
-
-because:
-
-repeated occurrence is directly observable
-repeated remediation is directly observable
-repeated themes are directly observable
-recurring organisational learning loops are directly observable
-
-while
-
-Plain Text
-effectiveness
-
-is not.
-
-A stronger question
-
-Suppose we build a catalogue of:
-
-Plain Text
-Failure Mechanism
-↓
-Issue Themes
-↓
-Remediation Themes
-↓
-Controls
-↓
-Processes
-↓
-Applications
-↓
-Products
-
-over 10+ years.
-
-Now ask:
-
-Which organisational problems consume the most remediation effort, generate the most adverse outcomes, and continue to appear despite repeated attention?
-
-That feels like a stronger executive question than:
-
-Which intervention class appears associated with better outcomes?
-
-because the latter immediately becomes a quasi-causal debate.
-
-The former is directly observable.
-
-Test against the CRO criterion
-
-Ask yourself:
-
-Which finding is more likely to change funding decisions?
-
-Finding A
-Plain Text
-Training interventions show
-no measurable difference
-from matched controls.
-
-Highly contestable.
-
-Finding B
-Plain Text
-The same underlying failure
-mechanism has generated:
- 
-82 issues
-311 actions
-67 incidents
-$X impact
- 
-across 14 business units
-over 9 years
- 
-yet has never been owned
-or treated as an enterprise problem.
-
-Much harder to ignore.
-
-Much easier to explain.
-
-Much easier to act on.
-
-Final challenge
-
-I think we are getting closer, but I am still not convinced the Intervention Response Study is the highest-value use case.
-
-Please compare three candidates:
-
-Candidate A
-
-Intervention Response Study
-
-Candidate B
-
-Failure Mechanism Intelligence
-
-Identify recurring organisational failure mechanisms and their trajectories over time.
-
-Candidate C
-
-Enterprise Learning Intelligence
-
-Identify where the organisation repeatedly experiences, remediates and re-experiences the same classes of problems.
-
-For each candidate:
-
-Executive value
-Regulatory value
-Operational value
-Ease of explanation
-Defensibility
-Reliance on causal assumptions
-Reliance on missing data
-Ability to influence funding decisions
-Ability to scale beyond a pilot
-
-Then choose one.
-
-Do not optimise for what is easiest to validate.
-
-Optimise for what creates the greatest durable value from the available data estate.
-
-My personal view
-
-If I rank the latest ideas:
-
-Use Case	ScoreClosure Review	6/10
-Incident Concentration	6.5/10
-Problem Threads	8/10
-Intervention Response Study	8.5/10
-Enterprise Learning Intelligence	9.5/10
-
-I keep coming back to the same idea:
-
-The real asset is not controls, incidents, issues, actions, processes or applications individually.
-
-The real asset is 10+ years of organisational learning history.
-
-And I still think the ultimate use case should be built around that observation.
+Next step: if the team agrees, I would draft the two-week kill test specification: the seed-family selection method, the baseline construction, the expert “same problem” labelling guide and the sponsor prediction template. One question first: who is the sponsor who would write the predictions and take a confirmed family to the planning cycle?
