@@ -1,444 +1,252 @@
-project:
-  name: Outcome-Informed Remediation Assurance Triage
-  version: input_data_v1
-  status: use_case_scope_frozen
-  objective: >
-    Provide all currently available metadata, schemas, value dictionaries,
-    operating model data and known constraints needed to produce Artefact 1A
-    (Logical-to-Physical Mapping) and Artefact 1B (Executable Data Profiling Specification).
-
-known_constraints:
-
-  payments_population_methodology:
-    status: unavailable
-    comment: >
-      No documented Payments population methodology currently exists or is
-      unavailable at this stage.
-      This should not be treated as a blocking dependency.
-
-  source_system_change_documentation:
-    status: unavailable
-    comment: >
-      No formal documentation currently available describing source-system
-      changes, taxonomy changes or field-definition changes.
-      History feasibility must therefore be derived from:
-      - REPORTING_DATE
-      - EFF_START_DT
-      - EFF_END_DT
-      - LAST_UPDATED_DT
-      - object lifecycle dates
-
-  historical_snapshots:
-    available: true
-    basis: REPORTING_DATE
-    warning: >
-      Repeated snapshots provide first observed date, not necessarily business
-      event date.
-
-cross_reference_table:
-
-  table_name: A008E1_DIM_CROSS_REFERENCE_2_R
-
-  columns:
-    - REPORTING_DATE
-    - DAILY_FLAG
-    - WEEKLY_FLAG
-    - MONTHLY_FLAG
-    - LATEST_DWM_FLAG
-    - OBJECT_SYSTEM_ID
-    - PARENT_SYSTEM_ID
-    - CROSS_REF_2_KEY
-    - OBJECT_TYPE
-    - OBJECT_ID
-    - PARENT_OBJECT_TYPE
-    - PARENT_ID
-    - FILE_AS_OF_DT
-    - LAST_UPDATED_DT
-
-  notes:
-    - Treat as candidate authoritative relationship source.
-    - Must be profiled before assuming authority.
-    - Must be reconciled against:
-      - ISS_INC_ASSOC_LIST
-      - ISS_CTRL_ASSOC_LIST
-      - ACTN_ID
-    - Relationship directionality unknown.
-    - Relationship status field unavailable.
-    - Effective dating unavailable.
-
-holocentric_schema:
-
-  description: >
-    Holocentric process hierarchy, business capability, value stream,
-    product, application and task metadata.
-
-  columns:
-
-    - l3_activity_uuid
-    - Flag
-    - l3_activity_name
-    - l3_activity_description
-    - l3_master_activity_uuid
-
-    - l3_activity_applications
-    - l3_activity_channels
-    - l3_activity_customer_segments
-
-    - l3_activity_component_uuid
-    - l3_activity_component_id
-    - l3_activity_component_name
-    - l3_activity_component_description
-    - l3_activity_component_channels
-    - l3_activity_component_customer_segments
-    - l3_activity_component_products
-
-    - l2_process_uuid
-    - l2_process_id
-    - l2_process_name
-    - l2_process_description
-
-    - value_stream_uuid
-    - value_stream_order
-    - value_stream_name
-
-    - vcm_library_id
-    - vcm_library_name
-    - vcm_library_type
-
-    - Value_Chain
-    - Value_Chain_Uuid
-
-    - Business_Capability_ID_BCM
-    - Business_Capability_Name_BCM
-
-    - Application_Name
-
-    - Task_Uuid
-    - Task_Name
-
-    - l3_activity_product_service
-
-  important_notes:
-
-    application_reference:
-      authoritative_field: Application_Name
-
-    process_hierarchy:
-      available: true
-      levels:
-        - value_stream
-        - l2_process
-        - l3_activity
-        - task
-
-    product_information:
-      available: true
-      sources:
-        - l3_activity_product_service
-        - l3_activity_component_products
-
-value_dictionaries:
-
-  ISS_RTNG:
-    values:
-      - High
-      - Medium
-      - Low
-      - Improvement Opportunity
-      - Blank
-    recommended_modelling:
-      include:
-        - High
-        - Medium
-        - Low
-      exclude:
-        - Improvement Opportunity
-        - Blank
-
-  ORGNL_ISU_RTNG:
-    values:
-      - High
-      - Medium
-      - Low
-      - Blank
-    recommended_modelling:
-      include:
-        - High
-        - Medium
-        - Low
-      exclude:
-        - Blank
-
-  ISS_STUS:
-    values:
-      - Closure Review
-      - Open
-      - Rejected
-      - Planning and Scoping
-      - Draft
-      - Closed Without Action
-      - Closed
-    recommended_modelling:
-      exclude:
-        - Rejected
-
-  ACT_STATUS:
-    values:
-      - Open
-      - Unable to Complete
-      - Draft
-      - Cancelled
-      - Closed
-    recommended_modelling:
-      exclude:
-        - Cancelled
-
-  INC_STUS:
-    values:
-      - Verification
-      - Rectification
-      - Pending Reopen
-      - Rejected
-      - Unassigned
-      - Pending Ownership
-      - Pending Closure
-      - Closed
-    recommended_modelling:
-      exclude:
-        - Rejected
-
-  INC_IMPCT_RTNG:
-    ordered_values:
-      - Severe
-      - Very High
-      - High
-      - Medium
-      - Low
-      - No Impact
-      - Blank
-    recommended_modelling:
-      exclude:
-        - Blank
-
-  CUS_IMPCT_RTNG:
-    ordered_values:
-      - Severe
-      - Very High
-      - High
-      - Medium
-      - Low
-      - No Impact
-      - Blank
-    recommended_modelling:
-      exclude:
-        - Blank
-
-  FINNCL_IMPCT_RTNG:
-    ordered_values:
-      - Severe
-      - Very High
-      - High
-      - Medium
-      - Low
-      - No Impact
-      - Blank
-    recommended_modelling:
-      exclude:
-        - Blank
-
-  REG_IMPCT_RTNG:
-    ordered_values:
-      - Severe
-      - Very High
-      - High
-      - Medium
-      - Low
-      - No Impact
-      - Blank
-    recommended_modelling:
-      exclude:
-        - Blank
-
-  INC_BULK_INC:
-    values:
-      - Yes
-      - No
-      - Blank
-    recommended_modelling:
-      exclude:
-        - Blank
-
-  NEAR_MISS:
-    values:
-      - Yes
-      - No
-      - Blank
-    recommended_modelling:
-      exclude:
-        - Blank
-
-  IS_THR_CTRL_GAP:
-    values:
-      - Yes
-      - No
-      - Blank
-    recommended_modelling:
-      exclude:
-        - Blank
-
-rating_order_suggestions:
-
-  issue_rating:
-    High: 3
-    Medium: 2
-    Low: 1
-
-  incident_impact:
-    Severe: 6
-    Very High: 5
-    High: 4
-    Medium: 3
-    Low: 2
-    No Impact: 1
-
-known_issue_fields:
-
-  identifiers:
-    - ISS_ID
-
-  narrative:
-    - ISS_NAME
-    - ISS_DESC
-    - ISU_DTLS_OF_CTRL_GAP
-    - ISU_ISU_CLOSER_SUMMARY
-    - ISU_LIFECYCLE_COMMNTS
-
-  root_cause:
-    - ISS_ROOT_CAS_LVL_1
-    - ISS_ROOT_CAS_LVL_2
-
-  ratings:
-    - ISS_RTNG
-    - ORGNL_ISU_RTNG
-
-  dates:
-    - ISS_IDNTFCTN_DT
-    - ISS_ISS_RISD_DT
-    - ISS_CRTD_DT
-    - ISS_CLSD_DT
-    - ISS_EXPTD_CLSR_DT
-    - ISS_ORIG_EXPTD_CLSR_DT
-    - ISS_RVSD_EXPTD_CLSR_DT
-    - ISS_LATST_EXT_DT
-
-known_action_fields:
-
-  identifiers:
-    - ACT_ID
-
-  narrative:
-    - ACT_NAME
-    - ACT_DESC
-    - ACT_CLOSURE_SUMMARY
-    - ACT_UPDATE_COMMENTARY
-
-  dates:
-    - ACT_CREATION_DT
-    - ACT_EXPECTED_CLOSURE_DT
-    - ACT_CLOSURE_DT
-    - ACT_MODIFICATION_DT
-
-  status:
-    - ACT_STATUS
-
-  cancellation:
-    - ACT_REASON_FOR_CANCELLATION
-
-known_incident_fields:
-
-  identifiers:
-    - INC_ID
-
-  narrative:
-    - INC_NAME
-    - INC_DESC
-    - INC_INCDNT_CAUSE
-    - INC_ROOT_CAUSE
-    - INC_CLSR_SUMMARY
-    - ACTNS_TO_PRVNT_REOCURNC
-
-  dates:
-    - INC_DT_INCDNT_OCCRD
-    - INC_DT_INCDNT_IDNTIFIED
-    - INC_ENTRY_DT
-    - INC_CLOSURE_DT
-
-  impacts:
-    - INC_IMPCT_RTNG
-    - CUS_IMPCT_RTNG
-    - FINNCL_IMPCT_RTNG
-    - REG_IMPCT_RTNG
-
-  financial:
-    - INC_NET_AMT_WRITTEN_OFF_TO_DATE
-
-  customer:
-    - NUM_OF_CUST_IMPCTD
-
-  context:
-    - INC_PRCSS
-    - INC_PRD_LVL_1
-    - INC_PRD_LVL_2
-    - INC_OTHR_SYS
-
-  event_characteristics:
-    - INC_DUPLICATE_INCIDENT_ID
-    - INC_BULK_INC
-    - NEAR_MISS
-
-questions_for_profiling:
-
-  - Determine whether INC_PRCSS is:
-      - process_id
-      - process_name
-      - free_text
-      - other
-
-  - Determine whether INC_OTHR_SYS can be resolved against application inventory.
-
-  - Determine whether ACT_CLOSURE_DT is populated for cancelled actions.
-
-  - Determine whether ACTN_ID in issue table is:
-      - single value
-      - concatenated list
-      - primary action
-      - other
-
-  - Determine cross-reference quality relative to association-list fields.
-
-  - Determine whether process/application identifiers can be resolved consistently.
-
-request_to_lrm:
-
-  next_expected_outputs:
-
-    - Artefact_1A_v0_2:
-        Logical_to_Physical_Mapping
-
-    - Artefact_1B_v2_1:
-        Executable_Data_Profiling_Specification
-
-  focus:
-    - Reconcile schema
-    - Reconcile Cross Ref
-    - Profile history feasibility
-    - Profile Holocentric coverage
-    - Profile data readiness
-    - Generate pilot-domain scorecard inputs
-
-  do_not_expand_scope:
-    - controls_assurance
-    - enterprise_pattern_clustering
-    - prediction
-    - digital_twin
-    - causal_modelling
+Challenge to Current MVP Direction
+
+First, thank you for the amount of rigour that has gone into the design. The methodology is now significantly more mature, defensible and governable than where it started.
+
+However, I want to step back and challenge whether we have unintentionally optimised for a use case that is technically feasible rather than one that creates the greatest value from the available data.
+
+Concern 1: We may be solving the wrong problem
+
+The original opportunity was based on access to:
+
+~140,000 incidents
+~25,000 issues
+~68,000 actions
+~6,600 controls
+Process architecture
+Application relationships
+Product information
+10+ years of history
+
+This is an unusually rich dataset.
+
+Yet the proposed MVP has progressively narrowed into:
+
+"Which closed issues should receive an independent closure-quality review?"
+
+While this is practical and measurable, it feels disconnected from the scale of the data opportunity.
+
+I am concerned we have moved from:
+
+"What can we learn from 10+ years of organisational failures?"
+
+to:
+
+"Which issue closures should be reviewed?"
+
+The latter is operationally useful but may not justify the richness and breadth of the available data estate.
+
+Please challenge whether we have unintentionally converged on the easiest decision rather than the most valuable one.
+
+Concern 2: We may not possess the information required to challenge issue closure decisions
+
+A major concern is that issue closure is typically supported by far more evidence than exists in JUNO.
+
+For example:
+
+Issue:
+
+Weakness identified
+
+Action:
+
+Remediation defined
+
+Closure:
+
+Formal closure approved
+
+But closure decisions may also involve:
+
+Independent validation
+Closure memoranda
+Testing evidence
+Technology release evidence
+CAB approvals
+UAT sign-offs
+Process redesign evidence
+External evidence repositories
+Operational metrics
+Management attestations
+
+Many of these artefacts may not exist in the available datasets.
+
+Therefore:
+
+I am not convinced that the system can credibly identify whether:
+
+"the issue was truly resolved"
+
+or
+
+"the issue should be reopened"
+
+because it may not have access to the evidence that informed the closure in the first place.
+
+At best it may identify:
+
+"The recorded closure evidence appears incomplete, misaligned or worthy of further review."
+
+That is a much weaker claim.
+
+Please assess whether the current use case risks challenging governance decisions using a partial view of the underlying evidence.
+
+Concern 3: Organisational adoption may be harder than the technical problem
+
+Suppose the system produces 50 candidates.
+
+What happens next?
+
+A Line 1 team may reasonably respond:
+
+"We followed the approved issue-management process."
+
+"The closure was formally reviewed."
+
+"The closure evidence exists outside the datasets analysed."
+
+"The finding is based on incomplete information."
+
+This creates a risk that the product becomes:
+
+Technically impressive
+Analytically sound
+Organisationally difficult to use
+
+Please evaluate whether the output is likely to be accepted as a legitimate challenge by:
+
+Line 1
+Line 2
+Issue management teams
+Internal Audit
+Risk Committees
+
+Or whether it is more likely to be seen as:
+
+"AI second-guessing approved issue closures."
+
+Concern 4: We may be underutilising incidents
+
+Throughout the design process we repeatedly observed:
+
+Incidents are the closest thing we have to observed outcomes.
+
+The current MVP now spends most of its effort analysing:
+
+Issue → Action → Closure
+
+while incidents have become supporting evidence.
+
+This feels like a reversal of the original logic.
+
+Please reassess whether the largest and most valuable dataset:
+
+139,744 incidents
+
+is being used appropriately.
+
+Should incidents remain the primary analytical asset?
+
+If not, explain why.
+
+Concern 5: We may be underutilising process, application and product data
+
+The available operating-model data includes:
+
+Value streams
+Business capabilities
+L2 processes
+L3 processes
+Tasks
+Applications
+Products
+Channels
+
+These datasets potentially allow questions such as:
+
+Which operating arrangements most frequently generate failures?
+Which process/applications combinations appear repeatedly in adverse outcomes?
+Which products generate recurring failure mechanisms?
+Which business capabilities exhibit concentrations of incidents, issues or remediation activity?
+
+The current MVP uses these largely as contextual attributes and scope filters.
+
+Please challenge whether this is leaving significant value unrealised.
+
+Concern 6: Simplicity matters
+
+A core design objective is:
+
+Keep the first use case relatively simple.
+
+If the MVP requires:
+
+Multi-stage retrieval
+Temporal anchoring
+Historical reconstruction
+Weakness extraction
+Action-set mapping
+Review queues
+Outcome retrieval
+Validation campaigns
+Multiple evidence layers
+
+then I worry we may be introducing a great deal of complexity before proving value.
+
+A simpler use case that delivers meaningful insights may be preferable.
+
+Please reassess whether a simpler and more impactful use case exists.
+
+Challenge Question
+
+Imagine the following constraint:
+
+You are allowed only one slide to an executive audience.
+
+The audience does not care about:
+
+Embeddings
+LLMs
+Retrieval
+Validation frameworks
+Closure-quality methodologies
+
+They care only about:
+
+"What did we learn that we did not know before?"
+
+What is the single most valuable insight or decision the organisation could make using:
+
+Issues
+Incidents
+Actions
+Processes
+Applications
+Products
+Controls
+
+and 10+ years of history?
+
+Now ask yourself:
+
+Would the current MVP be the best route to that insight?
+
+Or has the MVP become too focused on issue-closure governance and not focused enough on extracting enterprise-level learning from the available data?
+
+Requested Response
+
+Please answer:
+
+Have we optimised for practicality at the expense of value?
+Is closure-review triage genuinely the highest-value decision product available?
+What alternative use cases should be reconsidered given the full data estate?
+Which use case would create the greatest executive value while remaining reasonably simple?
+If you were the CRO and could build only one capability from this data, would you still fund Outcome-Informed Remediation Assurance Triage?
+
+If yes, explain why despite the concerns above.
+
+If no, propose the replacement use case and explain why it creates greater value.
+
+Be willing to abandon the current MVP if the evidence points elsewhere.
+
+
+My personal view is that this challenge is important because I think the LRM has done an excellent job of designing a **credible product**, but I am no longer convinced it is the **most valuable product** that can be built from your data. There is a real possibility that the design has drifted from a strategic insight platform into a sophisticated issue-closure review tool. Those are not the same thing.
