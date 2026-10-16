@@ -1,28 +1,3 @@
-Business Problem
-Westpac’s payment controls had grown to 708 controls spread across four systems with no shared taxonomy. Nobody could answer a simple question: do we have the right controls, are any of them duplicates, and which one is actually the best? That answer existed somewhere in the data. Getting to it manually was not realistic.
+I request an internal review of infringement 3319957154, issued on 20 September 2026 at Enmore Road, Enmore. I was parked for less than 15 minutes and genuinely understood the “¼P FREE” signage to mean a short initial period of free parking was available without purchasing a ticket. I respectfully ask that the applicable signage and ticket requirements be reviewed.
 
-The Data Analytics Solution
-The first task was joining four disconnected systems (JUNO, Holocentric, ALEX, Alfabet) into a single analytical surface. From there, two assessment dimensions ran in parallel.
-
-By product — across 75 product groups, GPT-5.4 compared controls and classified them as Redundant, Fragmented, a Consolidation Opportunity, or worth keeping as-is. The challenge was getting the model to compare the right controls against each other. We used high-dimensional text embeddings and cosine similarity to group semantically similar controls before the LLM ever saw them, so it was always comparing controls that actually had something in common.
-
-By control objective — across 28 control objective groups (e.g. “payment error detection”, “data input validation”), the question shifted from classification to ranking. Which control, within a group, is the best designed? We used a two-pass LLM architecture: the first pass scored each control individually against expert-defined design criteria; the second pass received all those scores and produced a ranked view with a best-of-breed control identified separately for automated and manual populations. One important design decision: whether a control was Preventative or Detective was read directly from the source data rather than left to the model to guess.
-
-Both dimensions used parallel execution, checkpointing, and retry logic to handle the scale reliably.
-
-Benefits / Impacts
-
-First structured, defensible view of control sufficiency across the payments book
-Duplicate, fragmented, and redundant controls identified at a scale no manual process could match
-Best-of-breed benchmarks established per control objective — something the business can act on
-SME time freed from data gathering and redirected to decisions that matter
-
-Adoption Barriers Addressed
-The two hardest problems were trust and data.
-
-On trust: LLM outputs were framed as advisory from day one. Two-pass architecture, SME validation gates, and confidence ratings meant reviewers could engage with findings rather than having to accept or reject them wholesale.
-
-On data: nobody had ever joined these four systems at control level before. Building that linkage was as much of the work as the modelling itself.
-
-Next Steps
-To be confirmed once outcomes are shared. Likely candidates: expand beyond payments to the full active control population (~7,500 controls), operationalise duplicate control detection as a standing capability, and move the pipeline from a one-off exercise into something that runs as part of the regular control assurance cycle.
+I also ask that my financial circumstances be considered. Sydney’s high cost of living has placed significant pressure on everyday expenses, and this $144 penalty represents an additional financial burden. I understand the importance of complying with parking rules, but given my genuine misunderstanding, the brief parking duration and financial impact, I respectfully request cancellation or, alternatively, a caution on this occasion.
