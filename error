@@ -1,133 +1,154 @@
-"""Phase 5 - preliminary assessment for RL-routed incidents + reference cases. Parallel, resumable."""
-import json, time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import pandas as pd
-from rl_config import ROOT, MODEL, REASONING_EFFORT, load_prompt, get_client
-from rl_core import (run_one, validate_assessment, flatten_assessment, flatten_unresolved,
-                     LOG_FIELDS, RL_ROUTES, Q2)
+PS C:\Users\m061400\ai-test\rl_compliance\scripts> python .\p5_assessment.py
+gpt-5.4 effort=medium | assessment_v0.4 641c8ff0150f | (b) RL-routed population=912 | selected incl. reference=916 | already done=0 | to run=916 | workers=20
+  25/916 {'ok': 25} elapsed=1.3m eta=47.9m
+  50/916 {'ok': 50} elapsed=3.4m eta=58.3m
+  75/916 {'ok': 75} elapsed=5.3m eta=59.9m
+  100/916 {'ok': 100} elapsed=7.4m eta=60.0m
+  125/916 {'ok': 125} elapsed=9.0m eta=57.1m
+  150/916 {'ok': 150} elapsed=10.8m eta=55.0m
+  175/916 {'ok': 175} elapsed=12.3m eta=52.1m
+  200/916 {'ok': 200} elapsed=14.0m eta=50.2m
+  225/916 {'ok': 225} elapsed=16.2m eta=49.8m
+  250/916 {'ok': 250} elapsed=17.8m eta=47.3m
+  275/916 {'ok': 275} elapsed=19.5m eta=45.4m
+  300/916 {'ok': 300} elapsed=21.8m eta=44.7m
+  325/916 {'ok': 325} elapsed=23.6m eta=42.9m
+  350/916 {'ok': 350} elapsed=25.0m eta=40.4m
+  375/916 {'ok': 375} elapsed=27.0m eta=38.9m
+  400/916 {'ok': 400} elapsed=29.4m eta=37.9m
+  425/916 {'ok': 425} elapsed=31.2m eta=36.0m
+  450/916 {'ok': 450} elapsed=33.0m eta=34.2m
+  475/916 {'ok': 475} elapsed=35.2m eta=32.7m
+  500/916 {'ok': 500} elapsed=36.6m eta=30.4m
+  525/916 {'ok': 525} elapsed=39.3m eta=29.3m
+  550/916 {'ok': 550} elapsed=41.5m eta=27.6m
+  575/916 {'ok': 575} elapsed=43.6m eta=25.9m
+  600/916 {'ok': 599, 'failed_malformed': 1} elapsed=45.5m eta=24.0m
+  625/916 {'ok': 624, 'failed_malformed': 1} elapsed=47.1m eta=21.9m
+  650/916 {'ok': 649, 'failed_malformed': 1} elapsed=48.9m eta=20.0m
+  675/916 {'ok': 674, 'failed_malformed': 1} elapsed=50.4m eta=18.0m
+  700/916 {'ok': 699, 'failed_malformed': 1} elapsed=52.1m eta=16.1m
+  725/916 {'ok': 724, 'failed_malformed': 1} elapsed=54.2m eta=14.3m
+  750/916 {'ok': 749, 'failed_malformed': 1} elapsed=56.2m eta=12.4m
+  775/916 {'ok': 774, 'failed_malformed': 1} elapsed=57.9m eta=10.5m
+  800/916 {'ok': 799, 'failed_malformed': 1} elapsed=59.2m eta=8.6m
+  825/916 {'ok': 824, 'failed_malformed': 1} elapsed=60.9m eta=6.7m
+  850/916 {'ok': 849, 'failed_malformed': 1} elapsed=62.8m eta=4.9m
+  875/916 {'ok': 874, 'failed_malformed': 1} elapsed=64.6m eta=3.0m
+  900/916 {'ok': 899, 'failed_malformed': 1} elapsed=66.5m eta=1.2m
+  916/916 {'ok': 915, 'failed_malformed': 1} elapsed=67.4m eta=0.0m
 
-WORKERS = 20
-IN_JSONL = ROOT / "02_prepared" / "population_model_ready.jsonl"
-ROUTES_CSV = ROOT / "03_runs" / "triage" / "triage_routes.csv"
-RAW = ROOT / "03_runs" / "assessment" / "raw_responses"
-CKPT = ROOT / "03_runs" / "assessment" / "assessment_checkpoint.jsonl"
-LOG = ROOT / "03_runs" / "assessment" / "run_log_population.csv"
-OUT_C = ROOT / "04_outputs" / "c_preliminary_ca.xlsx"
-OUT_U = ROOT / "04_outputs" / "c_unresolved.xlsx"
-C_COLS = ["INC_ID", "In window (Y/N)", "In headline (Y/N)", "CA exists", "Route", "Q2 confidence",
-          "Pattern", "Pattern basis", "Anomaly type", "What changes the outcome", "Would change if",
-          "RL status", "RL provisions", "RL sub-lines", "Prudential status", "Prudential provisions",
-          "BCoP-Licence status", "BCoP-Licence provisions", "BCoP-Licence sub-lines", "Overall"]
-U_COLS = ["INC_ID", "Type", "Resolver", "Question or item", "Fact no", "Cluster affected",
-          "What each answer would change"]
+(b) RL identified (population): 912 | assessed rows in headline: 912
+(c) Reasonable confidence: 64 = 7.0% of (b)
 
+Q2 confidence (denominator = b):
+                           count  share_of_b
+Q2 confidence
+Insufficient confidence      430       0.471
+Not assessable from JUNO     322       0.353
+Within stated bounds          95       0.104
+Reasonable confidence         64       0.070
+Failed (failed_malformed)      1       0.001
 
-def as_bool(s):
-    return s.astype(str).str.strip().str.lower().eq("true")
+Q2 by route:
+Route                      Clear RL nexus  RL plus another pathway  All
+Q2 confidence
+Failed (failed_malformed)               1                        0    1
+Insufficient confidence               293                      137  430
+Not assessable from JUNO               52                      270  322
+Reasonable confidence                  52                       12   64
+Within stated bounds                   62                       33   95
+All                                   460                      452  912
 
+Overall:
+Overall
+Assessor-ready                                                405
+Not assessable from JUNO                                      322
+Assessor-ready (an unresolved cell determines the outcome)     72
+Prudential breach only                                         57
+No compliance breach                                           40
+Multi-cluster breach                                           11
+Outside RL pathway                                              3
+                                                                1
+BCoP/Licence breach only                                        1
 
-def main():
-    recs = {r["INC_ID"]: r for r in
-            (json.loads(l) for l in IN_JSONL.read_text(encoding="utf-8").splitlines() if l.strip())}
-    rt = pd.read_csv(ROUTES_CSV, dtype={"INC_ID": str})
-    rt["in_population"], rt["is_reference"] = as_bool(rt["in_population"]), as_bool(rt["is_reference"])
-    triaged_ok = ~rt["Route"].astype(str).str.startswith("Failed")
-    sel = rt[triaged_ok & ((rt["in_population"] & rt["Route"].isin(RL_ROUTES)) | rt["is_reference"])]
+Pattern x Overall:
+Overall                                         Assessor-ready  Assessor-ready (an unresolved cell determines the outcome)  BCoP/Licence breach only  Multi-cluster breach  No compliance breach  Not assessable from JUNO  Outside RL pathway  Prudential breach only  All
+Pattern                                                                                                                                                                                                                                         
+                                             1               0                                                           0                         0                     0                     0                         0                   0                       0    1
+Didn't proceed                               0               7                                                           0                         0                     0                     2                         0                   0                       4   13
+Exception                                    0               2                                                           0                         0                     0                     0                         0                   0                       4    6
+Full breach                                  0               7                                                           1                         0                     7                     0                         0                   0                       0   15
+Permitted reassessment                       0               0                                                           0                         0                     0                     0                         0                   0                       3    3
+Policy only                                  0               4                                                           1                         0                     0                    25                         0                   0                       0   30
+Threshold                                    0               4                                                           0                         0                     0                     0                         0                   0                      10   14
+Threshold (mortgages only)                   0               5                                                           0                         0                     0                     0                         0                   0                      18   23
+Threshold / Policy only                      0               0                                                           0                         0                     0                     0                         0                   0                       1    1
+Unmatched                                    0             371                                                          70                         1                     4                    13                       322                   3                      17  801
+Unmatched (nearest: Exception)               0               1                                                           0                         0                     0                     0                         0                   0                       0    1
+Unmatched (nearest: Full breach)             0               2                                                           0                         0                     0                     0                         0                   0                       0    2
+Unmatched (nearest: Misconduct / fraud)      0               1                                                           0                         0                     0                     0                         0                   0                       0    1
+Unmatched (nearest: Permitted reassessment)  0               1                                                           0                         0                     0                     0                         0                   0                       0    1
+All                                          1             405                                                          72                         1                    11                    40                       322                   3                      57  912
 
-    done = {}
-    if CKPT.exists():
-        for l in CKPT.read_text(encoding="utf-8").splitlines():
-            if l.strip():
-                r = json.loads(l)
-                done[r["INC_ID"]] = r
-    todo = [r for _, r in sel.iterrows()
-            if r["INC_ID"] not in done or done[r["INC_ID"]]["status"] == "api_error"]
+Unresolved items (headline): 2,316 across 832 incidents
+by Resolver:
+Resolver
+Incident raiser                                                             1095
+Source owner                                                                1037
+Assessor                                                                     111
+Method owner                                                                  53
+Source owner – incident owner delegate / Matter 1542 investigation owner       5
+Source owner - Incident Rectification Manager                                  3
+Source owner (Incident Rectification Manager / Incident Identifier)            1
+Source owner (Credit Investigations workpapers)                                1
+Source owner (credit approval or origination notes)                            1
+Source owner (Customer Solutions / external legal summary)                     1
+Source owner (incident owner/delegate)                                         1
+Source owner - Remediation Manager / Assist Team                               1
+Source owner (MOIU / incident owner)                                           1
+Source owner (Incident Rectification Manager)                                  1
+Source owner (ACE / credit assessment file owner)                              1
+Source owner (ACE / approval notes owner)                                      1
+Source owner (serviceability worksheet owner)                                  1
+Source owner (ACE / exception record owner)                                    1
+by Type:
+Type
+Missing fact                         1034
+Held outside JUNO                     968
+held outside JUNO                      82
+Interpretive judgement or anomaly      62
+Missing or unclear criterion           52
+Conflicting evidence                   30
+Interpretive judgement                 26
+missing fact                           26
+interpretive judgement or anomaly      11
+interpretive judgement                  8
+missing_fact                            5
+conflicting evidence                    4
+anomaly                                 2
+held_outside_JUNO                       2
+Assessor                                1
+missing or unclear criterion            1
+conflicting_evidence                    1
+interpretive_judgement                  1
 
-    system, ver, sha = load_prompt("assessment")
-    client, auth = get_client()
-    b_n = int((rt["in_population"] & rt["Route"].isin(RL_ROUTES)).sum())
-    print(f"{MODEL} effort={REASONING_EFFORT['assessment']} | {ver} {sha} | (b) RL-routed population={b_n:,} | "
-          f"selected incl. reference={len(sel):,} | already done={len(sel) - len(todo):,} | "
-          f"to run={len(todo):,} | workers={WORKERS}", flush=True)
+Reference cases:
+      INC_ID In headline (Y/N)                   Route            Q2 confidence     Pattern                  Overall
+INC000372012                 Y          Clear RL nexus    Reasonable confidence Policy only     No compliance breach
+INC000358150                 N          Clear RL nexus  Insufficient confidence   Unmatched           Assessor-ready
+INC000362030                 N          Clear RL nexus     Within stated bounds   Unmatched           Assessor-ready
+INC000341409                 N RL plus another pathway  Insufficient confidence   Unmatched           Assessor-ready
+INC000366466                 Y          Clear RL nexus    Reasonable confidence   Exception   Prudential breach only
+INC000365033                 Y          Clear RL nexus    Reasonable confidence Full breach     Multi-cluster breach
+INC000374212                 Y          Clear RL nexus    Reasonable confidence   Threshold   Prudential breach only
+INC000357929                 N       No clear RL nexus Not assessable from JUNO   Unmatched Not assessable from JUNO
+INC000366530                 Y          Clear RL nexus    Reasonable confidence Policy only     No compliance breach
+INC000369888                 Y          Clear RL nexus  Insufficient confidence   Unmatched           Assessor-ready
 
-    def work(row):
-        inc, route = row["INC_ID"], row["Route"]
-        base = {"INC_ID": inc, "Route": route, "in_population": bool(row["in_population"]),
-                "is_reference": bool(row["is_reference"])}
-        try:
-            user = recs[inc]["assessment_user_template"].replace("<<TRIAGE_ROUTE>>", route)
-            d, log = run_one(client, "assessment", inc, system, ver, sha, user, validate_assessment, RAW,
-                             prefix="pop_")
-            return {**base, "status": log["status"], "parsed": d, "log": log}
-        except Exception as e:
-            log = {k: "" for k in LOG_FIELDS}
-            log.update(INC_ID=inc, step="assessment", status="api_error", error=f"{type(e).__name__}: {e}"[:300])
-            return {**base, "status": "api_error", "parsed": None, "log": log}
+retried=16 fenced=0 cost=US$74.77
+failures:
+      INC_ID           status                                                                                                            error
+INC000371923 failed_malformed ScannerError: mapping values are not allowed here\n  in "<unicode string>", line 75, column 126:\n     ...  rent
 
-    t0, n, stats = time.time(), 0, {}
-    with open(CKPT, "a", encoding="utf-8") as f, ThreadPoolExecutor(WORKERS) as ex:
-        for fu in as_completed([ex.submit(work, r) for r in todo]):
-            res = fu.result()
-            f.write(json.dumps(res, ensure_ascii=False, default=str) + "\n")
-            f.flush()
-            done[res["INC_ID"]] = res
-            n += 1
-            stats[res["status"]] = stats.get(res["status"], 0) + 1
-            if n % 25 == 0 or n == len(todo):
-                el = time.time() - t0
-                print(f"  {n:,}/{len(todo):,} {stats} elapsed={el / 60:.1f}m "
-                      f"eta={el / n * (len(todo) - n) / 60:.1f}m", flush=True)
-
-    c_rows, u_rows, logs = [], [], []
-    for _, row in sel.iterrows():
-        r = done.get(row["INC_ID"])
-        if not r:
-            continue
-        logs.append(r["log"])
-        if r["status"] == "ok":
-            c_rows.append(flatten_assessment(r["INC_ID"], r["parsed"], r["Route"], r["in_population"]))
-            u_rows += flatten_unresolved(r["INC_ID"], r["parsed"])
-        else:
-            fl = {c: "" for c in C_COLS}
-            fl.update({"INC_ID": r["INC_ID"], "In window (Y/N)": "Y" if r["in_population"] else "N",
-                       "In headline (Y/N)": "Y" if (r["in_population"] and r["Route"] in RL_ROUTES) else "N",
-                       "CA exists": "pending CA join", "Route": r["Route"],
-                       "Q2 confidence": f"Failed ({r['status']})"})
-            c_rows.append(fl)
-
-    pd.DataFrame(logs, columns=LOG_FIELDS).to_csv(LOG, index=False)
-    c = pd.DataFrame(c_rows, columns=C_COLS)
-    u = pd.DataFrame(u_rows, columns=U_COLS)
-    c.to_excel(OUT_C, index=False)
-    u.to_excel(OUT_U, index=False)
-
-    h = c[c["In headline (Y/N)"] == "Y"]
-    hu = u[u["INC_ID"].isin(h["INC_ID"])]
-    pd.set_option("display.width", 220, "display.max_columns", 20)
-    print(f"\n(b) RL identified (population): {b_n:,} | assessed rows in headline: {len(h):,}")
-    q = h["Q2 confidence"].value_counts()
-    rc = int(q.get("Reasonable confidence", 0))
-    print(f"(c) Reasonable confidence: {rc:,} = {rc / b_n:.1%} of (b)" if b_n else "(c) n/a")
-    print("\nQ2 confidence (denominator = b):\n" +
-          pd.DataFrame({"count": q, "share_of_b": (q / b_n).round(3)}).to_string())
-    print("\nQ2 by route:\n" + pd.crosstab(h["Q2 confidence"], h["Route"], margins=True).to_string())
-    print("\nOverall:\n" + h["Overall"].value_counts().to_string())
-    print("\nPattern x Overall:\n" + pd.crosstab(h["Pattern"], h["Overall"], margins=True).to_string())
-    print(f"\nUnresolved items (headline): {len(hu):,} across {hu['INC_ID'].nunique():,} incidents")
-    print("by Resolver:\n" + hu["Resolver"].value_counts().to_string())
-    print("by Type:\n" + hu["Type"].value_counts().to_string())
-    ref = c[c["INC_ID"].isin(sel.loc[sel["is_reference"], "INC_ID"])]
-    print("\nReference cases:\n" + ref[["INC_ID", "In headline (Y/N)", "Route", "Q2 confidence",
-                                       "Pattern", "Overall"]].to_string(index=False))
-    lg = pd.DataFrame(logs)
-    print(f"\nretried={int(lg['retried'].astype(str).eq('True').sum())} "
-          f"fenced={int(lg['fenced'].astype(str).eq('True').sum())} "
-          f"cost=US${pd.to_numeric(lg['cost_usd'], errors='coerce').sum():.2f}")
-    errs = lg[lg["status"] != "ok"][["INC_ID", "status", "error"]].copy()
-    errs["error"] = errs["error"].astype(str).str[:110]
-    print("failures:\n" + (errs.to_string(index=False) if len(errs) else "  none"))
-    print(f"\nWrote {OUT_C.name}, {OUT_U.name}, {LOG.name}. Outputs now frozen: do not rerun after the CA join.")
-
-
-if __name__ == "__main__":
-    main()
+Wrote c_preliminary_ca.xlsx, c_unresolved.xlsx, run_log_population.csv. Outputs now frozen: do not rerun after the CA join.
