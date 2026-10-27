@@ -1,5 +1,26 @@
-PS C:\Users\m061400\ai-test\rl_compliance\scripts> python -c "import json;[print(r['INC_ID'],'|',r['log']['error']) for r in map(json.loads,open(r'..\03_runs\triage\triage_checkpoint.jsonl',encoding='utf-8')) if r['status']!='ok']"
-INC000371496 | BadRequestError: Error code: 400 - {'error': {'message': "The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry. To learn more about our content filtering policies please read our documentation: https://go.microsoft.com/fwlink/?linkid=219
-INC000364615 | BadRequestError: Error code: 400 - {'error': {'message': "The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry. To learn more about our content filtering policies please read our documentation: https://go.microsoft.com/fwlink/?linkid=219
-INC000364615 | BadRequestError: Error code: 400 - {'error': {'message': "The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry. To learn more about our content filtering policies please read our documentation: https://go.microsoft.com/fwlink/?linkid=219
-INC000371496 | BadRequestError: Error code: 400 - {'error': {'message': "The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry. To learn more about our content filtering policies please read our documentation: https://go.microsoft.com/fwlink/?linkid=219
+"""Summarise API errors in the triage and assessment checkpoints (latest result per INC_ID)."""
+import json, re
+from collections import Counter
+from rl_config import ROOT
+
+for step in ["triage", "assessment"]:
+    p = ROOT / "03_runs" / step / f"{step}_checkpoint.jsonl"
+    if not p.exists():
+        print(f"{step}: no checkpoint")
+        continue
+    latest = {}
+    for l in p.read_text(encoding="utf-8").splitlines():
+        if l.strip():
+            r = json.loads(l)
+            latest[r["INC_ID"]] = r
+    st = Counter(r["status"] for r in latest.values())
+    kinds = Counter()
+    for r in latest.values():
+        if r["status"] == "api_error":
+            e = str(r["log"].get("error", ""))
+            code = re.search(r"Error code: (\d{3})", e)
+            k = "content filter" if "content management policy" in e else (
+                f"HTTP {code.group(1)}" if code else e.split(":")[0][:40])
+            kinds[k] += 1
+    print(f"{step}: records={len(latest):,} status={dict(st)}")
+    print(f"  api_error types: {dict(kinds) if kinds else 'none'}")
