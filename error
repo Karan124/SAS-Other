@@ -1,4 +1,88 @@
-RE_RECOMM = re.compile(r"^[^\n]*compliance recommendation", re.I | re.M)
+C:\Users\M061400\ai-test\rl_compliance\scripts\p2_reference_run.py
+
+"""Phase 2 - triage then assessment for the reference cases. Console shows coded fields only."""
+import json
+import pandas as pd
+from rl_config import ROOT, MODEL, REASONING_EFFORT, load_prompt, get_client
+from rl_core import (run_one, validate_triage, validate_assessment, flatten_triage,
+                     flatten_assessment, flatten_unresolved, append_log)
+
+IN_JSONL = ROOT / "02_prepared" / "reference_model_ready.jsonl"
+TRI_RAW = ROOT / "03_runs" / "triage" / "raw_responses"
+ASS_RAW = ROOT / "03_runs" / "assessment" / "raw_responses"
+TRI_LOG = ROOT / "03_runs" / "triage" / "run_log_reference.csv"
+ASS_LOG = ROOT / "03_runs" / "assessment" / "run_log_reference.csv"
+OUT = ROOT / "04_outputs"
 
 
-RE_RECOMM = re.compile(r"^[^\w\n]*(?:\d+[.)]?\s*)?compliance recommendations?\b[^\n]{0,60}$", re.I | re.M)
+def short(s, n=26):
+    s = str(s or "")
+    return s if len(s) <= n else s[:n - 1] + "~"
+
+
+def main():
+    recs = [json.loads(l) for l in IN_JSONL.read_text(encoding="utf-8").splitlines() if l.strip()]
+    tri_sys, tri_ver, tri_sha = load_prompt("triage")
+    ass_sys, ass_ver, ass_sha = load_prompt("assessment")
+    client, auth = get_client()
+    print(f"{len(recs)} cases | {MODEL} effort={REASONING_EFFORT} | {tri_ver} {tri_sha} | {ass_ver} {ass_sha}\n")
+
+    tri_rows, ass_rows, unr_rows, logs_t, logs_a, summary = [], [], [], [], [], []
+    for rec in recs:
+        inc = rec["INC_ID"]
+        dt, lt = run_one(client, "triage", inc, tri_sys, tri_ver, tri_sha, rec["triage_user_message"],
+                         validate_triage, TRI_RAW, prefix="ref_")
+        logs_t.append(lt)
+        route = dt["route"] if dt else None
+        line = {"INC_ID": inc, "in_pop": "Y" if rec["in_population"] else "N",
+                "route": route or f"TRIAGE {lt['status']}", "t_att": lt["attempts"]}
+        if dt:
+            tri_rows.append(flatten_triage(inc, dt))
+            user = rec["assessment_user_template"].replace("<<TRIAGE_ROUTE>>", route)
+            da, la = run_one(client, "assessment", inc, ass_sys, ass_ver, ass_sha, user,
+                             validate_assessment, ASS_RAW, prefix="ref_")
+            logs_a.append(la)
+            line.update(a_status=la["status"], a_att=la["attempts"], a_secs=la["latency_s"])
+            if da:
+                f = flatten_assessment(inc, da, route, rec["in_population"])
+                u = flatten_unresolved(inc, da)
+                ass_rows.append(f)
+                unr_rows += u
+                line.update(q2=f["Q2 confidence"], pattern=f"{f['Pattern']} ({f['Pattern basis']})",
+                            RL=f["RL status"], Prud=f["Prudential status"], BCoP=f["BCoP-Licence status"],
+                            overall=f["Overall"], n_unres=len(u),
+                            resolvers="; ".join(sorted({r["Resolver"] for r in u})))
+        summary.append(line)
+        print(f"  {inc}: route={line['route']} | assessment={line.get('a_status', '-')}")
+
+    append_log(TRI_LOG, logs_t)
+    append_log(ASS_LOG, logs_a)
+    pd.DataFrame(tri_rows).to_excel(OUT / "reference_b_rl_identification.xlsx", index=False)
+    pd.DataFrame(ass_rows).to_excel(OUT / "reference_c_preliminary_ca.xlsx", index=False)
+    pd.DataFrame(unr_rows).to_excel(OUT / "reference_c_unresolved.xlsx", index=False)
+
+    s = pd.DataFrame(summary)
+    for c in ["route", "pattern", "RL", "Prud", "BCoP", "overall", "resolvers"]:
+        if c in s:
+            s[c] = s[c].map(short)
+    pd.set_option("display.width", 260, "display.max_columns", 30)
+    print("\n" + s.to_string(index=False))
+
+    allc = logs_t + logs_a
+    print(f"\ncalls: triage {pd.Series([l['status'] for l in logs_t]).value_counts().to_dict()} | "
+          f"assessment {pd.Series([l['status'] for l in logs_a]).value_counts().to_dict()}")
+    print(f"retried: {sum(l['retried'] for l in allc)} | fenced: {sum(l['fenced'] for l in allc)} | "
+          f"finish!=stop: {sum(l['finish_reason'] not in ('stop', '') for l in allc)}")
+    if logs_a:
+        a = pd.DataFrame(logs_a)
+        print(f"assessment latency s: mean={a['latency_s'].mean():.1f} max={a['latency_s'].max():.1f} | "
+              f"tokens/call: prompt={a['prompt_tokens'].mean():.0f} completion={a['completion_tokens'].mean():.0f}")
+    print(f"cost: US${sum(l['cost_usd'] for l in allc):.2f}")
+    errs = [f"{l['INC_ID']} {l['step']}: {l['error']}" for l in allc if l["error"]]
+    print("errors:\n  " + "\n  ".join(errs) if errs else "errors: none")
+    print("\nWrote 04_outputs\\reference_b_rl_identification.xlsx, reference_c_preliminary_ca.xlsx, "
+          "reference_c_unresolved.xlsx and run logs in 03_runs")
+
+
+if __name__ == "__main__":
+    main()
