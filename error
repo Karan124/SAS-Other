@@ -1,44 +1,4 @@
-Source: incidents_population_20271027_v2.xlsx
-rows=5,333 cols=25
-missing required columns: none
-duplicate INC_ID rows: 0
-INC_ENTRY_DT: non-blank=5,333 unparseable=0
-INC_DT_INCDNT_OCCRD: non-blank=5,332 unparseable=0
-INC_OWNR_ACCEP_DT: non-blank=5,298 unparseable=0
-INC_LAST_PRCSS_UPD_DT: non-blank=2,974 unparseable=0
-INC_DESC: max_len=3,989 at_excel_cap=0
-INC_NAME: max_len=356 at_excel_cap=0
-INC_INCDNT_CAUSE: max_len=3,729 at_excel_cap=0
-INC_ACTNS_TO_RECTFY_OR_PRVNT_REO: max_len=3,993 at_excel_cap=0
-INC_LAST_PRCSS_UPD: max_len=3,760 at_excel_cap=0
-eligible population (window, compl=Yes, not Rejected): 5,329 | rows outside: 4
-INC_LAST_PRCSS_UPD: contains 'Updated by'=2,725 prefix_removed=2,725 residual_after=6
-INC_ACTNS_TO_RECTFY_OR_PRVNT_REO: compliance-recommendation tail removed in 1,003 records
+RE_RECOMM = re.compile(r"^[^\n]*compliance recommendation", re.I | re.M)
 
-reference IDs found: 10/10 | missing: []
 
-      INC_ID  in_population INC_ENTRY_DT  desc_len  n_blank_fields  actns_tail_removed  upd_prefix_removed  upd_residual_updated_by         upd_label  actns_blank  upd_blank
-INC000365033           True   2026-05-21      2404               1                True                   0                        0    timing unknown         True       True
-INC000374212           True   2026-09-01      2109               1                True                   0                        0    timing unknown         True       True
-INC000366466           True   2026-06-04      3016               0               False                   1                        0 after CA creation        False      False
-INC000366530           True   2026-06-05      3689               0               False                   1                        0 after CA creation        False      False
-INC000341409          False   2025-08-22      3308               1                True                   0                        0    timing unknown         True       True
-INC000358150          False   2026-02-25      1811               0               False                   1                        0 after CA creation        False      False
-INC000372012           True   2026-08-06      2451               1                True                   0                        0    timing unknown         True       True
-INC000369888           True   2026-07-13      3739               1               False                   1                        0 after CA creation        False      False
-INC000357929          False   2026-02-23      1034               1                True                   1                        0 after CA creation         True      False
-INC000362030          False   2026-04-13       925               1               False                   0                        0 after CA creation        False      False
-
-blank fields by reference case:
-  INC000365033: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
-  INC000374212: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
-  INC000366466: none
-  INC000366530: none
-  INC000341409: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
-  INC000358150: none
-  INC000372012: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
-  INC000369888: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
-  INC000357929: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
-  INC000362030: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
-
-Wrote: reference_model_ready.jsonl, reference_prep_summary.csv, reference_message_preview.txt (preview is local only)
+RE_RECOMM = re.compile(r"^[^\w\n]*(?:\d+[.)]?\s*)?compliance recommendations?\b[^\n]{0,60}$", re.I | re.M)
