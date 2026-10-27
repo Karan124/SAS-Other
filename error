@@ -1,35 +1,179 @@
-PS C:\Users\m061400\ai-test\rl_compliance\scripts> python .\p0_api_check.py
-Prompt triage_v0.3 sha256[:12]=77b45b02a25f chars=1,845
-Auth method: azure_ad | model: gpt-5.4
+C:\Users\M061400\ai-test\rl_compliance\scripts\p1_prepare_reference.py
 
---- reasoning_effort=low ---
-latency=10.2s finish=stop prompt_tok=537 completion_tok=104 reasoning_tok=26
-cost/call=US$0.0024 | x6,157: US$15, sequential hours=17.4
-RAW OUTPUT:
-incident_id: TEST000001
-route: Clear RL nexus
-markers:
-  - marker: verification of expenses
-    source_field: INC_DESC
-  - marker: serviceability
-    source_field: INC_DESC
-other_pathways: []
-reason: "Declared living expenses accepted without bank statement checks, affecting serviceability for a personal loan."
-fenced=False parsed_ok=True route=Clear RL nexus
+"""
+Phase 1 - validate the v2 extract and prepare the reference incidents.
+Reads 00_source (read-only). Writes 02_prepared\reference_*.
+Console prints counts and flags only, never incident text.
+"""
+import json, re
+from datetime import datetime
+import pandas as pd
+from rl_config import ROOT
 
---- reasoning_effort=medium ---
-latency=3.2s finish=stop prompt_tok=537 completion_tok=180 reasoning_tok=89
-cost/call=US$0.0035 | x6,157: US$21, sequential hours=5.4
-RAW OUTPUT:
-incident_id: TEST000001
-route: Clear RL nexus
-markers:
-  - marker: verification of expenses
-    source_field: INC_DESC
-  - marker: serviceability
-    source_field: INC_DESC
-  - marker: potentially unsuitable credit
-    source_field: INC_DESC
-other_pathways: []
-reason: "Loan approved without verifying living expenses, indicating a responsible lending serviceability issue."
-fenced=False parsed_ok=True route=Clear RL nexus
+SRC = ROOT / "00_source" / "incidents" / "incidents_population_20261027_v2.xlsx"
+OUT_DIR = ROOT / "02_prepared"
+OUT_JSONL = OUT_DIR / "reference_model_ready.jsonl"
+OUT_SUMMARY = OUT_DIR / "reference_prep_summary.csv"
+OUT_PREVIEW = OUT_DIR / "reference_message_preview.txt"   # local eyeball only, do not share
+
+WIN_START, WIN_END = pd.Timestamp("2026-04-20"), pd.Timestamp("2026-10-20")
+REF_IDS = ["INC000365033", "INC000374212", "INC000366466", "INC000366530", "INC000341409",
+           "INC000358150", "INC000372012", "INC000369888", "INC000357929", "INC000362030"]
+
+SUPPLIER = "INC_THRD_PRTY_SUPPLR_CAUSED_OR_I"          # label used in the spec and prompts
+PROMPT_CONTENT = ["INC_DESC", "INC_NAME", "INC_INCDNT_CAUSE", "INC_DT_INCDNT_OCCRD", "INC_PRD_LVL_1",
+                  "INC_PRD_LVL_2", "INC_BASE_EVNT_TYP_2", "NUM_OF_CUST_IMPCTD", "INC_BULK_INC", "NEAR_MISS",
+                  "INC_PRCSS", "INC_ROOT_CAUSE_LVL_1", "INC_ROOT_CAUSE_LVL_2", SUPPLIER,
+                  "INC_PRMRY_CAUSED_BU", "INC_IDENTFCTN_SRC_TYP"]
+TRIAGE_FIELDS = ["INC_DESC", "INC_NAME", "INC_INCDNT_CAUSE", "INC_PRD_LVL_1", "INC_PRD_LVL_2",
+                 "INC_BASE_EVNT_TYP_2"]
+LATER = ["INC_ACTNS_TO_RECTFY_OR_PRVNT_REO", "INC_LAST_PRCSS_UPD", "INC_LAST_PRCSS_UPD_DT"]
+CONTROL = ["INC_ID", "INC_ENTRY_DT", "INC_POTNL_COMPL_IMPCT", "INC_STUS", "INC_FLDR_LVL_2",
+           "INC_OWNR_ACCEP_DT"]
+DATE_COLS = ["INC_ENTRY_DT", "INC_DT_INCDNT_OCCRD", "INC_OWNR_ACCEP_DT", "INC_LAST_PRCSS_UPD_DT"]
+TEXT_COLS = ["INC_DESC", "INC_NAME", "INC_INCDNT_CAUSE", "INC_ACTNS_TO_RECTFY_OR_PRVNT_REO",
+             "INC_LAST_PRCSS_UPD"]
+EXCEL_CAP = 32767
+
+# Heading containing "COMPLIANCE RECOMMENDATION" (any case): cut from the start of that line to the end.
+RE_RECOMM = re.compile(r"^[^\n]*compliance recommendation", re.I | re.M)
+# "Updated by <ID>[<Name>] at <timestamp>:" at the start of a line.
+RE_UPDATED_BY = re.compile(
+    r"^[ \t]*Updated by\b[^\n]*?\bat\b[^\n]*?\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:\s?[AaPp][Mm])?\s*:[ \t]*",
+    re.M)
+RE_RESIDUAL = re.compile(r"Updated by", re.I)
+
+
+def fmt(v):
+    """Send-format a value: blanks as 'blank', dates as YYYY-MM-DD, whole floats as ints."""
+    if v is None or (not isinstance(v, str) and pd.isna(v)):
+        return "blank"
+    if isinstance(v, (pd.Timestamp, datetime)):
+        return v.strftime("%Y-%m-%d")
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    s = str(v).strip()
+    return s if s else "blank"
+
+
+def prep_actns(v):
+    s = fmt(v)
+    if s == "blank":
+        return s, False
+    m = RE_RECOMM.search(s)
+    if not m:
+        return s, False
+    kept = s[:m.start()].rstrip()
+    return (kept if kept else "blank"), True
+
+
+def prep_upd(v):
+    s = fmt(v)
+    if s == "blank":
+        return s, 0, 0
+    new, n = RE_UPDATED_BY.subn("", s)
+    new = new.strip()
+    residual = len(RE_RESIDUAL.findall(new))
+    return (new if new else "blank"), n, residual
+
+
+def main():
+    print(f"Source: {SRC.name}")
+    if not SRC.exists():
+        raise SystemExit(f"NOT FOUND: {SRC}")
+    df = pd.read_excel(SRC, dtype={"INC_ID": str})
+    if SUPPLIER not in df.columns:
+        alt = [c for c in df.columns if c.startswith("INC_THRD_PRTY_SUPPLR_CAUSED_OR_I")]
+        if alt:
+            df = df.rename(columns={alt[0]: SUPPLIER})
+    print(f"rows={len(df):,} cols={len(df.columns)}")
+
+    need = list(dict.fromkeys(CONTROL + PROMPT_CONTENT + LATER))
+    missing = [c for c in need if c not in df.columns]
+    print(f"missing required columns: {missing if missing else 'none'}")
+    if missing:
+        raise SystemExit("Stop: fix the extract columns first.")
+
+    df["INC_ID"] = df["INC_ID"].str.strip()
+    print(f"duplicate INC_ID rows: {int(df['INC_ID'].duplicated(keep=False).sum())}")
+
+    for c in DATE_COLS:
+        raw_nonblank = df[c].notna() & (df[c].astype(str).str.strip() != "")
+        df[c] = pd.to_datetime(df[c], errors="coerce")
+        bad = int((raw_nonblank & df[c].isna()).sum())
+        print(f"{c}: non-blank={int(raw_nonblank.sum()):,} unparseable={bad}")
+
+    for c in TEXT_COLS:
+        lens = df[c].fillna("").astype(str).str.len()
+        print(f"{c}: max_len={int(lens.max()):,} at_excel_cap={int((lens >= EXCEL_CAP - 5).sum())}")
+
+    d = df["INC_ENTRY_DT"].dt.normalize()
+    df["in_population"] = (d.between(WIN_START, WIN_END)
+                           & (df["INC_POTNL_COMPL_IMPCT"].astype(str).str.strip() == "Yes")
+                           & (df["INC_STUS"].astype(str).str.strip() != "Rejected"))
+    print(f"eligible population (window, compl=Yes, not Rejected): {int(df['in_population'].sum()):,} "
+          f"| rows outside: {int((~df['in_population']).sum()):,}")
+
+    # Whole-file test of the "Updated by" prefix removal
+    upd = df["INC_LAST_PRCSS_UPD"].map(prep_upd)
+    had = int(df["INC_LAST_PRCSS_UPD"].fillna("").astype(str).str.contains("Updated by", case=False).sum())
+    removed = int(sum(x[1] > 0 for x in upd))
+    residual = int(sum(x[2] > 0 for x in upd))
+    print(f"INC_LAST_PRCSS_UPD: contains 'Updated by'={had:,} prefix_removed={removed:,} residual_after={residual:,}")
+    actn_cut = int(sum(prep_actns(v)[1] for v in df["INC_ACTNS_TO_RECTFY_OR_PRVNT_REO"]))
+    print(f"INC_ACTNS_TO_RECTFY_OR_PRVNT_REO: compliance-recommendation tail removed in {actn_cut:,} records")
+
+    # Reference cases
+    ref = df[df["INC_ID"].isin(REF_IDS)].copy()
+    found = set(ref["INC_ID"])
+    print(f"\nreference IDs found: {len(found)}/10 | missing: {[r for r in REF_IDS if r not in found]}")
+
+    OUT_DIR.mkdir(exist_ok=True)
+    stamp = datetime.now().isoformat(timespec="seconds")
+    rows, previews = [], []
+    with open(OUT_JSONL, "w", encoding="utf-8") as fj:
+        for inc in [r for r in REF_IDS if r in found]:
+            row = ref[ref["INC_ID"] == inc].iloc[0]
+            v = {c: fmt(row[c]) for c in PROMPT_CONTENT}
+            actns, cut = prep_actns(row["INC_ACTNS_TO_RECTFY_OR_PRVNT_REO"])
+            upd_txt, n_rm, n_res = prep_upd(row["INC_LAST_PRCSS_UPD"])
+            upd_dt, acc = row["INC_LAST_PRCSS_UPD_DT"], row["INC_OWNR_ACCEP_DT"]
+            upd_label = ("after CA creation"
+                         if pd.notna(upd_dt) and pd.notna(acc) and upd_dt > acc else "timing unknown")
+            actns_label = "timing unknown"   # no date field exists for this column
+
+            triage_msg = "\n".join([f"INC_ID: {inc}"] + [f"{c}: {v[c]}" for c in TRIAGE_FIELDS])
+            assess_tpl = "\n".join(
+                ["record_basis: Current record", "mode: A", "triage_route: <<TRIAGE_ROUTE>>",
+                 "instruction: Take triage_route as Step 1 and start at Step 2.", f"INC_ID: {inc}"]
+                + [f"{c}: {v[c]}" for c in PROMPT_CONTENT]
+                + [f"INC_ACTNS_TO_RECTFY_OR_PRVNT_REO ({actns_label}): {actns}",
+                   f"INC_LAST_PRCSS_UPD ({fmt(upd_dt)}, {upd_label}): {upd_txt}"])
+
+            rec = {"INC_ID": inc, "in_population": bool(row["in_population"]),
+                   "INC_ENTRY_DT": fmt(row["INC_ENTRY_DT"]), "source_file": SRC.name, "prepared_at": stamp,
+                   "triage_user_message": triage_msg, "assessment_user_template": assess_tpl}
+            fj.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+            blanks = [c for c in PROMPT_CONTENT if v[c] == "blank"]
+            rows.append({"INC_ID": inc, "in_population": rec["in_population"], "INC_ENTRY_DT": rec["INC_ENTRY_DT"],
+                         "desc_len": len(v["INC_DESC"]), "n_blank_fields": len(blanks),
+                         "blank_fields": ";".join(blanks), "actns_tail_removed": cut,
+                         "upd_prefix_removed": n_rm, "upd_residual_updated_by": n_res,
+                         "upd_label": upd_label, "actns_blank": actns == "blank", "upd_blank": upd_txt == "blank"})
+            previews.append(f"{'=' * 80}\n{inc} TRIAGE\n{triage_msg}\n\n{inc} ASSESSMENT\n{assess_tpl}\n")
+
+    summ = pd.DataFrame(rows)
+    summ.to_csv(OUT_SUMMARY, index=False)
+    OUT_PREVIEW.write_text("\n".join(previews), encoding="utf-8")
+
+    pd.set_option("display.width", 220, "display.max_columns", 20)
+    print("\n" + summ.drop(columns=["blank_fields"]).to_string(index=False))
+    print("\nblank fields by reference case:")
+    for r in rows:
+        print(f"  {r['INC_ID']}: {r['blank_fields'] or 'none'}")
+    print(f"\nWrote: {OUT_JSONL.name}, {OUT_SUMMARY.name}, {OUT_PREVIEW.name} (preview is local only)")
+
+
+if __name__ == "__main__":
+    main()
