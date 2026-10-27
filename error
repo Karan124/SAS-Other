@@ -1,68 +1,133 @@
-PS C:\Users\m061400\ai-test\rl_compliance\scripts> python .\p4_triage.py
-gpt-5.4 effort=medium | triage_v0.3 77b45b02a25f | records=5,333 already done=2,880 to run=2,453 | workers=12
-  100/2,453 {'api_error': 2, 'ok': 98} elapsed=0.7m eta=17.4m
-  200/2,453 {'api_error': 2, 'ok': 198} elapsed=1.6m eta=18.2m
-  300/2,453 {'api_error': 2, 'ok': 298} elapsed=2.5m eta=18.0m
-  400/2,453 {'api_error': 2, 'ok': 398} elapsed=3.1m eta=15.9m
-  500/2,453 {'api_error': 2, 'ok': 498} elapsed=4.0m eta=15.6m
-  600/2,453 {'api_error': 2, 'ok': 598} elapsed=4.9m eta=15.0m
-  700/2,453 {'api_error': 2, 'ok': 698} elapsed=5.5m eta=13.8m
-  800/2,453 {'api_error': 2, 'ok': 798} elapsed=6.4m eta=13.2m
-  900/2,453 {'api_error': 2, 'ok': 898} elapsed=7.3m eta=12.6m
-  1,000/2,453 {'api_error': 2, 'ok': 998} elapsed=8.1m eta=11.8m
-  1,100/2,453 {'api_error': 2, 'ok': 1098} elapsed=8.7m eta=10.7m
-  1,200/2,453 {'api_error': 2, 'ok': 1198} elapsed=9.6m eta=10.1m
-  1,300/2,453 {'api_error': 2, 'ok': 1298} elapsed=10.5m eta=9.3m
-  1,400/2,453 {'api_error': 2, 'ok': 1398} elapsed=11.1m eta=8.3m
-  1,500/2,453 {'api_error': 2, 'ok': 1498} elapsed=12.0m eta=7.6m
-  1,600/2,453 {'api_error': 2, 'ok': 1598} elapsed=12.9m eta=6.9m
-  1,700/2,453 {'api_error': 2, 'ok': 1698} elapsed=13.7m eta=6.1m
-  1,800/2,453 {'api_error': 2, 'ok': 1798} elapsed=14.5m eta=5.2m
-  1,900/2,453 {'api_error': 2, 'ok': 1898} elapsed=15.2m eta=4.4m
-  2,000/2,453 {'api_error': 2, 'ok': 1998} elapsed=16.1m eta=3.6m
-  2,100/2,453 {'api_error': 2, 'ok': 2098} elapsed=16.8m eta=2.8m
-  2,200/2,453 {'api_error': 2, 'ok': 2198} elapsed=17.7m eta=2.0m
-  2,300/2,453 {'api_error': 2, 'ok': 2298} elapsed=18.5m eta=1.2m
-  2,400/2,453 {'api_error': 2, 'ok': 2398} elapsed=19.3m eta=0.4m
-  2,453/2,453 {'api_error': 2, 'ok': 2451} elapsed=19.7m eta=0.0m
+"""Phase 5 - preliminary assessment for RL-routed incidents + reference cases. Parallel, resumable."""
+import json, time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import pandas as pd
+from rl_config import ROOT, MODEL, REASONING_EFFORT, load_prompt, get_client
+from rl_core import (run_one, validate_assessment, flatten_assessment, flatten_unresolved,
+                     LOG_FIELDS, RL_ROUTES, Q2)
 
-(a) population triaged: 5,329 of 5,329
+WORKERS = 20
+IN_JSONL = ROOT / "02_prepared" / "population_model_ready.jsonl"
+ROUTES_CSV = ROOT / "03_runs" / "triage" / "triage_routes.csv"
+RAW = ROOT / "03_runs" / "assessment" / "raw_responses"
+CKPT = ROOT / "03_runs" / "assessment" / "assessment_checkpoint.jsonl"
+LOG = ROOT / "03_runs" / "assessment" / "run_log_population.csv"
+OUT_C = ROOT / "04_outputs" / "c_preliminary_ca.xlsx"
+OUT_U = ROOT / "04_outputs" / "c_unresolved.xlsx"
+C_COLS = ["INC_ID", "In window (Y/N)", "In headline (Y/N)", "CA exists", "Route", "Q2 confidence",
+          "Pattern", "Pattern basis", "Anomaly type", "What changes the outcome", "Would change if",
+          "RL status", "RL provisions", "RL sub-lines", "Prudential status", "Prudential provisions",
+          "BCoP-Licence status", "BCoP-Licence provisions", "BCoP-Licence sub-lines", "Overall"]
+U_COLS = ["INC_ID", "Type", "Resolver", "Question or item", "Fact no", "Cluster affected",
+          "What each answer would change"]
 
-Route (population):
-Route
-No clear RL nexus          4322
-Clear RL nexus              460
-RL plus another pathway     452
-Insufficient to route        93
-Failed (api_error)            2
 
-Route by month:
-Month                    2026-04  2026-05  2026-06  2026-07  2026-08  2026-09  2026-10   All
-Route
-Clear RL nexus                33       89       82       89       76       61       30   460
-Failed (api_error)             0        1        0        1        0        0        0     2
-Insufficient to route          7       11       19       19       16       14        7    93
-No clear RL nexus            266      735      729      745      691      675      481  4322
-RL plus another pathway       34       89       70       89       59       68       43   452
-All                          340      925      900      943      842      818      561  5329
+def as_bool(s):
+    return s.astype(str).str.strip().str.lower().eq("true")
 
-Reference cases:
-      INC_ID                   Route  in_population
-INC000372012          Clear RL nexus           True
-INC000358150          Clear RL nexus          False
-INC000362030          Clear RL nexus          False
-INC000341409 RL plus another pathway          False
-INC000366466          Clear RL nexus           True
-INC000365033          Clear RL nexus           True
-INC000374212          Clear RL nexus           True
-INC000357929       No clear RL nexus          False
-INC000366530          Clear RL nexus           True
-INC000369888          Clear RL nexus           True
 
-retried=10 fenced=0 cost=US$26.76
-failures:
-      INC_ID    status                                                                                                                                                                                                                                                                                                                         error
-INC000371496 api_error BadRequestError: Error code: 400 - {'error': {'message': "The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry. To learn more about our content filtering policies please read our documentation: https://go.microsoft.com/fwlink/?linkid=219
-INC000364615 api_error BadRequestError: Error code: 400 - {'error': {'message': "The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry. To learn more about our content filtering policies please read our documentation: https://go.microsoft.com/fwlink/?linkid=219
+def main():
+    recs = {r["INC_ID"]: r for r in
+            (json.loads(l) for l in IN_JSONL.read_text(encoding="utf-8").splitlines() if l.strip())}
+    rt = pd.read_csv(ROUTES_CSV, dtype={"INC_ID": str})
+    rt["in_population"], rt["is_reference"] = as_bool(rt["in_population"]), as_bool(rt["is_reference"])
+    triaged_ok = ~rt["Route"].astype(str).str.startswith("Failed")
+    sel = rt[triaged_ok & ((rt["in_population"] & rt["Route"].isin(RL_ROUTES)) | rt["is_reference"])]
 
-Wrote b_rl_identification.xlsx, triage_routes.csv, run_log_population.csv
+    done = {}
+    if CKPT.exists():
+        for l in CKPT.read_text(encoding="utf-8").splitlines():
+            if l.strip():
+                r = json.loads(l)
+                done[r["INC_ID"]] = r
+    todo = [r for _, r in sel.iterrows()
+            if r["INC_ID"] not in done or done[r["INC_ID"]]["status"] == "api_error"]
+
+    system, ver, sha = load_prompt("assessment")
+    client, auth = get_client()
+    b_n = int((rt["in_population"] & rt["Route"].isin(RL_ROUTES)).sum())
+    print(f"{MODEL} effort={REASONING_EFFORT['assessment']} | {ver} {sha} | (b) RL-routed population={b_n:,} | "
+          f"selected incl. reference={len(sel):,} | already done={len(sel) - len(todo):,} | "
+          f"to run={len(todo):,} | workers={WORKERS}", flush=True)
+
+    def work(row):
+        inc, route = row["INC_ID"], row["Route"]
+        base = {"INC_ID": inc, "Route": route, "in_population": bool(row["in_population"]),
+                "is_reference": bool(row["is_reference"])}
+        try:
+            user = recs[inc]["assessment_user_template"].replace("<<TRIAGE_ROUTE>>", route)
+            d, log = run_one(client, "assessment", inc, system, ver, sha, user, validate_assessment, RAW,
+                             prefix="pop_")
+            return {**base, "status": log["status"], "parsed": d, "log": log}
+        except Exception as e:
+            log = {k: "" for k in LOG_FIELDS}
+            log.update(INC_ID=inc, step="assessment", status="api_error", error=f"{type(e).__name__}: {e}"[:300])
+            return {**base, "status": "api_error", "parsed": None, "log": log}
+
+    t0, n, stats = time.time(), 0, {}
+    with open(CKPT, "a", encoding="utf-8") as f, ThreadPoolExecutor(WORKERS) as ex:
+        for fu in as_completed([ex.submit(work, r) for r in todo]):
+            res = fu.result()
+            f.write(json.dumps(res, ensure_ascii=False, default=str) + "\n")
+            f.flush()
+            done[res["INC_ID"]] = res
+            n += 1
+            stats[res["status"]] = stats.get(res["status"], 0) + 1
+            if n % 25 == 0 or n == len(todo):
+                el = time.time() - t0
+                print(f"  {n:,}/{len(todo):,} {stats} elapsed={el / 60:.1f}m "
+                      f"eta={el / n * (len(todo) - n) / 60:.1f}m", flush=True)
+
+    c_rows, u_rows, logs = [], [], []
+    for _, row in sel.iterrows():
+        r = done.get(row["INC_ID"])
+        if not r:
+            continue
+        logs.append(r["log"])
+        if r["status"] == "ok":
+            c_rows.append(flatten_assessment(r["INC_ID"], r["parsed"], r["Route"], r["in_population"]))
+            u_rows += flatten_unresolved(r["INC_ID"], r["parsed"])
+        else:
+            fl = {c: "" for c in C_COLS}
+            fl.update({"INC_ID": r["INC_ID"], "In window (Y/N)": "Y" if r["in_population"] else "N",
+                       "In headline (Y/N)": "Y" if (r["in_population"] and r["Route"] in RL_ROUTES) else "N",
+                       "CA exists": "pending CA join", "Route": r["Route"],
+                       "Q2 confidence": f"Failed ({r['status']})"})
+            c_rows.append(fl)
+
+    pd.DataFrame(logs, columns=LOG_FIELDS).to_csv(LOG, index=False)
+    c = pd.DataFrame(c_rows, columns=C_COLS)
+    u = pd.DataFrame(u_rows, columns=U_COLS)
+    c.to_excel(OUT_C, index=False)
+    u.to_excel(OUT_U, index=False)
+
+    h = c[c["In headline (Y/N)"] == "Y"]
+    hu = u[u["INC_ID"].isin(h["INC_ID"])]
+    pd.set_option("display.width", 220, "display.max_columns", 20)
+    print(f"\n(b) RL identified (population): {b_n:,} | assessed rows in headline: {len(h):,}")
+    q = h["Q2 confidence"].value_counts()
+    rc = int(q.get("Reasonable confidence", 0))
+    print(f"(c) Reasonable confidence: {rc:,} = {rc / b_n:.1%} of (b)" if b_n else "(c) n/a")
+    print("\nQ2 confidence (denominator = b):\n" +
+          pd.DataFrame({"count": q, "share_of_b": (q / b_n).round(3)}).to_string())
+    print("\nQ2 by route:\n" + pd.crosstab(h["Q2 confidence"], h["Route"], margins=True).to_string())
+    print("\nOverall:\n" + h["Overall"].value_counts().to_string())
+    print("\nPattern x Overall:\n" + pd.crosstab(h["Pattern"], h["Overall"], margins=True).to_string())
+    print(f"\nUnresolved items (headline): {len(hu):,} across {hu['INC_ID'].nunique():,} incidents")
+    print("by Resolver:\n" + hu["Resolver"].value_counts().to_string())
+    print("by Type:\n" + hu["Type"].value_counts().to_string())
+    ref = c[c["INC_ID"].isin(sel.loc[sel["is_reference"], "INC_ID"])]
+    print("\nReference cases:\n" + ref[["INC_ID", "In headline (Y/N)", "Route", "Q2 confidence",
+                                       "Pattern", "Overall"]].to_string(index=False))
+    lg = pd.DataFrame(logs)
+    print(f"\nretried={int(lg['retried'].astype(str).eq('True').sum())} "
+          f"fenced={int(lg['fenced'].astype(str).eq('True').sum())} "
+          f"cost=US${pd.to_numeric(lg['cost_usd'], errors='coerce').sum():.2f}")
+    errs = lg[lg["status"] != "ok"][["INC_ID", "status", "error"]].copy()
+    errs["error"] = errs["error"].astype(str).str[:110]
+    print("failures:\n" + (errs.to_string(index=False) if len(errs) else "  none"))
+    print(f"\nWrote {OUT_C.name}, {OUT_U.name}, {LOG.name}. Outputs now frozen: do not rerun after the CA join.")
+
+
+if __name__ == "__main__":
+    main()
