@@ -1,118 +1,47 @@
-Path: C:\Users\M061400\ai-test\rl_compliance\scripts\rl_config.py
+* Yesterday's reporting snapshot */
+%let td_date_eom = %sysfunc(
+    intnx(day,%sysfunc(today()),-1,e),
+    YYMMDD10.
+);
 
-"""Shared settings for the RL compliance run. No secrets in this file."""
-import os, hashlib, textwrap
-from pathlib import Path
+proc sql;
+    connect using sipsst;
 
-ROOT = Path(r"C:\Users\M061400\ai-test\rl_compliance")
+    create table w._incidents_ as
+    select *
+    from connection to sipsst
+    (
+        SELECT
+            INC_ID,
+            INC_DESC,
+            INC_NAME,
+            INC_INCDNT_CAUSE,
+            INC_DT_INCDNT_OCCRD,
+            INC_PRD_LVL_2,
+            INC_BASE_EVNT_TYP_2,
+            NUM_OF_CUST_IMPCTD,
+            INC_BULK_INC,
+            NEAR_MISS,
+            INC_PRCSS,
+            INC_ROOT_CAUSE_LVL_1,
+            INC_ROOT_CAUSE_LVL_2,
+            INC_THRD_PRTY_SUPPLR_CAUSED_OR_IMPCTD,
+            INC_PRMRY_CAUSED_BU
 
-AZURE_ENDPOINT = "https://ai.eng.azure.srv.westpac.com.au"
-API_VERSION = "2024-10-21"
-MODEL = "gpt-5.4"
-MAX_COMPLETION_TOKENS = 12000
+        FROM BIP1ViewA.A008E1_DIM_INCIDENT_R
 
-# Fixed for the run once confirmed at the Phase 0 checkpoint.
-REASONING_EFFORT = {"triage": "medium", "assessment": "medium"}
+        WHERE CAST(REPORTING_DATE AS DATE)
+              = DATE%str(%')&td_date_eom.%str(%')
 
-INPUT_PRICE_USD_PER_M = 1.75
-OUTPUT_PRICE_USD_PER_M = 14.00
+          AND CAST(INC_ENTRY_DT AS DATE)
+              BETWEEN ADD_MONTHS(
+                  DATE%str(%')&td_date_eom.%str(%'),
+                  -6
+              )
+              AND DATE%str(%')&td_date_eom.%str(%')
+			  AND INC_STUS <> 'Rejected'
+			  AND INC_POTNL_COMPL_IMPCT = 'Yes'
+    );
 
-PROMPT_FILES = {
-    "triage": ("triage_v0.3.txt", "triage_v0.3"),
-    "assessment": ("assessment_v0.4.txt", "assessment_v0.4"),
-}
-
-
-def load_prompt(step):
-    """Return (text, version, sha256[:12]). Text is dedented and stripped only."""
-    fname, ver = PROMPT_FILES[step]
-    txt = textwrap.dedent((ROOT / "01_prompt" / fname).read_text(encoding="utf-8")).strip()
-    return txt, ver, hashlib.sha256(txt.encode("utf-8")).hexdigest()[:12]
-
-
-def get_client():
-    """Return (client, auth_method). Uses an env key if present, else Azure AD sign-in."""
-    from openai import AzureOpenAI
-    key = os.environ.get("AZURE_OPENAI_API_KEY")
-    if key:
-        return AzureOpenAI(azure_endpoint=AZURE_ENDPOINT, api_version=API_VERSION, api_key=key), "api_key_env"
-    try:
-        from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-    except ImportError:
-        raise SystemExit("AUTH: no AZURE_OPENAI_API_KEY and azure-identity not installed. "
-                         "Paste the client-creation lines from your existing script (no secrets).")
-    tp = get_bearer_token_provider(DefaultAzureCredential(),
-                                   "https://cognitiveservices.azure.com/.default")
-    return AzureOpenAI(azure_endpoint=AZURE_ENDPOINT, api_version=API_VERSION,
-                       azure_ad_token_provider=tp), "azure_ad"
-
-
-
-Path: C:\Users\M061400\ai-test\rl_compliance\scripts\p0_api_check.py
-
-"""Phase 0b - API check with a synthetic record. No incident data is sent."""
-import re, time
-import yaml
-from rl_config import (MODEL, MAX_COMPLETION_TOKENS, INPUT_PRICE_USD_PER_M,
-                       OUTPUT_PRICE_USD_PER_M, load_prompt, get_client)
-
-POP_N = 6157
-
-SYNTH = """INC_ID: TEST000001
-INC_DESC: Synthetic test record, not a real incident. A lender approved a personal loan after accepting the applicant's declared living expenses without checking them against bank statements. A later quality review found expenses were understated and the loan had been drawn.
-INC_NAME: Synthetic test - expenses not verified
-INC_INCDNT_CAUSE: blank
-INC_PRD_LVL_1: blank
-INC_PRD_LVL_2: Personal Loans
-INC_BASE_EVNT_TYP_2: blank"""
-
-
-def strip_fences(t):
-    m = re.fullmatch(r"\s*```(?:yaml|yml)?\s*\n(.*?)\n\s*```\s*", t, flags=re.S)
-    return (m.group(1), True) if m else (t, False)
-
-
-def main():
-    system, ver, sha = load_prompt("triage")
-    print(f"Prompt {ver} sha256[:12]={sha} chars={len(system):,}")
-    client, auth = get_client()
-    print(f"Auth method: {auth} | model: {MODEL}")
-
-    for effort in ["low", "medium"]:
-        print(f"\n--- reasoning_effort={effort} ---")
-        try:
-            t0 = time.time()
-            r = client.chat.completions.create(
-                model=MODEL,
-                messages=[{"role": "system", "content": system},
-                          {"role": "user", "content": SYNTH}],
-                reasoning_effort=effort,
-                max_completion_tokens=MAX_COMPLETION_TOKENS,
-            )
-            dt = time.time() - t0
-        except Exception as e:
-            print(f"CALL FAILED: {type(e).__name__}: {str(e)[:400]}")
-            continue
-
-        u = r.usage
-        det = getattr(u, "completion_tokens_details", None)
-        rtok = getattr(det, "reasoning_tokens", None) if det else None
-        cost = u.prompt_tokens / 1e6 * INPUT_PRICE_USD_PER_M + u.completion_tokens / 1e6 * OUTPUT_PRICE_USD_PER_M
-        print(f"latency={dt:.1f}s finish={r.choices[0].finish_reason} "
-              f"prompt_tok={u.prompt_tokens} completion_tok={u.completion_tokens} reasoning_tok={rtok}")
-        print(f"cost/call=US${cost:.4f} | x{POP_N:,}: US${cost * POP_N:,.0f}, "
-              f"sequential hours={dt * POP_N / 3600:.1f}")
-
-        text = r.choices[0].message.content or ""
-        print("RAW OUTPUT:\n" + text)
-        body, fenced = strip_fences(text)
-        try:
-            d = yaml.safe_load(body)
-            ok = isinstance(d, dict) and {"incident_id", "route", "markers", "other_pathways", "reason"} <= set(d)
-            print(f"fenced={fenced} parsed_ok={ok} route={d.get('route') if isinstance(d, dict) else None}")
-        except Exception as e:
-            print(f"fenced={fenced} YAML PARSE FAILED: {e}")
-
-
-if __name__ == "__main__":
-    main()
+    disconnect from sipsst;
+quit;
