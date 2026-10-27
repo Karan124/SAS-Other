@@ -1,197 +1,78 @@
-"""Shared call, parse, validate, log and flatten functions for the RL run."""
-import csv, json, re, time
-from datetime import datetime
-import yaml
-from rl_config import MODEL, MAX_COMPLETION_TOKENS, REASONING_EFFORT, INPUT_PRICE_USD_PER_M, OUTPUT_PRICE_USD_PER_M
+PS C:\Users\m061400\ai-test\rl_compliance\scripts> python .\p1_prepare_reference.py
+Source: incidents_population_20271027_v2.xlsx
+rows=5,333 cols=25
+missing required columns: none
+duplicate INC_ID rows: 0
+INC_ENTRY_DT: non-blank=5,333 unparseable=0
+INC_DT_INCDNT_OCCRD: non-blank=5,332 unparseable=0
+INC_OWNR_ACCEP_DT: non-blank=5,298 unparseable=0
+INC_LAST_PRCSS_UPD_DT: non-blank=2,974 unparseable=0
+INC_DESC: max_len=3,989 at_excel_cap=0
+INC_NAME: max_len=356 at_excel_cap=0
+INC_INCDNT_CAUSE: max_len=3,729 at_excel_cap=0
+INC_ACTNS_TO_RECTFY_OR_PRVNT_REO: max_len=3,993 at_excel_cap=0
+INC_LAST_PRCSS_UPD: max_len=3,760 at_excel_cap=0
+eligible population (window, compl=Yes, not Rejected): 5,329 | rows outside: 4
+INC_LAST_PRCSS_UPD: contains 'Updated by'=2,725 prefix_removed=2,725 residual_after=6
+INC_ACTNS_TO_RECTFY_OR_PRVNT_REO: compliance-recommendation tail removed in 0 records
 
-ROUTES = ["Clear RL nexus", "RL plus another pathway", "No clear RL nexus", "Insufficient to route"]
-RL_ROUTES = ROUTES[:2]
-Q2 = ["Reasonable confidence", "Within stated bounds", "Insufficient confidence", "Not assessable from JUNO"]
-STATUSES = ["Breached", "Not breached", "Not engaged", "Requires assessor judgement",
-            "Insufficient evidence", "Not assessable from JUNO"]
-OVERALL = ["Multi-cluster breach", "RL breach only", "Prudential breach only", "BCoP/Licence breach only",
-           "No compliance breach", "Assessor-ready", "Outside RL pathway", "Not assessable from JUNO"]
-LOG_FIELDS = ["INC_ID", "step", "prompt_version", "prompt_sha", "model", "reasoning_effort", "run_at",
-              "status", "attempts", "retried", "fenced", "finish_reason", "prompt_tokens",
-              "completion_tokens", "reasoning_tokens", "latency_s", "cost_usd", "error"]
+reference IDs found: 10/10 | missing: []
 
-RE_FENCE = re.compile(r"\s*```(?:yaml|yml)?[ \t]*\n(.*?)\n\s*```\s*", re.S)
+      INC_ID  in_population INC_ENTRY_DT  desc_len  n_blank_fields  actns_tail_removed  upd_prefix_removed  upd_residual_updated_by         upd_label  actns_blank  upd_blank
+INC000365033           True   2026-05-21      2404               1               False                   0                        0    timing unknown        False       True
+INC000374212           True   2026-09-01      2109               1               False                   0                        0    timing unknown        False       True
+INC000366466           True   2026-06-04      3016               0               False                   1                        0 after CA creation        False      False
+INC000366530           True   2026-06-05      3689               0               False                   1                        0 after CA creation        False      False
+INC000341409          False   2025-08-22      3308               1               False                   0                        0    timing unknown        False       True
+INC000358150          False   2026-02-25      1811               0               False                   1                        0 after CA creation        False      False
+INC000372012           True   2026-08-06      2451               1               False                   0                        0    timing unknown        False       True
+INC000369888           True   2026-07-13      3739               1               False                   1                        0 after CA creation        False      False
+INC000357929          False   2026-02-23      1034               1               False                   1                        0 after CA creation        False      False
+INC000362030          False   2026-04-13       925               1               False                   0                        0 after CA creation        False      False
 
+blank fields by reference case:
+  INC000365033: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
+  INC000374212: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
+  INC000366466: none
+  INC000366530: none
+  INC000341409: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
+  INC000358150: none
+  INC000372012: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
+  INC000369888: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
+  INC000357929: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
+  INC000362030: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
 
-def to_str(x):
-    if x is None:
-        return ""
-    if isinstance(x, bool):                      # YAML 1.1 reads bare Yes/No as booleans
-        return "Yes" if x else "No"
-    if isinstance(x, list):
-        return "; ".join(to_str(i) for i in x)
-    if isinstance(x, dict):
-        return "; ".join(f"{k}={to_str(v)}" for k, v in x.items())
-    return str(x).strip()
+Wrote: reference_model_ready.jsonl, reference_prep_summary.csv, reference_message_preview.txt (preview is local only)
+PS C:\Users\m061400\ai-test\rl_compliance\scripts> python .\p2_reference_run.py
+10 cases | gpt-5.4 effort={'triage': 'medium', 'assessment': 'medium'} | triage_v0.3 77b45b02a25f | assessment_v0.4 641c8ff0150f
 
+  INC000365033: route=Clear RL nexus | assessment=ok
+  INC000374212: route=Clear RL nexus | assessment=ok
+  INC000366466: route=Clear RL nexus | assessment=ok
+  INC000366530: route=Clear RL nexus | assessment=ok
+  INC000341409: route=RL plus another pathway | assessment=ok
+  INC000358150: route=Clear RL nexus | assessment=ok
+  INC000372012: route=Clear RL nexus | assessment=ok
+  INC000369888: route=Clear RL nexus | assessment=ok
+  INC000357929: route=Insufficient to route | assessment=ok
+  INC000362030: route=Clear RL nexus | assessment=ok
 
-def canon(v, allowed):
-    """Map a value to its allowed label by prefix (case-insensitive); None if no match."""
-    s = to_str(v).lower()
-    hits = [a for a in allowed if s.startswith(a.lower())]
-    return max(hits, key=len) if hits else None
+      INC_ID in_pop                   route  t_att a_status  a_att  a_secs                       q2                   pattern                       RL                     Prud                     BCoP                    overall  n_unres                  resolvers
+INC000365033      Y          Clear RL nexus      1       ok      1    32.4    Reasonable confidence Full breach (Established)                 Breached                 Breached                 Breached       Multi-cluster breach        0            
+INC000374212      Y          Clear RL nexus      1       ok      1    71.5  Insufficient confidence   Threshold (Established)             Not breached    Insufficient evidence             Not breached             Assessor-ready        1               Source owner
+INC000366466      Y          Clear RL nexus      1       ok      1    53.1    Reasonable confidence   Exception (Established)             Not breached                 Breached              Not engaged     Prudential breach only        0            
+INC000366530      Y          Clear RL nexus      1       ok      1    25.7    Reasonable confidence Policy only (Established)             Not breached             Not breached              Not engaged       No compliance breach        0            
+INC000341409      N RL plus another pathway      1       ok      1    87.9  Insufficient confidence   Unmatched (Established)    Insufficient evidence    Insufficient evidence    Insufficient evidence             Assessor-ready        4 Assessor; Incident raiser~
+INC000358150      N          Clear RL nexus      1       ok      1    48.0  Insufficient confidence   Unmatched (Established)    Insufficient evidence                 Breached    Insufficient evidence Assessor-ready (an unreso~        2            Incident raiser
+INC000372012      Y          Clear RL nexus      1       ok      1    46.3  Insufficient confidence   Unmatched (Established)             Not breached             Not breached    Insufficient evidence             Assessor-ready        1               Source owner
+INC000369888      Y          Clear RL nexus      1       ok      1    54.9  Insufficient confidence   Unmatched (Established)    Insufficient evidence                 Breached    Insufficient evidence             Assessor-ready        5 Incident raiser; Source o~
+INC000357929      N   Insufficient to route      1       ok      1    23.9 Not assessable from JUNO              Unmatched () Not assessable from JUNO Not assessable from JUNO Not assessable from JUNO   Not assessable from JUNO        2               Source owner
+INC000362030      N          Clear RL nexus      1       ok      1    65.0  Insufficient confidence   Unmatched (Established)    Insufficient evidence                 Breached    Insufficient evidence             Assessor-ready        3            Incident raiser
 
+calls: triage {'ok': 10} | assessment {'ok': 10}
+retried: 0 | fenced: 0 | finish!=stop: 0
+assessment latency s: mean=50.9 max=87.9 | tokens/call: prompt=6272 completion=5194
+cost: US$0.92
+errors: none
 
-def parse_yaml(text):
-    """Strip a single ```yaml fence if present (logged), else parse as-is."""
-    m = RE_FENCE.fullmatch(text or "")
-    body, fenced = (m.group(1), True) if m else (text or "", False)
-    d = yaml.safe_load(body)
-    if not isinstance(d, dict):
-        raise ValueError("output is not a single YAML mapping")
-    return d, fenced
-
-
-def _check_keys(d, keys, inc_id):
-    miss = [k for k in keys if k not in d]
-    if miss:
-        raise ValueError(f"missing keys {miss}")
-    if to_str(d.get("incident_id")) != inc_id:
-        raise ValueError("incident_id does not match INC_ID")
-
-
-def validate_triage(d, inc_id):
-    _check_keys(d, ["incident_id", "route", "markers", "other_pathways", "reason"], inc_id)
-    r = canon(d["route"], ROUTES)
-    if not r:
-        raise ValueError("route not in allowed set")
-    d["route"] = r
-    return d
-
-
-def validate_assessment(d, inc_id):
-    _check_keys(d, ["incident_id", "record_basis", "q1_rl_markers", "q2_confidence", "pattern",
-                    "what_changes_the_outcome", "would_change_if", "obligations", "overall"], inc_id)
-    q = canon(d["q2_confidence"], Q2)
-    if not q:
-        raise ValueError("q2_confidence not in allowed set")
-    d["q2_confidence"] = q
-    ob = d["obligations"]
-    if not isinstance(ob, dict):
-        raise ValueError("obligations is not a mapping")
-    for c in ["RL", "Prudential", "BCoP_Licence"]:
-        cell = ob.get(c)
-        if not isinstance(cell, dict) or canon(cell.get("status"), STATUSES) is None:
-            raise ValueError(f"{c} status missing or not in allowed set")
-    if canon(d["overall"], OVERALL) is None:
-        raise ValueError("overall not in allowed set")
-    q3 = d.get("q3_unresolved")
-    if q3 not in (None, "") and not isinstance(q3, list):
-        raise ValueError("q3_unresolved is not a list")
-    return d
-
-
-def _api_call(client, system, user, effort, max_tries=4):
-    """API-level retry for transient errors only (separate from the malformed-output retry)."""
-    for i in range(max_tries):
-        try:
-            t0 = time.time()
-            r = client.chat.completions.create(
-                model=MODEL,
-                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-                reasoning_effort=effort, max_completion_tokens=MAX_COMPLETION_TOKENS)
-            return r, time.time() - t0, None
-        except Exception as e:
-            err = f"{type(e).__name__}: {str(e)[:300]}"
-            if getattr(e, "status_code", None) in (400, 401, 403) or i == max_tries - 1:
-                return None, 0.0, err
-            time.sleep(5 * 2 ** i)
-
-
-def run_one(client, step, inc_id, system, prompt_ver, prompt_sha, user_msg, validate, raw_dir, prefix=""):
-    """One incident, one step. Malformed output: retry once, then flag. Raw responses always saved."""
-    effort = REASONING_EFFORT[step]
-    log = {"INC_ID": inc_id, "step": step, "prompt_version": prompt_ver, "prompt_sha": prompt_sha,
-           "model": MODEL, "reasoning_effort": effort, "run_at": "", "status": "", "attempts": 0,
-           "retried": False, "fenced": False, "finish_reason": "", "prompt_tokens": 0,
-           "completion_tokens": 0, "reasoning_tokens": 0, "latency_s": 0.0, "cost_usd": 0.0, "error": ""}
-    for attempt in (1, 2):
-        r, lat, err = _api_call(client, system, user_msg, effort)
-        run_at = datetime.now().isoformat(timespec="seconds")
-        content = r.choices[0].message.content if r else None
-        u = r.usage if r else None
-        det = getattr(u, "completion_tokens_details", None) if u else None
-        rtok = (getattr(det, "reasoning_tokens", 0) or 0) if det else 0
-        raw = {"INC_ID": inc_id, "step": step, "attempt": attempt, "prompt_version": prompt_ver,
-               "prompt_sha": prompt_sha, "model": MODEL, "reasoning_effort": effort, "run_at": run_at,
-               "user_message": user_msg, "finish_reason": r.choices[0].finish_reason if r else None,
-               "usage": {"prompt_tokens": u.prompt_tokens, "completion_tokens": u.completion_tokens,
-                         "reasoning_tokens": rtok} if u else None,
-               "content": content, "api_error": err}
-        (raw_dir / f"{prefix}{inc_id}_{step}_a{attempt}.json").write_text(
-            json.dumps(raw, ensure_ascii=False, indent=1), encoding="utf-8")
-
-        log["run_at"], log["attempts"], log["retried"] = run_at, attempt, attempt > 1
-        log["latency_s"] = round(log["latency_s"] + lat, 1)
-        if u:
-            log["prompt_tokens"] += u.prompt_tokens
-            log["completion_tokens"] += u.completion_tokens
-            log["reasoning_tokens"] += rtok
-            log["finish_reason"] = r.choices[0].finish_reason
-        log["cost_usd"] = round(log["prompt_tokens"] / 1e6 * INPUT_PRICE_USD_PER_M
-                                + log["completion_tokens"] / 1e6 * OUTPUT_PRICE_USD_PER_M, 5)
-        if r is None:
-            log["status"], log["error"] = "api_error", err
-            return None, log
-        try:
-            d, fenced = parse_yaml(content)
-            d = validate(d, inc_id)
-            log["status"], log["fenced"], log["error"] = "ok", fenced, ""
-            return d, log
-        except Exception as e:
-            log["status"], log["error"] = "malformed", f"{type(e).__name__}: {str(e)[:200]}"
-    log["status"] = "failed_malformed"
-    return None, log
-
-
-def append_log(path, rows):
-    new = not path.exists()
-    with open(path, "a", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=LOG_FIELDS)
-        if new:
-            w.writeheader()
-        w.writerows(rows)
-
-
-def flatten_triage(inc_id, d):
-    mk = d.get("markers") or []
-    mk = mk if isinstance(mk, list) else [mk]
-    return {"INC_ID": inc_id, "Route": d["route"],
-            "RL markers": "; ".join(to_str(m.get("marker")) if isinstance(m, dict) else to_str(m) for m in mk),
-            "Marker source fields": "; ".join(to_str(m.get("source_field")) if isinstance(m, dict) else "" for m in mk),
-            "Other pathways": to_str(d.get("other_pathways")), "Reason": to_str(d.get("reason"))}
-
-
-def flatten_assessment(inc_id, d, route, in_window):
-    p = d.get("pattern")
-    pn, pb, pa = ((to_str(p.get("name")), to_str(p.get("basis")), to_str(p.get("anomaly_type")))
-                  if isinstance(p, dict) else (to_str(p), "", ""))
-    ob = d["obligations"]
-    rl, pr, bc = ob["RL"], ob["Prudential"], ob["BCoP_Licence"]
-    return {"INC_ID": inc_id, "In window (Y/N)": "Y" if in_window else "N",
-            "In headline (Y/N)": "Y" if (in_window and route in RL_ROUTES) else "N",
-            "CA exists": "pending CA join", "Route": route, "Q2 confidence": d["q2_confidence"],
-            "Pattern": pn, "Pattern basis": pb, "Anomaly type": pa,
-            "What changes the outcome": to_str(d.get("what_changes_the_outcome")),
-            "Would change if": to_str(d.get("would_change_if")),
-            "RL status": to_str(rl.get("status")), "RL provisions": to_str(rl.get("provisions")),
-            "RL sub-lines": to_str(rl.get("sub_lines")),
-            "Prudential status": to_str(pr.get("status")), "Prudential provisions": to_str(pr.get("provisions")),
-            "BCoP-Licence status": to_str(bc.get("status")), "BCoP-Licence provisions": to_str(bc.get("provisions")),
-            "BCoP-Licence sub-lines": to_str(bc.get("sub_lines")), "Overall": to_str(d.get("overall"))}
-
-
-def flatten_unresolved(inc_id, d):
-    rows = []
-    for it in d.get("q3_unresolved") or []:
-        it = it if isinstance(it, dict) else {"question_or_item": it}
-        rows.append({"INC_ID": inc_id, "Type": to_str(it.get("type")), "Resolver": to_str(it.get("resolver")),
-                     "Question or item": to_str(it.get("question_or_item")), "Fact no": to_str(it.get("fact_no")),
-                     "Cluster affected": to_str(it.get("cluster_affected")),
-                     "What each answer would change": to_str(it.get("what_each_answer_would_change"))})
-    return rows
+Wrote 04_outputs\reference_b_rl_identification.xlsx, reference_c_preliminary_ca.xlsx, reference_c_unresolved.xlsx and run logs in 03_runs
