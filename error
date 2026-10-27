@@ -1,26 +1,4 @@
-"""Summarise API errors in the triage and assessment checkpoints (latest result per INC_ID)."""
-import json, re
-from collections import Counter
-from rl_config import ROOT
-
-for step in ["triage", "assessment"]:
-    p = ROOT / "03_runs" / step / f"{step}_checkpoint.jsonl"
-    if not p.exists():
-        print(f"{step}: no checkpoint")
-        continue
-    latest = {}
-    for l in p.read_text(encoding="utf-8").splitlines():
-        if l.strip():
-            r = json.loads(l)
-            latest[r["INC_ID"]] = r
-    st = Counter(r["status"] for r in latest.values())
-    kinds = Counter()
-    for r in latest.values():
-        if r["status"] == "api_error":
-            e = str(r["log"].get("error", ""))
-            code = re.search(r"Error code: (\d{3})", e)
-            k = "content filter" if "content management policy" in e else (
-                f"HTTP {code.group(1)}" if code else e.split(":")[0][:40])
-            kinds[k] += 1
-    print(f"{step}: records={len(latest):,} status={dict(st)}")
-    print(f"  api_error types: {dict(kinds) if kinds else 'none'}")
+PS C:\Users\m061400\ai-test\rl_compliance\scripts> python .\errors.py
+triage: records=2,882 status={'ok': 2880, 'api_error': 2}
+  api_error types: {'content filter': 2}
+assessment: no checkpoint
