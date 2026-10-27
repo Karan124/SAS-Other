@@ -1,52 +1,35 @@
-/* Yesterday's reporting snapshot */
-%let td_date_eom = %sysfunc(intnx(day,%sysfunc(today()),-1,e), YYMMDD10.);
+PS C:\Users\m061400\ai-test\rl_compliance\scripts> python .\p0_api_check.py
+Prompt triage_v0.3 sha256[:12]=77b45b02a25f chars=1,845
+Auth method: azure_ad | model: gpt-5.4
 
-proc sql;
-    connect using sipsst;
+--- reasoning_effort=low ---
+latency=10.2s finish=stop prompt_tok=537 completion_tok=104 reasoning_tok=26
+cost/call=US$0.0024 | x6,157: US$15, sequential hours=17.4
+RAW OUTPUT:
+incident_id: TEST000001
+route: Clear RL nexus
+markers:
+  - marker: verification of expenses
+    source_field: INC_DESC
+  - marker: serviceability
+    source_field: INC_DESC
+other_pathways: []
+reason: "Declared living expenses accepted without bank statement checks, affecting serviceability for a personal loan."
+fenced=False parsed_ok=True route=Clear RL nexus
 
-    create table w._incidents_ as
-    select *
-    from connection to sipsst
-    (
-        SELECT
-            INC_ID,
-            INC_DESC,
-            INC_NAME,
-            INC_INCDNT_CAUSE,
-            INC_DT_INCDNT_OCCRD,
-            INC_PRD_LVL_1,
-            INC_PRD_LVL_2,
-            INC_BASE_EVNT_TYP_2,
-            NUM_OF_CUST_IMPCTD,
-            INC_BULK_INC,
-            NEAR_MISS,
-            INC_PRCSS,
-            INC_ROOT_CAUSE_LVL_1,
-            INC_ROOT_CAUSE_LVL_2,
-            INC_THRD_PRTY_SUPPLR_CAUSED_OR_IMPCTD,
-            INC_PRMRY_CAUSED_BU,
-            INC_IDENTFCTN_SRC_TYP,
-            INC_ACTNS_TO_RECTFY_OR_PRVNT_REO,
-            INC_LAST_PRCSS_UPD,
-            INC_LAST_PRCSS_UPD_DT,
-            INC_ENTRY_DT,
-            INC_POTNL_COMPL_IMPCT,
-            INC_STUS,
-            INC_FLDR_LVL_2,
-            INC_OWNR_ACCEP_DT
-
-        FROM BIP1ViewA.A008E1_DIM_INCIDENT_R
-
-        WHERE CAST(REPORTING_DATE AS DATE) = DATE%str(%')&td_date_eom.%str(%')
-          AND (
-                (     CAST(INC_ENTRY_DT AS DATE) BETWEEN DATE '2026-04-20' AND DATE '2026-10-20'
-                  AND INC_STUS <> 'Rejected'
-                  AND INC_POTNL_COMPL_IMPCT = 'Yes'
-                )
-             OR INC_ID IN ('INC000365033','INC000374212','INC000366466','INC000366530','INC000341409',
-                           'INC000358150','INC000372012','INC000369888','INC000357929','INC000362030')
-              )
-    );
-
-    disconnect from sipsst;
-quit;
+--- reasoning_effort=medium ---
+latency=3.2s finish=stop prompt_tok=537 completion_tok=180 reasoning_tok=89
+cost/call=US$0.0035 | x6,157: US$21, sequential hours=5.4
+RAW OUTPUT:
+incident_id: TEST000001
+route: Clear RL nexus
+markers:
+  - marker: verification of expenses
+    source_field: INC_DESC
+  - marker: serviceability
+    source_field: INC_DESC
+  - marker: potentially unsuitable credit
+    source_field: INC_DESC
+other_pathways: []
+reason: "Loan approved without verifying living expenses, indicating a responsible lending serviceability issue."
+fenced=False parsed_ok=True route=Clear RL nexus
