@@ -1,101 +1,23 @@
-"""Phase 4 - RL triage across the population (+ reference cases). Parallel and resumable."""
-import json, time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import pandas as pd
-from rl_config import ROOT, MODEL, REASONING_EFFORT, load_prompt, get_client
-from rl_core import run_one, validate_triage, flatten_triage, LOG_FIELDS
-
-WORKERS = 12
-IN_JSONL = ROOT / "02_prepared" / "population_model_ready.jsonl"
-RAW = ROOT / "03_runs" / "triage" / "raw_responses"
-CKPT = ROOT / "03_runs" / "triage" / "triage_checkpoint.jsonl"
-LOG = ROOT / "03_runs" / "triage" / "run_log_population.csv"
-ROUTES_CSV = ROOT / "03_runs" / "triage" / "triage_routes.csv"     # input to Phase 5
-OUT_B = ROOT / "04_outputs" / "b_rl_identification.xlsx"
-B_COLS = ["INC_ID", "Route", "RL markers", "Marker source fields", "Other pathways", "Reason"]
-
-
-def load_done():
-    done = {}
-    if CKPT.exists():
-        for l in CKPT.read_text(encoding="utf-8").splitlines():
-            if l.strip():
-                r = json.loads(l)
-                done[r["INC_ID"]] = r
-    return done
-
-
-def main():
-    recs = [json.loads(l) for l in IN_JSONL.read_text(encoding="utf-8").splitlines() if l.strip()]
-    meta = {r["INC_ID"]: r for r in recs}
-    done = load_done()
-    # Resume: skip anything already answered; only API errors are re-sent (malformed stays flagged).
-    todo = [r for r in recs if r["INC_ID"] not in done or done[r["INC_ID"]]["status"] == "api_error"]
-    system, ver, sha = load_prompt("triage")
-    client, auth = get_client()
-    print(f"{MODEL} effort={REASONING_EFFORT['triage']} | {ver} {sha} | records={len(recs):,} "
-          f"already done={len(recs) - len(todo):,} to run={len(todo):,} | workers={WORKERS}", flush=True)
-
-    def work(rec):
-        try:
-            d, log = run_one(client, "triage", rec["INC_ID"], system, ver, sha, rec["triage_user_message"],
-                             validate_triage, RAW, prefix="pop_")
-            return {"INC_ID": rec["INC_ID"], "status": log["status"], "parsed": d, "log": log}
-        except Exception as e:
-            log = {k: "" for k in LOG_FIELDS}
-            log.update(INC_ID=rec["INC_ID"], step="triage", status="api_error", error=f"{type(e).__name__}: {e}"[:300])
-            return {"INC_ID": rec["INC_ID"], "status": "api_error", "parsed": None, "log": log}
-
-    t0, n, stats = time.time(), 0, {}
-    with open(CKPT, "a", encoding="utf-8") as f, ThreadPoolExecutor(WORKERS) as ex:
-        for fu in as_completed([ex.submit(work, r) for r in todo]):
-            res = fu.result()
-            f.write(json.dumps(res, ensure_ascii=False, default=str) + "\n")
-            f.flush()
-            done[res["INC_ID"]] = res
-            n += 1
-            stats[res["status"]] = stats.get(res["status"], 0) + 1
-            if n % 100 == 0 or n == len(todo):
-                el = time.time() - t0
-                print(f"  {n:,}/{len(todo):,} {stats} elapsed={el / 60:.1f}m "
-                      f"eta={el / n * (len(todo) - n) / 60:.1f}m", flush=True)
-
-    b_rows, route_rows, logs = [], [], []
-    for inc, rec in meta.items():
-        r = done.get(inc)
-        if not r:
-            continue
-        logs.append(r["log"])
-        if r["status"] == "ok":
-            fl = flatten_triage(inc, r["parsed"])
-        else:
-            fl = {c: "" for c in B_COLS}
-            fl.update(INC_ID=inc, Route=f"Failed ({r['status']})")
-        route_rows.append({"INC_ID": inc, "Route": fl["Route"], "in_population": rec["in_population"],
-                           "is_reference": rec["is_reference"], "INC_ENTRY_DT": rec["INC_ENTRY_DT"]})
-        if rec["in_population"]:
-            b_rows.append(fl)
-
-    pd.DataFrame(logs, columns=LOG_FIELDS).to_csv(LOG, index=False)
-    rt = pd.DataFrame(route_rows)
-    rt.to_csv(ROUTES_CSV, index=False)
-    pd.DataFrame(b_rows, columns=B_COLS).to_excel(OUT_B, index=False)
-
-    pop = rt[rt["in_population"]].copy()
-    pop["Month"] = pop["INC_ENTRY_DT"].str[:7]
-    print(f"\n(a) population triaged: {len(pop):,} of {sum(r['in_population'] for r in recs):,}")
-    print("\nRoute (population):\n" + pop["Route"].value_counts().to_string())
-    print("\nRoute by month:\n" + pd.crosstab(pop["Route"], pop["Month"], margins=True).to_string())
-    ref = rt[rt["is_reference"]][["INC_ID", "Route", "in_population"]]
-    print("\nReference cases:\n" + ref.to_string(index=False))
-    lg = pd.DataFrame(logs)
-    print(f"\nretried={int(lg['retried'].astype(str).eq('True').sum())} "
-          f"fenced={int(lg['fenced'].astype(str).eq('True').sum())} "
-          f"cost=US${pd.to_numeric(lg['cost_usd'], errors='coerce').sum():.2f}")
-    errs = lg[lg["status"] != "ok"][["INC_ID", "status", "error"]]
-    print("failures:\n" + (errs.to_string(index=False) if len(errs) else "  none"))
-    print(f"\nWrote {OUT_B.name}, {ROUTES_CSV.name}, {LOG.name}")
-
-
-if __name__ == "__main__":
-    main()
+PS C:\Users\m061400\ai-test\rl_compliance\scripts> python .\p4_triage.py
+gpt-5.4 effort=medium | triage_v0.3 77b45b02a25f | records=5,333 already done=0 to run=5,333 | workers=12
+  100/5,333 {'ok': 100} elapsed=0.7m eta=36.9m
+  200/5,333 {'ok': 200} elapsed=1.6m eta=40.9m
+  300/5,333 {'ok': 300} elapsed=2.5m eta=42.0m
+  400/5,333 {'ok': 400} elapsed=3.1m eta=38.5m
+  500/5,333 {'ok': 500} elapsed=4.0m eta=38.5m
+  600/5,333 {'ok': 600} elapsed=4.9m eta=38.4m
+  700/5,333 {'ok': 700} elapsed=5.5m eta=36.1m
+  800/5,333 {'ok': 800} elapsed=6.4m eta=36.3m
+  900/5,333 {'ok': 900} elapsed=7.3m eta=35.9m
+  1,000/5,333 {'ok': 1000} elapsed=8.1m eta=35.2m
+  1,100/5,333 {'ok': 1100} elapsed=8.8m eta=33.8m
+  1,200/5,333 {'ok': 1199, 'api_error': 1} elapsed=9.6m eta=33.1m
+  1,300/5,333 {'ok': 1299, 'api_error': 1} elapsed=10.5m eta=32.6m
+  1,400/5,333 {'ok': 1399, 'api_error': 1} elapsed=11.1m eta=31.2m
+  1,500/5,333 {'ok': 1499, 'api_error': 1} elapsed=11.9m eta=30.5m
+  1,600/5,333 {'ok': 1598, 'api_error': 2} elapsed=12.9m eta=30.0m
+  1,700/5,333 {'ok': 1698, 'api_error': 2} elapsed=13.7m eta=29.2m
+  1,800/5,333 {'ok': 1798, 'api_error': 2} elapsed=14.3m eta=28.1m
+  1,900/5,333 {'ok': 1898, 'api_error': 2} elapsed=15.1m eta=27.3m
+  2,000/5,333 {'ok': 1998, 'api_error': 2} elapsed=16.0m eta=26.7m
+  2,100/5,333 {'ok': 2098, 'api_error': 2} elapsed=16.6m eta=25.6m
