@@ -1,204 +1,28 @@
-PS C:\Users\m061400\ai-test\rl_compliance\scripts> python .\p7_results.py
-                                            Measure  Count Share Denominator / note
-       a. Population: eligible compliance incidents   5329         CA split pending
-        of which not triaged (Azure content filter)      2  0.0%         share of a
-                                   b. RL identified    912 17.1%         share of a
-                                     Clear RL nexus    460 50.4%         share of b
-                            RL plus another pathway    452 49.6%         share of b
-           c. Assessable with reasonable confidence     64  7.0%         share of b
-                          Q2: Reasonable confidence     64  7.0%         share of b
-                           Q2: Within stated bounds     95 10.4%         share of b
-                        Q2: Insufficient confidence    430 47.1%         share of b
-                       Q2: Not assessable from JUNO    322 35.3%         share of b
-   Assessment failed (malformed output after retry)      1  0.1%         share of b
+RL Compliance Incidents: preliminary run (27 Oct 2026)
 
-Overall (norm):
-Overall (norm)
-Assessor-ready              477
-Not assessable from JUNO    322
-Prudential breach only       57
-No compliance breach         40
-Multi-cluster breach         11
-Outside RL pathway            3
-Failed                        1
-BCoP/Licence breach only      1
+What we did. We ran the RL triage prompt (v0.3) and preliminary assessment prompt (v0.4) over every compliance incident entered 20 Apr to 20 Oct 2026 with potential compliance impact (excluding Rejected). We used gpt-5.4 in our Azure tenancy, with one incident per call. Assessment covered incidents routed to RL plus 10 reference cases. Inputs were limited to the spec’s field allowlist, with compliance-recommendation text and closure fields excluded. All raw responses and run logs are retained. Total model cost was about US$100.
 
-Pattern (norm) x Q2:
-Q2                            Failed (failed_malformed)  Insufficient confidence  Not assessable from JUNO  Reasonable confidence  Within stated bounds
-Pattern (norm)                                                                                                          
-Didn't proceed                                        0                        6                         0                      0                     7
-Exception                                             0                        2                         0                      4                     0
-Failed                                                1                        0                         0                      0                     0
-Full breach                                           0                        5                         0                      7                     3
-Mixed (treated as unmatched)                          0                        0                         0                      1                     0
-Permitted reassessment                                0                        0                         0                      0                     3
-Policy only                                           0                        5                         0                     24                     1
-Threshold                                             0                        6                         0                     28                     3
-Unmatched                                             0                      406                       322                      0                    78
+Results.
 
-Unresolved (norm) resolver x type:
-Type (norm)      Conflicting evidence  Held outside JUNO  Interpretive judgement or anomaly  Missing fact  Missing or unclear criterion  Other   All
-Resolver (norm)                                                                                                         
-Assessor                            0                  0                                110             0                             0      1   111
-Incident raiser                    35                  0                                  0          1060                             0      0  1095
-Method owner                        0                  0                                  0             0                            53      0    53
-Source owner                        0               1052                                  0             5                             0      0  1057
-All                                35               1052                                110          1065                            53      1  2316
+(a) Population: 5,329 incidents (2 blocked by the Azure content filter).
+(b) RL identified: 912 (17%): 460 Clear RL nexus, 452 RL plus another pathway.
+(c) Assessable with reasonable confidence: 64 (7% of b). A further 95 were within stated bounds, 430 had insufficient confidence, and 322 were not assessable from JUNO.
 
-Consistency flags: 12 incidents
-Flags
-Full breach pattern but RL not Breached                       8
-Overall                                                       3
-Outside RL pathway on an RL-routed record                     3
-Reasonable confidence without an Established pattern match    1
+What it tells us.
 
-Wrote rl_headline_results.xlsx and spot_checks\spot_check_sample.xlsx
+Most RL incidents can’t be assessed preliminarily from the JUNO record alone. The model raised 2,316 unresolved items: about half are facts the raiser could supply, and half are evidence held outside JUNO, such as credit files, override records and settlement status.
+Reasonable confidence is concentrated in well-documented mortgage review incidents, matching established patterns (threshold, policy only, full breach, exception).
+Triage is over-inclusive for hardship and vulnerability matters. Many “RL plus another pathway” incidents involve no lending decision.
 
-Spot Checks
+Limitations.
 
-INC_ID	In window (Y/N)	In headline (Y/N)	CA exists	Route	Q2 confidence	Pattern	Pattern basis	Anomaly type	What changes the outcome	Would change if	RL status	RL provisions	RL sub-lines	Prudential status	Prudential provisions	BCoP-Licence status	BCoP-Licence provisions	BCoP-Licence sub-lines	Overall	Unresolved items	Model input (assessment message)	Customer name in output? (Y/N)	Reasoning from conclusion text? (Y/N)
-INC000375309	Y	Y	pending CA join	Clear RL nexus	Insufficient confidence	Unmatched	Established	qualifying check unresolved	Override coverage and corrected deficit after later document facts	Valid override existed, or corrected deficit dropped below 33% of buffers	Insufficient evidence	s128; s130; s131; s133		Breached	APS 220 para 45(a); APG 223 para 41	Insufficient evidence	BCoP para 67; BCoP para 68; BCoP para 70	provision=BCoP para 67; status=Insufficient evidence; provision=BCoP para 68; status=Not engaged; provision=BCoP para 70; status=Not engaged	Assessor-ready	"[Incident raiser] Was any credit override or serviceability override approved before 06/07/2026, by whom, and on what facts?
-[Incident raiser] Was any formal verification exception granted before approval for the missing NOA pages or documents, by whom, and on what facts?
-[Incident raiser] At 06/07/2026, which of the missing 2024 and 2025 NOA pages or documents were actually held and assessed for each applicant?
-[Source owner] Hindsight review working papers or serviceability calculation showing the corrected position after excluding only income unsupported on facts held at approval."	"record_basis: Current record
-mode: A
-triage_route: Clear RL nexus
-instruction: Take triage_route as Step 1 and start at Step 2.
-INC_ID: INC000375309
-INC_DESC: Incident Summary: As part of 2LOD, Mortgage Credit Quality & Review perform Mortgage Hindsight reviews over a sample of settled mortgage loans applications which are assessed against their adherence to One Bank Multi Brand Policy & Standards.    These reviews assess whether the OVA authority holder has acted within their designated authority level and have adhered to mortgage credit policies.   Mortgage Credit Quality & Review have identified a breach in consumer mortgage adherence.  A Mortgage Hindsight review was completed on a loan application which was approved 06/07/2026 and settled 14/07/2026.  It was found income verification documents uploaded to the origination system OBP did not meet policy. The loan was approved under the ""Fast Track' self-employed section of One Bank Multi Brand Policy & Standards which requires the use of Notices of Assessment (NOA) for the last 2 consecutive financial years, to be assessed and the full documents to be uploaded to OBP. In this case there were pages missing from both applicant's NOA for 2024 and for the Male applicant NOA for 2025. The whole document for the female applicant was missing for 2025. Removal of the income not verified to policy would see servicing fail by more than 33% of buffers.   Security for this loan does not involve guarantors.  Error identified HSAN5- 2025 NOA for FA has not been uploaded to the OBP. HSAN6- Not all pages of the 2024 NOAs for either applicant have been uploaded to OBP. In addition, not all pages of MA's 2025 NOA have been uploaded under the Fast Track assessment. Please refer to Policy 03.16 Self-Employed Customers, Section 2.4.1 Fast Track.  Product: Home Loan via OBP     · Timeline of Events: 06/07/2026 Loan approved. 14/07/2026 Loan settled.      · Incident identified: Internal monitoring and review.    · Action Taken (Rectification activities) so far (if known at verification stage):  Lender and their one up have been notified.     · Customer Impact:    · Estimated Number of customer -  One application 2customers    · How are they impacted?  Responsible lending – customers may have been placed in an unsuitable financial position.       · Are they known to be vulnerable? Not known to be vulnerable and the customers' profile do not have any extra care flags     · Financial Impact (to customer or Bank)   -? Potential Financial impact: Nil
-INC_NAME: Home Lending _BSA_SA/NT_Mortgage Hindsight Critical Outcome_Financial Situation Verification (FSV) - failure to verify income to policy
-INC_INCDNT_CAUSE: Authority holder did not follow the credit policy,
-INC_DT_INCDNT_OCCRD: 2026-07-06
-INC_PRD_LVL_1: Retail Credit
-INC_PRD_LVL_2: Mortgages
-INC_BASE_EVNT_TYP_2: 7.1 - Transaction Capture, Execution and Maintenance
-NUM_OF_CUST_IMPCTD: 2
-INC_BULK_INC: No
-NEAR_MISS: No
-INC_PRCSS: Capture and Document Transactions
-INC_ROOT_CAUSE_LVL_1: People
-INC_ROOT_CAUSE_LVL_2: Human Error
-INC_THRD_PRTY_SUPPLR_CAUSED_OR_I: blank
-INC_PRMRY_CAUSED_BU: Westpac Group / Consumer Division / Retail Banking / Home Lending / BSA SANT Retail Lending
-INC_IDENTFCTN_SRC_TYP: Internal
-INC_ACTNS_TO_RECTFY_OR_PRVNT_REO (timing unknown): Rectification Template    CUSTOMER REMEDIATION  Actions undertaken to remediate impacted customer(s):  No customer remediation required as no customer has incurred a financial loss. 30/09/2026 Lender upon return from leave confirmed they held all pages of Notice of Assessment for Female Applicant for both years and uploaded the full documents. The missing pages for Male applicant were not held by lender and so have not been able to be uploaded. Loan will be monitored for any hardship or arrears under standard business practice   BANKER OUTCOMES   What Consequence Management has been applied (provide category and reference/portal no.): No Has coaching been undertaken (if yes, provide reference no.): CDOC84391      PREVENTIVE MEASURES What localised actions have been taken to prevent reoccurrence:  - Coaching of lender  What actions at a broader level have been taken to prevent reoccurrence:  •  Day 2 Mortgage Quality (MQ) reviews of a sample of consumer mortgage applications, post approval and pre settlement remains in place where applications are checked for adherence to components of Westpac’s regulatory obligations and elements of the One     Bank Multi Brand Credit policy and Standards.   • Issue ISS_0112324 was raised to deal with deficiencies in Financial Situation verification for loans originated via Customer Engagement & Retail First Party  • Lenders have access to Lending coaches to assist with structure of deals and verifications  • On 21/11/2025 My Weekly updates included a reminder to all Home Lenders and Branch Bankers of the  Should We Test  and how it relates to Inappropriate Access and Responsible Lending  • 19/12/2026 A Skill Boost email was sent to all staff regarding 'We could, but does it mean we should?
-INC_LAST_PRCSS_UPD (blank, timing unknown): blank"		
-INC000364093	Y	Y	pending CA join	Clear RL nexus	Insufficient confidence	Unmatched	Established	qualifying check unresolved	Any credit override on corrected liability facts	A valid post-correction credit override is evidenced	Insufficient evidence	s128; s130; s131; s133		Breached	APS 220 45(b); APG 223	Insufficient evidence	BCoP para 67; BCoP para 68; BCoP para 70	provision=BCoP para 67; status=Insufficient evidence; provision=BCoP para 68; status=Insufficient evidence; provision=BCoP para 70; status=Not engaged	Assessor-ready	"[Incident raiser] Was any credit override or serviceability override approved after the corrected liability figure was identified, and if so by whom, when, and on what corrected facts?
-[Incident raiser] Was any guarantor attached to this application?"	"record_basis: Current record
-mode: A
-triage_route: Clear RL nexus
-instruction: Take triage_route as Step 1 and start at Step 2.
-INC_ID: INC000364093
-INC_DESC: Background: The Consumer Finance Operations Verification Team perform income and/or liability verification on applications to assist in meeting our Responsible Lending requirements.  Incident/Factual Summary: On 01/05/2026 a customer submitted Credit Card application CC1157212867.  On 06/05/2026 a Parramatta team member actioned the application and it was approved for $6,000.  On 06/05/2026 the team member self-identified an error they had made and referred the application to Quality Assurance team for further checking, at this point the funds had been accessed.  On 08/05/2026, QA team member had reviewed the application and confirmed the customer's monthly repayment for their liability was entered incorrectly on the application. With the correct monthly figure the application does not meet serviceability requirements.   On the same day the application was reviewed by a Verification Authority Exception Holder (VAEH) team member who was unable to make an exception.   Note: - Team member with business > 24 months.   Actions taken to rectify/prevent reoccurrence: 1. VAEH reviewed, and no exception made 08/05. 2. Team member self-identified error no further action required.
-INC_NAME: CFO - WBC - Liability repayment updated incorrectly resulting in credit card approved in error
-INC_INCDNT_CAUSE: Human Error > Attention to Detail > Team member misread repayment amount and updated it on the application with 1 digit incorrect
-INC_DT_INCDNT_OCCRD: 2026-05-06
-INC_PRD_LVL_1: Retail Credit
-INC_PRD_LVL_2: Retail Cards
-INC_BASE_EVNT_TYP_2: 7.3 - Customer Intake and Documentation
-NUM_OF_CUST_IMPCTD: 1
-INC_BULK_INC: No
-NEAR_MISS: No
-INC_PRCSS: Take on and Maintain Clients/Customers, Counterparties & Trade Relationships
-INC_ROOT_CAUSE_LVL_1: People
-INC_ROOT_CAUSE_LVL_2: Human Error
-INC_THRD_PRTY_SUPPLR_CAUSED_OR_I: blank
-INC_PRMRY_CAUSED_BU: Westpac Group / Consumer Division / Consumer Finance / Consumer Finance Operations
-INC_IDENTFCTN_SRC_TYP: Internal
-INC_ACTNS_TO_RECTFY_OR_PRVNT_REO (timing unknown): 1. VAEH reviewed, and no exception made 08/05. 2. Team member self-identified error no further action required.
-INC_LAST_PRCSS_UPD (2026-06-15, after CA creation): 24 AM AEST: Incident sent to BCM team for closure 12/06/26.."		
-INC000362892	Y	Y	pending CA join	Clear RL nexus	Insufficient confidence	Unmatched	Established	qualifying check unresolved	Whether a credit override covered corrected facts	Valid pre-approval override existed on corrected income facts	Insufficient evidence	s128; s130; s131; s133		Breached	APS 220 45(a)	Insufficient evidence	BCoP para 67; BCoP para 68; BCoP para 70	provision=BCoP para 67; status=Insufficient evidence; basis=Depends on unresolved RL outcome; provision=BCoP para 68; status=Not engaged; basis=No guarantor recorded in supplied record; provision=BCoP para 70; status=Not engaged; basis=No substantial-benefit issue evidenced	Assessor-ready (an unresolved cell determines the outcome)	[Source owner] Credit file record of any pre-approval credit override/serviceability approval, including authority, timing, and facts considered	"record_basis: Current record
-mode: A
-triage_route: Clear RL nexus
-instruction: Take triage_route as Step 1 and start at Step 2.
-INC_ID: INC000362892
-INC_DESC: Background: The Consumer Finance Operations Verification Team perform income and/or liability verification on applications to assist in meeting our Responsible Lending requirements.  Incident/Factual Summary: On 15/04/2026 a customer submitted Personal Loan application 9543432783.  On 20/04/2026 a CNX Bangalore team member actioned the application and it was approved for $96,000.  On 23/04/2026 during a quality assurance check it was identified that an error had been made during the assessment of the application, at this point the funds had been accessed.  The Bangalore team member verified the customers income incorrectly by manually calculating the Net YTD incorrectly. As there was no YTD value for the post tax deductions we cannot manually calculate the Net YTD therefore the income should be verified through the customers bank statements.  When verifying through the bank statements the application does not meet serviceability requirements.   On the same day the application was reviewed by a Verification Authority Exception Holder (VAEH) team member who was unable to make an exception. The VAEH team member noted the customer seems to have salary packaging which can be included in the assessment under exception after further information is confirmed with the customer.  An attempt to contact the customer has been made on 3 separate occasions however unsuccessful.    Note: - Incident identified through control CTL000147551.   Actions taken to rectify/prevent reoccurrence: 1. VAEH reviewed, and no exception made 23/04. 2. 3 unsuccessful attempts to contact customer made.  3. Review of Support Procedure conducted by Rectification Manager to ensure there is no GAP. Procedure states 'If you cannot calculate the NET YTD, request bank statements or transaction summary listing'. No GAP identified.  4. Feedback and training have been provided to the team member. 5. The Consequence Management Framework has been applied in the form of a discussion between the team leader and team member, this has been documented as a record of discussion.
-INC_NAME: CFO - WBC - Net YTD income calculated incorrectly resulting in Personal Loan approved in error
-INC_INCDNT_CAUSE: Human Error > Team member manually calculated Net YTD incorrectly
-INC_DT_INCDNT_OCCRD: 2026-04-20
-INC_PRD_LVL_1: Retail Credit
-INC_PRD_LVL_2: Other Unsecured Consumer Loans
-INC_BASE_EVNT_TYP_2: 7.1 - Transaction Capture, Execution and Maintenance
-NUM_OF_CUST_IMPCTD: 1
-INC_BULK_INC: No
-NEAR_MISS: No
-INC_PRCSS: Take on and Maintain Clients/Customers, Counterparties & Trade Relationships
-INC_ROOT_CAUSE_LVL_1: External
-INC_ROOT_CAUSE_LVL_2: Third Party Supplier / Service Provider Failure
-INC_THRD_PRTY_SUPPLR_CAUSED_OR_I: CNX BLR
-INC_PRMRY_CAUSED_BU: Westpac Group / Consumer Division / Consumer Finance / Consumer Finance Operations
-INC_IDENTFCTN_SRC_TYP: Internal
-INC_ACTNS_TO_RECTFY_OR_PRVNT_REO (timing unknown): 1. VAEH reviewed, and no exception made 23/04. 2. 3 unsuccessful attempts to contact customer made.  3. Review of Support Procedure conducted by Rectification Manager to ensure there is no GAP. Procedure states 'If you cannot calculate the NET YTD, request bank statements or transaction summary listing'. No GAP identified.  4. Feedback and training have been provided to the team member. 5. The Consequence Management Framework has been applied in the form of a discussion between the team leader and team member, this has been documented as a record of discussion.
-INC_LAST_PRCSS_UPD (2026-06-01, after CA creation): 00 AM AEST: Incident sent to BCM team for closure 01/06.."		
-INC000363938	Y	Y	pending CA join	RL plus another pathway	Insufficient confidence	Unmatched	Established	qualifying check unresolved	Override coverage and whether lending proceeded	Valid override covered corrected facts, or lending did not proceed	Insufficient evidence	s128; s130; s131; s133	stage=s130 inquire and verify; status=Insufficient evidence; stage=s128, s131 assess; status=Insufficient evidence; stage=s133 lend; status=Insufficient evidence	Breached	APS 220 45(a); APG 223 para 41	Insufficient evidence	BCoP para 67; BCoP para 68; BCoP para 70	provision=BCoP para 67; status=Insufficient evidence; provision=BCoP para 68; status=Insufficient evidence; provision=BCoP para 70; status=Not engaged	Assessor-ready	"[Source owner] Credit file evidence of any verification exception or credit override, including authority, timing, and facts approved on
-[Source owner] Loan file evidence whether the contract was signed, settled, or funds were drawn under the incorrect assessment
-[Incident raiser] Was there a guarantor on this mortgage application?"	"record_basis: Current record
-mode: A
-triage_route: RL plus another pathway
-instruction: Take triage_route as Step 1 and start at Step 2.
-INC_ID: INC000363938
-INC_DESC: Background  This matter is in relation to credit manager approving income without due diligence.  • Application was provided with salary slip for M/A with a base salary of $300k  • The assessor referred the application to be approved by credit to use a base income of $330 package as per the employer letter.  • The credit manager failed to provide commentary to explain the components of the $330k package and assumption was made that this is the base salary.  In general terms a package include superannuation component as the letter noted this as the total package.  • The customer fails serviceability with a $300k base income and the deficit is more than 33%  • The approved loan is for $1247820 .   For privacy breaches - What has been disclosed ?  Not applicable  When did the incident occur  2/4/26  Number of potentially impacted customers  2  The incident has resulted in an estimated financial impact of approximately Not applicable   Were there EU clients impacted  no  Were they vulnerable customers  no  Customer Remediation object not required as single event.
-INC_NAME: MO OBP Originations - (Credit) - Responsible Lending - Financial Situation Verification - Incorrect income assessment
-INC_INCDNT_CAUSE: Human Error : Credit manager failure to review /provide adequate reasoning on accepting higher base income based on a letter.
-INC_DT_INCDNT_OCCRD: 2026-04-02
-INC_PRD_LVL_1: Retail Credit
-INC_PRD_LVL_2: Mortgages
-INC_BASE_EVNT_TYP_2: 7.3 - Customer Intake and Documentation
-NUM_OF_CUST_IMPCTD: 2
-INC_BULK_INC: No
-NEAR_MISS: No
-INC_PRCSS: Take on and Maintain Clients/Customers, Counterparties & Trade Relationships
-INC_ROOT_CAUSE_LVL_1: People
-INC_ROOT_CAUSE_LVL_2: Human Error
-INC_THRD_PRTY_SUPPLR_CAUSED_OR_I: no
-INC_PRMRY_CAUSED_BU: Westpac Group / Consumer Division / Mortgages / Mortgage Operations / MO Originations
-INC_IDENTFCTN_SRC_TYP: Internal
-INC_ACTNS_TO_RECTFY_OR_PRVNT_REO (timing unknown): Credit Manager coaching was completed.
-INC_LAST_PRCSS_UPD (2026-06-30, after CA creation): 29 PM AEST: BRL submitted."		
-INC000366034	Y	Y	pending CA join	RL plus another pathway	Not assessable from JUNO	Unmatched		held outside JUNO	Application-level lending facts absent from bulk summary	Underlying ERR-64452 record shows a specific credit assessment or hardship decision	Not assessable from JUNO	s128; s130; s131; s133		Not assessable from JUNO	APS 220 45(a); APS 220 45(b)	Not assessable from JUNO	BCoP para 67; BCoP para 68; BCoP para 70		Not assessable from JUNO	[Source owner] Provide the underlying ERR-64452 review/call record and any linked hardship or credit-application file; confirm whether any credit assessment, serviceability assessment, unconditional approval, contract, or drawdown occurred.	"record_basis: Current record
-mode: A
-triage_route: RL plus another pathway
-instruction: Take triage_route as Step 1 and start at Step 2.
-INC_ID: INC000366034
-INC_DESC: Monthly Customer Assist leaders and the 1LOD Quality team perform account and call reviews in accordance with the Customer Assist Quality Governance Framework, during these reviews if an error, which includes a potential compliance impact is identified an error is raised in the Customer Assist Error Register. All errors meet ‘bulk incidents’ criteria (refer Incident Management Policy). Errors are low impact due to: • Low or no financial impact • individual customer or account impact • Non-systemic impact  Westpac must seek consent when capturing sensitive information (for business purposes e.g. hardship), which may be required (for business purposes e.g. hardship) and documented where consent is obtained either through verbal agreement or acknowledgement of an IVR recording pre conversation.  Quality reviews completed in May 2026, the below failures have been identified: 1 Error  1 - Instances where permission was not obtained to document sensitive information in secure Westpac systems  All instances were caused were caused by current or former Westpac employees.  See below Error ID's recorded in the error register for each instance applicable to this Incident. ERR-64452
-INC_NAME: Customer Assist - Bulk JUNO Upload for May 2026 Failure to gain consent prior to noting sensitive information on the customer's account
-INC_INCDNT_CAUSE: Failure to follow documented process
-INC_DT_INCDNT_OCCRD: 2026-06-01
-INC_PRD_LVL_1: Retail Credit
-INC_PRD_LVL_2: Retail Cards
-INC_BASE_EVNT_TYP_2: 7.4 - Customer/Client Account Management
-NUM_OF_CUST_IMPCTD: 1
-INC_BULK_INC: Yes
-NEAR_MISS: No
-INC_PRCSS: Deliver Products and Services
-INC_ROOT_CAUSE_LVL_1: People
-INC_ROOT_CAUSE_LVL_2: Human Error
-INC_THRD_PRTY_SUPPLR_CAUSED_OR_I: blank
-INC_PRMRY_CAUSED_BU: Westpac Group / UNITE and Customer Operations / Customer Protection and Support / Customer and Business Assist
-INC_IDENTFCTN_SRC_TYP: Internal
-INC_ACTNS_TO_RECTFY_OR_PRVNT_REO (timing unknown): Errors have been identified and loaded , resulting in feedback and coaching activity. All rectification has been completed where required post BULK incident being loaded.
-INC_LAST_PRCSS_UPD (blank, timing unknown): blank"		
-INC000366573	Y	Y	pending CA join	RL plus another pathway	Not assessable from JUNO	Unmatched		held outside JUNO	Linked application-level lending file	A specific card application or variation file is provided	Not assessable from JUNO	s128; s130; s131; s133		Not assessable from JUNO	APS 220	Not assessable from JUNO	BCoP para 67; BCoP para 68; BCoP para 70		Not assessable from JUNO	"[Incident raiser] What specific credit application, limit increase, or hardship variation decision is said to raise an RL issue?
-[Source owner] Provide the linked application-level lending record: unconditional approval date, product/variation, inquiries and verification relied on, serviceability assessment, any override/exception, and whether the lending or variation proceeded."	"record_basis: Current record
-mode: A
-triage_route: RL plus another pathway
-instruction: Take triage_route as Step 1 and start at Step 2.
-INC_ID: INC000366573
-INC_DESC: Hardship applications received on 01/04/2026 and 22/04/2026 were both declined (due to no contact and documents not received).  The decline letters were issued on 15/04/2026 and 06/05/2026 however only the customer received the letters, despite their being an Authorised Third Party (ATP)(Enduring Power of Attorney) in Service Online since 25/03/2026.  Checking AssistNow on 05/06/2026 confirms the (ATP) is not visible in the system and as such contact is occurring directly with the customer only. Below is the list of contact attempts directly to the customer since 25/03/2026: 26/03/2026 – VRS Ans machine – no message left 27/03/2026 - VRS Ans machine – no message left 30/03/2026 – Outbound call – answering machine, no message left – x2 31/03/2026 - Outbound call – answering machine, no message left 01/04/2026 – Outbound call - answering machine, no message left 01/04/2026 – Successful Outbound call – customer advised to speak with his ATP 13/04/2026 - Outbound call - answering machine, no message left 13/04/2026 – SMS – Hardship application follow-up 14/04/2026 - Outbound call - answering machine, no message left 22/04/2026 - Outbound call - answering machine, no message left 05/05/2026 - Outbound call - answering machine, no message left
-INC_NAME: Authorised Third Party not visible in AssistNow causing direct contact with customer and missed hardship outcomes to all parties.
-INC_INCDNT_CAUSE: SPECIFIC CAUSE UNDER REVIEW. Response from Senior Engineer re account example 12/6:  As per the information that I have received –  • For customer data to be picked up correctly in PCC, either: o The customer must already be active in PCC and the update must be performed on the same day, or o When a new debt episode is created, the entire customer profile will be refreshed. • An issue arises when a customer/account exists in PCC as inactive, and the same account is received as an update rather than a new record. In this scenario, the customer information is not refreshed. This becomes problematic if the ATP was originally loaded while the account was inactive. • To ensure the information is picked up in such cases: o Update the ATP details after the account is active. o This should trigger the update to be processed in the overnight batch. o This can be done either by reloading the ATP or by making a minor change (e.g., updating a field) to force the refresh.  9/7 Root Cause Analysis: Analysis:  The issue occurs when an account is cured. As part of the cure (Debt Episode End) process, a Groovy script is triggered that end-dates the ATP relationship for the cured account. However, the current logic unintentionally end-dates the ATP relationship across all accounts linked to the same ATP.   In this specific case, ATP details were correctly received from EIG and updated in PCC for customer example. Coincidentally, on the same day, another account belonging to the same customer was cured. During the cure process, the Groovy script executed and incorrectly end-dated the ATP relationship across all accounts associated with that ATP, effectively reversing the ATP update that had been applied earlier.   As a result, whenever any account linked to an ATP is cured, the current logic end-dates ATP relationships across all related accounts/customer in PCC, leading to the ATP no longer being associated with accounts where it should remain active.
-INC_DT_INCDNT_OCCRD: 2026-03-26
-INC_PRD_LVL_1: Retail Credit
-INC_PRD_LVL_2: Retail Cards
-INC_BASE_EVNT_TYP_2: 7.4 - Customer/Client Account Management
-NUM_OF_CUST_IMPCTD: 1
-INC_BULK_INC: No
-NEAR_MISS: No
-INC_PRCSS: Take on and Maintain Clients/Customers, Counterparties & Trade Relationships
-INC_ROOT_CAUSE_LVL_1: Systems
-INC_ROOT_CAUSE_LVL_2: Software - Maintenance and Support
-INC_THRD_PRTY_SUPPLR_CAUSED_OR_I: blank
-INC_PRMRY_CAUSED_BU: Westpac Group / UNITE and Customer Operations / Customer Protection and Support / Customer and Business Assist / Customer Advocacy and Hardship
-INC_IDENTFCTN_SRC_TYP: Internal
-INC_ACTNS_TO_RECTFY_OR_PRVNT_REO (timing unknown): **Epic loaded: https://jira.srv.westpac.com.au/browse/TSP0145-41738** for System fix. SNOW ticket loaded - INC109469019 16/6. ATP debt waiver, sent manually 16/6 to ATP and noted AssistNow as ATP refreshed and visible as of 12/6. Customer impact has been rectified.  Proposed Fix: https://jira.srv.westpac.com.au/browse/TSP0145-75885 9/7/26 has been deployed for front book. Backbook is on the backlog under same jira ticket.  FrontBook: The Groovy logic should be updated to end-date the ATP relationship only for the specific account being cured.  At the respective customer level, the ATP relationship should only be end-dated if there are no other active accounts for that customer that remain linked to the same ATP. BackBook:  Extract the ATPs that are linked to multiple accounts and are EndDated and get the updates for these ATPs from EIG/GCM (This needs to be further discussed and confirmed)
-INC_LAST_PRCSS_UPD (2026-10-19, after CA creation): 01 PM AEDT: https://jira.srv.westpac.com.au/browse/TSP0145-41738 - Jira ticket impacting this juno. Timeline for system deployment TBC, as outstanding. ."		
+Results have not yet been validated against completed Compliance Assessments, so (c) reflects the model’s confidence, not proven accuracy. The CA-exists split is also pending.
+We used the current record, including later updates, not the record as it stood at CA creation.
+Outputs from the reasoning model may vary slightly on re-run.
+12 assessments carry internal consistency flags, reported rather than corrected.
+
+Next steps.
+
+Join the CA dataset to measure triage recall, cluster agreement and confidence calibration.
+Review whether “substantial hardship” should route to RL on its own.
+Consider making the most commonly missing facts mandatory in incident capture for RL-type incidents.
