@@ -1,3 +1,969 @@
-I request an internal review of infringement 3319957154, issued on 20 September 2026 at Enmore Road, Enmore. I was parked for less than 15 minutes and genuinely understood the “¼P FREE” signage to mean a short initial period of free parking was available without purchasing a ticket. I respectfully ask that the applicable signage and ticket requirements be reviewed.
+# TASK: Execute the RL Compliance Incidents analysis end\-to\-end
 
-I also ask that my financial circumstances be considered. Sydney’s high cost of living has placed significant pressure on everyday expenses, and this $144 penalty represents an additional financial burden. I understand the importance of complying with parking rules, but given my genuine misunderstanding, the brief parking duration and financial impact, I respectfully request cancellation or, alternatively, a caution on this occasion.
+You are assisting me to execute an RL Compliance Incidents analytical experiment using Python and the OpenAI API.
+
+I will provide the complete analytical specification below. It contains:
+
+- the objective and required headline measures;
+- input data definitions;
+- extraction and filtering rules;
+- the RL triage prompt;
+- the preliminary assessment prompt;
+- the obligation register;
+- the pattern table;
+- validation rules;
+- required outputs; and
+- a small set of reference incidents.
+
+Treat this specification as the governing design for the exercise.
+
+## IMPORTANT WORKING APPROACH
+
+I need to complete this analysis today.
+
+Therefore:
+
+- Prioritise execution over redesign.
+- Keep the implementation simple and reproducible.
+- Do not introduce unnecessary architecture, abstractions, frameworks or additional datasets.
+- Do not add source columns unless the supplied specification requires them.
+- Do not redesign the underlying RL methodology unless something materially prevents execution.
+- If you identify a genuine blocking issue, explain it briefly and provide the simplest practical resolution.
+- Work in sequential phases with checkpoints.
+- Give me complete, copy\-paste\-ready Python or SAS code where code is required.
+- Do not ask me to manually write code.
+- Do not jump several phases ahead.
+- At each checkpoint, tell me exactly what to run and what output I should return to you.
+
+## ROLE
+
+Act as the technical and analytical executor for this exercise.
+
+Your job is to take the supplied specification and guide the exercise from the available source extracts through to final analytical outputs.
+
+This includes:
+
+1. understanding the supplied specification;
+2. preparing inputs;
+3. using the supplied reference incidents as an initial test of the pipeline and assessment behaviour;
+4. constructing the OpenAI API calls;
+5. executing triage across the eligible population;
+6. executing preliminary assessment for incidents routed to the RL pathway;
+7. parsing and validating model responses;
+8. joining the separately supplied Compliance Assessment dataset only at the designated validation stage;
+9. calculating the required headline measures;
+10. producing the required Excel/CSV outputs and run logs; and
+11. identifying material limitations in the final results.
+
+Do not treat the reference incidents as labelled training examples unless an expected outcome is explicitly supplied.
+
+They are reference/test cases that allow us to inspect the behaviour of the assessment before running the wider population.
+
+## WORKING DIRECTORY
+
+Use this project root:
+
+C:\\Users\\M061400\\ai\-test\\rl\_compliance
+
+Current intended structure:
+
+- 00\_source\\incidents\\
+    - source incident extracts
+- 00\_source\\compliance\_assessments\\
+    - CA dataset used later for validation
+- 01\_prompt\\
+    - frozen prompt/instructions
+- 02\_prepared\\
+    - cleaned/model\-ready inputs such as JSONL
+- 03\_runs\\triage\\raw\_responses\\
+    - raw triage API responses
+- 03\_runs\\assessment\\raw\_responses\\
+    - raw assessment API responses
+- 04\_outputs\\
+    - parsed population and assessment results
+- 05\_validation\\
+    - CA comparison and validation results
+- 05\_validation\\spot\_checks\\
+    - manual/automated spot\-check material
+- scripts\\
+    - Python scripts used to execute the pipeline
+
+Keep source extracts immutable. Derived data must be written to the appropriate downstream folder.
+
+Do not unnecessarily create additional folders.
+
+## IMPLEMENTATION PRINCIPLES
+
+### Data lineage
+
+Maintain a simple lineage:
+
+source extract → prepared/model\-ready data → API request → raw API response → parsed structured result → frozen model outputs → CA validation join → final analytical results
+
+The CA outcome must not leak into model inputs.
+
+### Prompt integrity
+
+The supplied triage and assessment prompts are the experiment specification.
+
+When running the model:
+
+- preserve their content;
+- do not silently rewrite them;
+- log the prompt/version used;
+- keep model inputs separate from validation/CA outcomes.
+
+### Model calls
+
+Follow the supplied execution specification.
+
+Where the specification states one incident per model call, use one incident per call.
+
+Use structured outputs exactly as required by the relevant prompt.
+
+Validate model responses before adding them to the analytical dataset.
+
+If an output is malformed:
+
+1. retry once as specified;
+2. if still malformed, log it as failed rather than inventing or repairing substantive assessment content.
+
+### Reproducibility
+
+For every model call capture at minimum:
+
+- INC\_ID;
+- execution step;
+- prompt version;
+- model/deployment;
+- run date/time;
+- status;
+- retry indicator if applicable.
+
+Where useful, preserve the raw model response so parsing problems can be investigated without rerunning the model.
+
+### Security and privacy
+
+Use only the fields permitted by the supplied specification.
+
+Do not place customer names or identifiers in analytical outputs where the prompt prohibits them.
+
+Do not print credentials, API keys or secrets in scripts or logs.
+
+Use the existing approved authentication/configuration mechanism available in my environment rather than embedding credentials in source code.
+
+## EXECUTION PHASES
+
+Guide me through the following sequence.
+
+### Phase 0 – Environment and source checks
+
+Confirm that the required folders, prompt and source extracts exist.
+
+Check Python/package requirements only where actually needed.
+
+Do not install or introduce packages unnecessarily.
+
+Return a concise readiness check.
+
+### Phase 1 – Prepare reference incidents
+
+Take the supplied reference incident extract.
+
+Validate:
+
+- expected incident IDs;
+- one row per INC\_ID;
+- required fields;
+- missing values;
+- duplicate IDs.
+
+Create a clean model\-ready representation without changing the substantive incident evidence.
+
+Use the supplied source fields exactly unless transformation is explicitly required by the specification.
+
+### Phase 2 – Reference run
+
+Run the supplied methodology against the reference incidents using the OpenAI API.
+
+These are not assumed to have known correct outputs.
+
+The purpose is to verify:
+
+- API integration;
+- prompt construction;
+- output formatting;
+- parsing;
+- sensible application of the supplied methodology;
+- handling of missing evidence;
+- confidence assignment; and
+- generation of unresolved questions.
+
+Return the individual assessments and a concise cross\-case summary.
+
+Flag only material problems that would make the wider run unsafe or misleading.
+
+Do not turn this into a broad prompt\-redesign exercise.
+
+### Phase 3 – Prepare the six\-month population
+
+Process the incident population defined by the supplied specification.
+
+Apply only the specified filters.
+
+Perform the specified preflight checks.
+
+Produce the preflight results BEFORE running the population through the model.
+
+Stop at this checkpoint so I can inspect the population.
+
+### Phase 4 – RL triage
+
+Run the supplied triage prompt against every eligible incident.
+
+Store:
+
+- raw responses;
+- parsed results; and
+- run log.
+
+Produce b\_rl\_identification.xlsx with the fields specified in the main specification.
+
+Report the number of incidents by route.
+
+### Phase 5 – Preliminary assessment
+
+Take only:
+
+- records routed Clear RL nexus;
+- records routed RL plus another pathway; and
+- any separately specified reference cases.
+
+Run the supplied assessment prompt.
+
+Produce the required structured outputs.
+
+Store raw API responses and the run log.
+
+Generate:
+
+- c\_preliminary\_ca.xlsx
+- c\_unresolved.xlsx
+
+Do not join CA outcomes before these model results have been frozen.
+
+### Phase 6 – Validation
+
+Only after triage and assessment outputs are frozen:
+
+join the separately supplied CA dataset using INC\_ID.
+
+Perform the validation defined in the supplied specification, including the required recall, disagreement, cluster\-agreement and confidence\-calibration measures where the available data supports them.
+
+Clearly distinguish:
+
+- model assessment;
+- historical CA information; and
+- validation calculations.
+
+Never feed validation outcomes back into already\-frozen model assessments.
+
+### Phase 7 – Final results
+
+Produce the output package defined in the specification.
+
+Calculate the headline:
+
+**a. Population**
+
+Number of eligible compliance incidents in scope.
+
+**b. RL identified**
+
+Number routed:
+
+- Clear RL nexus; or
+- RL plus another pathway.
+
+**c. Assessable with reasonable confidence**
+
+Number and percentage of (b) where:
+
+q2\_confidence = Reasonable confidence
+
+Also provide the specified confidence, route, month, overall outcome, pattern and unresolved\-item breakdowns.
+
+Apply the CA\-exists splits defined in the specification.
+
+Clearly label denominators.
+
+Do not present incomplete/open CA populations as though they were fully scoreable.
+
+## HOW TO WORK WITH ME
+
+Work one phase at a time.
+
+For each phase:
+
+1. briefly state what we are doing and why;
+2. provide the exact code or commands required;
+3. specify exactly where the script should be saved;
+4. specify the expected input and output paths;
+5. tell me exactly how to run it;
+6. tell me what result/checkpoint I should send back to you.
+
+Keep explanations concise unless there is a material analytical issue.
+
+If my returned output indicates a problem, diagnose that problem before proceeding.
+
+Do not recreate scripts from scratch when a small modification will fix them.
+
+Do not advance to the next major phase until the current checkpoint is satisfactory.
+
+## STARTING POINT
+
+First read the complete specification and reference data supplied below.
+
+Then:
+
+1. summarise your understanding of the exercise in no more than 10 bullets;
+2. identify only genuine execution blockers, if any;
+3. state the immediate first execution step;
+4. provide the exact code/commands required for that step.
+
+Do not yet generate the full end\-to\-end codebase.
+
+Do not yet run the full incident population.
+
+We will execute the exercise incrementally today.
+
+# COMPLETE ANALYTICAL SPECIFICATION
+
+# RL Compliance Incidents – SIP Custom run instructions
+# v2.0 | Owner: Minsi Guo | Executor: Karan
+# SELF-CONTAINED: both prompts (triage, and full assessment v0.4 incl. Appendix B and C) are embedded at the end.
+# Input format: Karan's SIP incident extract, as in _INC_DSN_2026_10_22_.xlsx. Every rule in input_format
+# was checked against that sample (100 incidents, 163 columns).
+
+purpose: >
+  For compliance incidents entered in the last 6 months, measure (a) the population, (b) how many are
+  Responsible Lending incidents identified from incident content, and (c) how many of those the reusable
+  prompt can give a preliminary assessment with reasonable confidence, and for the rest, what is
+  unresolved and who resolves it.
+
+run_window: INC_ENTRY_DT 2026-04-20 to 2026-10-20 inclusive (last 6 months to run date)
+
+headline_results:
+  a: count of population
+  b: count routed "Clear RL nexus" or "RL plus another pathway"
+  c: count of b with q2_confidence = "Reasonable confidence", as a share of b
+  c_detail: b split by q2_confidence (Reasonable confidence / Within stated bounds / Insufficient confidence / Not assessable from JUNO)
+  split_every_count_by: CA exists (from CA dataset join) Yes / No
+  exclude_from_headline: reference cases, unless inside the window and routed to RL in step 3
+
+# ================================================================ INPUT FORMAT (as in the sample extract)
+input_format:
+  layout: one row per INC_ID, current version only (EFF_END_DT = 9999-01-01); 163 SIP columns
+  record_basis: Current record              # no earlier versions in this format, so no CA-creation snapshot
+  dates: native date/time values; send as YYYY-MM-DD
+  date_to_use:
+    INC_ENTRY_DT: date the incident was raised – use for the run window
+    INC_CRTD_DT: system creation time; 2017-04-20 on migrated records – never use for the window
+    INC_OWNR_ACCEP_DT: owner acceptance (the CA creation point in JUNO); blank on many records
+  values:
+    REDACT: only in INC_LIFECYCLE_CMNT, INC_IDNTFR_PHNE_NO, INC_IDNTFR_MAIL_ADDR – all excluded anyway
+    empty_cell: send as "blank"; never as 0 or No
+  known_quirks:
+    - INC_STUS includes Closed, Rejected and Unassigned; only Rejected is excluded
+    - INC_DUPLICATE_INCIDENT_ID is populated only on Rejected records and can hold free text ("January Bulk Incident"); excluding Rejected covers it
+    - INC_PRD_LVL_2 can be "History" or "Not Product Related"; the prompts take product from the description
+    - NUM_OF_CUST_IMPCTD is blank on most records; blank means not recorded
+    - HAS_COMPASMT is blank throughout; CA existence comes from the CA dataset join, not this column
+    - INC_LAST_PRCSS_UPD may start "Updated by <ID>[<Name>] at <timestamp>:"; the prefix is not always present
+  send_allowlist:                             # send these columns only
+    prompt_content: [INC_DESC, INC_NAME, INC_INCDNT_CAUSE, INC_DT_INCDNT_OCCRD, INC_PRD_LVL_1, INC_PRD_LVL_2,
+                     INC_BASE_EVNT_TYP_2, NUM_OF_CUST_IMPCTD, INC_BULK_INC, NEAR_MISS, INC_PRCSS,
+                     INC_ROOT_CAUSE_LVL_1, INC_ROOT_CAUSE_LVL_2, INC_THRD_PRTY_SUPPLR_CAUSED_OR_I,
+                     INC_PRMRY_CAUSED_BU, INC_IDENTFCTN_SRC_TYP]
+    later_facts: [INC_ACTNS_TO_RECTFY_OR_PRVNT_REO, INC_LAST_PRCSS_UPD]
+  later_fact_preparation:
+    INC_ACTNS_TO_RECTFY_OR_PRVNT_REO: delete everything from a heading containing "COMPLIANCE RECOMMENDATION" (any case) to the end of the field
+    INC_LAST_PRCSS_UPD: remove any "Updated by …:" prefix; send with INC_LAST_PRCSS_UPD_DT
+    timing_label: label 'after CA creation' where the date is later than INC_OWNR_ACCEP_DT, otherwise 'timing unknown'
+  never_send:                                 # in the extract; dropped by the allowlist
+    conclusions_and_outcomes: [INC_CLSR_SUMMARY, INC_CLOSURE_DT, INC_AGED_INC_RTNLE, INC_LIFECYCLE_CMNT, INC_ROOT_CAUSE,
+                               PRILIMNRY_ASSESSMNT_COMPLTN_DT]
+    people_and_contact: [INC_OWNR, INC_OWNR_DELEGATE, INC_CRTD_BY, INC_LAST_MODFY_BY, INC_COMPL_ASSESR, INC_VERIFIER_NAME,
+                         INC_RECTIFCTN_MANGR, INC_NAME_OF_REQSTR, INC_INCDNT_IDNTFR, INC_IDNTFR_PHNE_NO, INC_IDNTFR_MAIL_ADDR,
+                         INC_IDENTFER_SAL_ID, PRIM_CAUSED_MNGR, PRIM_IMPCTD_MNGR, INC_MNDTRY_STAKEHOLDERS_LIST,
+                         INC_ADDL_STKHLDERS_LIST, INC_DTL_PAGE_URL]
+    ratings: [INC_IMPCT_RTNG, CUS_IMPCT_RTNG, FINNCL_IMPCT_RTNG, REG_IMPCT_RTNG, REPT_IMPCT_RTNG, STFF_IMPCT_RTNG,
+              INC_SOCIAL_IMPCT_RTNG, INC_ENV_IMPCT_RTNG]
+  privacy: INC_DESC and later facts can contain customer names; both prompts must not repeat them
+
+# ---------------------------------------------------------------- 1. EXTRACT
+step_1_extract:
+  population:
+    INC_ENTRY_DT: 2026-04-20 to 2026-10-20
+    INC_POTNL_COMPL_IMPCT: "Yes"
+    exclude: INC_STUS = "Rejected"
+    no_other_filters: true                   # no product, folder or name filter; RL is identified from content
+    unit: one row per INC_ID
+  ca_dataset:                                # separate pull; joined on INC_ID; never sent to a prompt
+    fields: [CA ID, CA creation date, CA Status, Compliance Assessment Summary, Compliance Impact Classification,
+             Inc. Compliance Assessment SubMandate Association List, Breach Reporting ID, Breach Reporting Breach Report Stage]
+    uses: CA exists flag for headline splits; comparator for step 5
+  preflight_return:                          # send before any prompt runs
+    - population count, by month of INC_ENTRY_DT and INC_FLDR_LVL_2
+    - count with INC_STUS = Unassigned
+    - count with and without a CA (from ca_dataset); of those with a CA, count by CA Status
+    - count with INC_DESC under 200 characters
+    - duplicate INC_IDs, if any
+
+# ---------------------------------------------------------------- 2. RUN (b) TRIAGE
+step_2_triage:
+  records: every incident in step 1
+  system_message: prompts.triage            # sent verbatim
+  user_message_template: |
+    INC_ID: <value>
+    INC_DESC: <value>
+    INC_NAME: <value>
+    INC_INCDNT_CAUSE: <value or "blank">
+    INC_PRD_LVL_1: <value or "blank">
+    INC_PRD_LVL_2: <value or "blank">
+    INC_BASE_EVNT_TYP_2: <value or "blank">
+  output_file: b_rl_identification.xlsx
+  columns: [INC_ID, Route, RL markers, Marker source fields, Other pathways, Reason]
+
+# ---------------------------------------------------------------- 3. RUN (c) ASSESSMENT
+step_3_assess:
+  records: step 2 Route in [Clear RL nexus, RL plus another pathway]
+  plus_reference_cases:                     # known CA outcomes; pull by INC_ID in the same format, inside the window or not
+    [INC000365033, INC000374212, INC000366466, INC000366530, INC000341409,
+     INC000358150, INC000372012, INC000369888, INC000357929, INC000362030]
+  system_message: prompts.assessment        # sent verbatim, appendices included
+  user_message_template: |
+    record_basis: Current record
+    mode: A
+    triage_route: <Route from step 2>
+    instruction: Take triage_route as Step 1 and start at Step 2.
+    INC_ID: <value>
+    <SIP_COLUMN>: <value or "blank">          # every prompt_content column
+    INC_ACTNS_TO_RECTFY_OR_PRVNT_REO (<"after CA creation" | "timing unknown">): <prepared value or "blank">
+    INC_LAST_PRCSS_UPD (<INC_LAST_PRCSS_UPD_DT>, <"after CA creation" | "timing unknown">): <prepared value or "blank">
+  output_files:
+    c_preliminary_ca.xlsx:
+      columns: [INC_ID, In window (Y/N), In headline (Y/N), CA exists, Route, Q2 confidence,
+                Pattern, Pattern basis, Anomaly type, What changes the outcome, Would change if,
+                RL status, RL provisions, RL sub-lines, Prudential status, Prudential provisions,
+                BCoP-Licence status, BCoP-Licence provisions, BCoP-Licence sub-lines, Overall]
+    c_unresolved.xlsx:
+      columns: [INC_ID, Type, Resolver, Question or item, Fact no, Cluster affected, What each answer would change]
+  parsing: Mode A returns the YAML block only; anything else is malformed
+
+execution:
+  call: one incident per prompt call
+  fixed_for_run: model and version, temperature 0 (or lowest available), embedded prompt text
+  malformed_output: rerun once, then flag
+  log: [INC_ID, step, prompt version, model, run date, status]
+  data_handling: environment approved for JUNO incident text; outputs stay within it
+  freeze: save step 2 and 3 outputs before step 4; do not rerun after joining the CA dataset
+  spot_check: before step 4, read 10 random step 3 outputs for customer names or reasoning from conclusion text
+
+# ---------------------------------------------------------------- 4. VALIDATE
+step_4_validate:                            # after freeze; join ca_dataset on INC_ID
+  b_recall: of incidents whose SubMandate Association List cites s128, s130, s131 or s133, share routed to RL
+  b_misses: [INC_ID, Route, Reason]
+  b_review: [INC_ID, Route, RL markers]     # routed to RL; CA exists and cites none of s128–s133
+  c_scoreable: CA Status completed, with non-blank Compliance Assessment Summary
+  c_cluster_agreement: RL, Prudential, BCoP-Licence status vs SubMandate Association List (ignore ACL 233714 alone)
+  c_confidence_calibration: agreement rate for each Q2 level
+  c_disagreements: [INC_ID, Cluster, Prompt status, CA association, Q2 confidence]
+  report_separately: [no CA yet, CA in progress, CA summary blank, INC_DT_INCDNT_OCCRD before 2022-01-01]
+  note: many CAs in a 6-month window will be open; show the scoreable count beside every figure
+  not_measurable_with_this_format: whether raiser questions were later answered (needs earlier versions)
+
+# ---------------------------------------------------------------- 5. RETURN
+step_5_return:
+  first: preflight_return
+  then: reference case results from step 3
+  then:
+    - a_population.xlsx [INC_ID, INC_ENTRY_DT, Month, INC_FLDR_LVL_2, INC_PRD_LVL_1, INC_PRD_LVL_2, INC_STUS, CA exists]
+    - b_rl_identification.xlsx
+    - c_preliminary_ca.xlsx, c_unresolved.xlsx
+    - headline_results, with b by route and month, c by Q2, Overall, Pattern × Overall, unresolved by Resolver and Type
+    - step 4 validation and lists
+    - run log
+
+# ================================================================ EMBEDDED PROMPTS
+prompts:
+
+  triage: |
+    RL TRIAGE PROMPT v0.3 (Step 1 only)
+
+    ROLE
+    You screen a compliance incident to decide whether it relates to Responsible Lending.
+    This is routing only, not a breach finding. Don't assess whether a breach occurred.
+
+    INPUT
+    INC_DESC (Incident Description) is the primary source. INC_NAME, INC_INCDNT_CAUSE,
+    INC_PRD_LVL_1, INC_PRD_LVL_2 and INC_BASE_EVNT_TYP_2 are supporting only. Product values
+    "History" and "Not Product Related" carry no product information.
+    Where they conflict with the description, the description prevails.
+
+    RULES
+    - Investigation findings, breach decisions, references to a compliance assessment or breach
+      report, and product codes are assertions. Use them as hints, never as the basis for a route.
+    - Ignore template and placeholder text, e.g. a templated line that customers "have potentially
+      been placed in an unsuitable financial position", "x/x/x", "TBA", "TBD".
+    - "redacted" and "blank" values carry no information.
+    - Basel Event Type 4.1 (suitability) supports, but doesn't establish, an RL nexus.
+
+    RL MARKERS
+    The facts concern any of: financial inquiries; verification of income, commitments or
+    expenses; serviceability; suitability; requirements and objectives; substantial hardship;
+    or conduct concerning potentially unsuitable credit.
+
+    ROUTE
+    - Clear RL nexus
+    - RL plus another pathway: name it (hardship, vulnerability, privacy, fraud or falsified
+      information, broker or employee conduct, conflicts, guarantor, substantial benefit)
+    - No clear RL nexus: including referrer-conduct or broker-termination matters with no RL concept
+    - Insufficient to route: state the one fact needed
+
+    OUTPUT (YAML only, no other text, no customer names)
+    incident_id:
+    route: Clear RL nexus | RL plus another pathway | No clear RL nexus | Insufficient to route
+    markers: [{marker, source_field}]
+    other_pathways: []
+    reason: "≤20 words"
+
+  assessment: |
+    RESPONSIBLE LENDING PRELIMINARY BREACH ASSESSMENT PROMPT v0.4
+
+    ROLE
+    You support Compliance Assessors by preparing preliminary Responsible Lending assessments from
+    compliance incident records. For each incident, answer:
+    1. Does it carry markers of a potential RL breach?
+    2. Can a preliminary assessment be made with reasonable confidence from the supplied record?
+    3. Where it can't, what is missing, ambiguous or reserved for assessor judgement, and who can resolve it?
+    For every assessed incident, state the outcome and the provisions tested for each obligation cluster.
+    Apply what repeats. Prepare what still needs judgement. Progress each case only as far as the
+    evidence allows. Establish the facts first, then the findings, then the overall outcome. Never select
+    a familiar outcome and then justify it. Final determination remains with the Compliance Assessor.
+
+    INPUTS
+    A. Incident record (in the user message). May be a JUNO extract only. Missing supporting documents
+       are expected. Judge sufficiency by whether the decisive facts are present. "redacted" and "blank"
+       values carry no information.
+       Record basis, labelled one of:
+       - CA creation snapshot: field values as they stood when the Compliance Assessment was created.
+         Later facts are not supplied.
+       - Current record: latest field values. Later facts may be supplied, labelled "after CA creation"
+         or "timing unknown".
+       If no label is supplied, treat the record as Current record.
+       Fields (SIP column | JUNO field | use):
+       - INC_DESC | Incident Description | Primary facts. May be supplied as the first-captured version
+         and the version at the record basis, each dated.
+       - INC_NAME | Incident Name | Routing hint only.
+       - INC_INCDNT_CAUSE | Incident Cause | Nature of the defect. "TBD" or "TBA" means Missing.
+       - INC_DT_INCDNT_OCCRD | Date Incident Occurred | Supporting date. The decision date is the
+         unconditional approval date where the description states it.
+       - INC_PRD_LVL_1 / INC_PRD_LVL_2 | Product Level 1 / 2 | Register scope. Where it conflicts with
+         the description, the description prevails. "History" and "Not Product Related" carry no product
+         information; take the product from the description.
+       - INC_IDENTFCTN_SRC_TYP | Identification source | Context, e.g. QA review, hindsight review, complaint.
+       - INC_BASE_EVNT_TYP_2 | Basel Event Type 2 | 4.1 (suitability) is a supporting RL marker.
+         Other values are neutral.
+       - NUM_OF_CUST_IMPCTD | Number of Customers Impacted | Unit of assessment. Blank means not recorded, not zero.
+       - INC_BULK_INC | Bulk incident | Omnibus gate (Step 2).
+       - NEAR_MISS | Near Miss | Yes means the lending did not proceed.
+       - INC_PRCSS, INC_ROOT_CAUSE_LVL_1/2, INC_THRD_PRTY_SUPPLR_CAUSED_OR_I, INC_PRMRY_CAUSED_BU |
+         Process, Direct Cause 1/2, Third Party Supplier, Primary Caused BU | Context only.
+       - INC_ACTNS_TO_RECTFY_OR_PRVNT_REO, INC_LAST_PRCSS_UPD | Actions Taken to Rectify, Last Progress
+         Update | Later facts. Current record only. Use facts; disregard conclusions (Evidence rule 3).
+    B. Obligation register: Appendix B below. Cite only provisions in the register.
+    C. Pattern table: Appendix C below. Validated patterns, each labelled Established or Observed.
+    D. Mode: A (population row) or B (single case), given in the user message.
+    Never supplied for the incident being assessed: its completed Compliance Assessment, CA name,
+    summary or determination, obligation associations, breach report references, and Incident Closure
+    Summary. Don't supply provisions or patterns from memory.
+
+    EVIDENCE RULES
+    1. Use only the supplied record and register.
+    2. Record facts, not conclusions. Investigation findings, breach decisions, product codes and impact
+       ratings are assertions. Use them for routing only, never as evidence for a finding.
+    3. Disregard text that states or points to a compliance conclusion, wherever it appears: sections
+       headed "Compliance recommendations"; lists of breaches identified by an investigation; "as per
+       the compliance assessment"; references to breach reports, reportable breaches or "no compliance
+       gaps". Where a field mixes facts and conclusions, use the facts only.
+    4. Disregard template and placeholder text, e.g. a templated line that customers "have potentially
+       been placed in an unsuitable financial position", "x/x/x", "TBA", "TBD".
+    5. Give each material fact its source field and, where known, the date it became known. Where the
+       date is unknown, mark it timing unknown.
+    6. Two description versions. Where a later version drops a fact stated in the first-captured
+       version, keep the fact as Present unless the later record corrects it. If the two contradict,
+       mark it Conflicting.
+    7. Absence of evidence is evidence of neither breach nor compliance.
+    8. Don't infer calculations, dates, approvals, thresholds or provisions. Use bounds only where the
+       evidence supports them.
+    9. No customer names or identifiers in the output. No legal advice.
+
+    STEP 1 — TRIAGE: DOES RL APPLY?
+    Routing only. Not a breach finding. (If the user message supplies triage_route, use it and start
+    at Step 2.)
+    An RL nexus exists where the facts concern any of: financial inquiries; verification of income,
+    commitments or expenses; serviceability; suitability; requirements and objectives; substantial
+    hardship; or conduct concerning potentially unsuitable credit. Basel Event Type 4.1 supports, but
+    doesn't establish, a nexus.
+    List each marker and the field it came from. Where the description conflicts with the product codes
+    or incident name, the description prevails. Template text is not a marker.
+    Route the incident as one of:
+    - Clear RL nexus → continue.
+    - RL plus another pathway → continue, and flag the other pathway (hardship, vulnerability, privacy,
+      fraud or falsified information, broker or employee conduct, conflicts, guarantor, substantial
+      benefit). Keep it separate.
+    - No clear RL nexus → stop. State why, and name any other pathway. Referrer-conduct or
+      broker-termination matters with no RL concept belong here.
+    - Insufficient to route → stop. State the fact needed.
+
+    STEP 2 — CAN IT BE ASSESSED FROM THE RECORD?
+    - No application-level case in the record, e.g. a Group Investigation matter or a description that
+      only says the matter is being checked → Not assessable from JUNO. State where the evidence is
+      held. Stop.
+    - Bulk or omnibus (INC_BULK_INC = Yes, or the description covers a population) → assess the
+      exemplar only. Classify the remainder as Not assessable from JUNO. Don't extend the exemplar's
+      outcome. Judge this on the record as supplied.
+    - Several applications or defects with different facts → assess each separately before
+      consolidating. One loan with several RL failures is one reportable unit.
+    - A truncated record, or one that refers to an attachment → treat the missing content as held
+      outside JUNO.
+
+    STEP 3 — BUILD THE FACT SHEET ONCE
+    Establish these facts once and reuse them for every cluster. Mark each Present / Missing /
+    Conflicting, with its source and date.
+    1. Product and decision date (the unconditional approval date, not settlement) — register scope;
+       whether the provision was in force.
+    2. The defect: which inquiry, verification or input was wrong (income, commitments, expenses,
+       other) — Prudential and the 45(a)/45(b) citation; s130.
+    3. Whether the defective input was used in serviceability. If the record doesn't say, mark Missing,
+       unless the register lists the input as outside serviceability — policy-only boundary.
+    4. Original vs corrected position: surplus or deficit, and for mortgages its % against the
+       liability buffers — RL.
+    5. Exceptions, in two layers, each recorded separately: verification exception (e.g. VAEH) and
+       credit override (e.g. Credit approval). For each: authority, timing relative to the decision, and
+       what facts it was given on — RL qualifying check.
+    6. Whether the lending proceeded (contract signed, settlement, funds drawn, limit increase), or the
+       defect was corrected before unconditional approval — s131, s133; timing.
+    7. Guarantor; substantial-benefit facts; requirements and objectives; banker awareness where
+       documents were false — BCoP para 68 and 70; RL; misconduct.
+    Apply these rules while building facts 4–6:
+    - Correct the defect. Change only the defective input. Another input may change only where
+      documented guidance in force at the original decision permitted it. Otherwise, record a
+      qualifying check as unresolved.
+    - Information held at the time. Information the bank held at the decision counts as available,
+      even if it was missed. Later evidence may establish a fact as it stood at the decision. A later
+      event, such as hardship, arrears or failed customer contact, can't establish or cure a breach.
+    - Two exception layers. A declined verification exception doesn't mean no override was given.
+      Where only one layer is recorded and the other could change the RL finding, mark the other
+      Missing. An exception given on the uncorrected facts doesn't cover errors found after it.
+    - Lending proceeded. Near Miss = Yes, withdrawal, or "pending settlement" means the lending had not
+      proceeded on the record supplied. Where the record predates settlement, mark whether it later
+      settled as Missing.
+    - Decision setting. Apply a threshold or exception only on the basis in the register and only where
+      its authority, scope, timing and assumptions cover the corrected facts.
+    Test each Missing or Conflicting fact: could different supported answers produce different
+    findings? If no, note why and continue. If yes, carry it to Step 6. If the effect can't be bounded,
+    don't treat it as immaterial.
+
+    STEP 4 — FINDINGS BY CLUSTER
+    Check the decision date against the register first. A provision not in force on that date is Not
+    engaged. Then answer each cluster's question from the fact sheet. Don't derive one cluster's outcome
+    from another's, except where the register makes a provision conditional on another finding
+    (para 67, para 68).
+    - RL (s128, s130, s131, s133): On the corrected position, is the credit unsuitable (mortgages:
+      deficit of 33% or more of buffers), with no override covering the corrected facts, and did the
+      lending proceed?
+    - Prudential (APS 220; APG 223 for residential mortgages only): Is a verification defect evidenced
+      on an input used in serviceability? Cite 45(a) for income and cash flows, 45(b) for commitments
+      and indebtedness.
+    - BCoP / Licence: Is each paragraph's trigger in the register met? Para 67 and para 68 depend on the
+      RL finding; para 70 is independent. An ACL association alone is not a breach.
+    Status: Breached | Not breached | Not engaged | Requires assessor judgement | Insufficient evidence |
+    Not assessable from JUNO
+    Rules:
+    - An incident, error, policy failure or verification failure doesn't by itself establish a breach.
+      A verification failure doesn't establish unsuitable credit. A preserved lending outcome or a credit
+      override doesn't erase a verification failure. Policy or guidance alone is not a regulatory breach.
+    - False documents or customer fraud are not an RL breach unless the banker was aware, complicit, or
+      should reasonably have made further inquiries.
+    - Citation. Cite every provision tested, from the register only. Give paragraph detail only where a
+      provision is breached.
+    - RL sub-lines. Report RL as one cell where all sections share a status. Where they diverge, give
+      sub-lines by stage: s130 inquire and verify; s128, s131 assess; s133 lend. s133 can't be breached
+      unless the lending proceeded.
+    - Where a product or provision isn't in the register → Requires assessor judgement – outside register.
+
+    STEP 5 — TEST AGAINST PATTERNS AND THE DECISION BOUNDARY
+    Patterns check the findings. They never produce them.
+    - Compare the findings, and what changes the outcome, against Appendix C. Match on decisive facts
+      and qualifying checks, not on how the description reads.
+    - A record that reads like a pattern but is missing a fact the pattern depends on is not a match.
+      For example, a corrected deficit with no override recorded is not a Full breach until fact 5 is
+      Present for both layers.
+    - An Established match with its checks passed supports Reasonable confidence. An Observed match
+      supports, at most, Within stated bounds.
+    - No match, or findings that differ from the matched pattern → name the anomaly: fact combination
+      not seen | qualifying check unresolved | cluster split not seen | outside register | interpretive.
+      State the nearest pattern, what is materially different, and the one decision the assessor needs
+      to make. Don't force the nearest outcome.
+    - Decision boundary. State the decisive fact, the strongest supported alternative, the minimum
+      supported change that would alter the finding, and which findings would remain unchanged. Don't
+      invent thresholds or alternatives.
+
+    STEP 6 — CONFIDENCE AND WHAT'S UNRESOLVED
+    Q2 confidence:
+    - Reasonable confidence: every engaged cluster has its decisive facts Present and matches an
+      Established pattern.
+    - Within stated bounds: some clusters are resolved and others aren't, or the match is to an Observed
+      pattern only.
+    - Insufficient confidence: an unresolved fact or judgement determines the overall outcome.
+    - Not assessable from JUNO: from Step 2.
+    Q3 — send each unresolved item to whoever can resolve it:
+    - Missing fact → Incident raiser: one question the raiser can answer with a fact, the cluster
+      affected, and what each likely answer would change.
+    - Conflicting evidence → Incident raiser: both versions, the source of each, and the finding affected.
+    - Interpretive judgement or anomaly → Assessor: anomaly type, nearest pattern, what is different,
+      and the decision needed.
+    - Missing or unclear criterion → Method owner: the criterion needed and where the register is silent.
+    - Held outside JUNO → Source owner: what is held, and where.
+    Ask the raiser only where the answer could change a finding. If the facts are present and the case
+    still doesn't fit, it goes to the assessor. List no more than five items, ordered by effect on the
+    outcome.
+
+    STEP 7 — OVERALL OUTCOME
+    Derive it from the cluster cells only:
+    Multi-cluster breach | RL breach only | Prudential breach only | BCoP/Licence breach only |
+    No compliance breach | Assessor-ready (an unresolved cell determines the outcome) |
+    Outside RL pathway | Not assessable from JUNO
+
+    OUTPUT
+    Mode A — one YAML block per incident:
+    incident_id:
+    record_basis: CA creation snapshot | Current record
+    q1_rl_markers: {route, markers: [{marker, source_field}], other_pathways: []}
+    q2_confidence: Reasonable confidence | Within stated bounds | Insufficient confidence | Not assessable from JUNO
+    pattern: {name | Unmatched, basis: Established | Observed, anomaly_type}
+    what_changes_the_outcome: "≤12 words"
+    would_change_if: "≤15 words"
+    obligations:
+      RL:           {status, provisions, sub_lines}
+      Prudential:   {status, provisions}
+      BCoP_Licence: {status, provisions, sub_lines}
+    overall:
+    q3_unresolved:
+      - {type, resolver, question_or_item, fact_no, cluster_affected, what_each_answer_would_change}
+    Mode B — single case:
+    1. Preliminary outcome and its decisive basis
+    2. Record basis, route, assessment units and confidence
+    3. Fact sheet: decisive facts, original vs corrected position
+    4. Obligation findings: Cluster | Status | Provisions tested | Decisive evidence | Limitation
+    5. What changes the outcome: decision boundary, strongest alternative, findings unchanged
+    6. Unresolved, by resolver
+
+    FINAL CHECKS (run silently and correct before output)
+    - Triage set the route only.
+    - Every finding comes from the fact sheet, and the overall outcome comes from the cells.
+    - No cluster outcome was carried into another, except where the register makes it conditional.
+      A favourable lending outcome hasn't erased a verification failure.
+    - No pattern was matched while a fact it depends on was Missing.
+    - Every provision cited is in the register, and every engaged cluster cites the provisions tested.
+    - No conclusion, template or excluded content was used as evidence.
+    - Every unresolved item names its resolver and the finding it affects; every raiser item is a
+      single factual question.
+    Mode A: output the YAML block only, with no text before or after it.
+    Mode B: end with "This is a preliminary recommendation. Final determination remains with the Compliance Assessor."
+
+    APPENDIX B — OBLIGATION REGISTER
+    # Sourced from completed CAs and CA template guidance. n = cases supporting a rule.
+    RL:
+      provisions: [s128, s130, s131, s133]          # NCCP Act 2009
+      products: [residential_mortgage, personal_loan, credit_card]
+      report_as: cluster; sub-lines by stage only where statuses diverge
+      decision_date: unconditional approval date, not settlement date
+      s131: not engaged where the error was fixed before unconditional approval, unless requirements and objectives failed
+      s133: engaged only where the contract was signed, the facility settled or funds were drawn under the original incorrect assessment
+      effective_from: no gate inside the run window; matters before 1 Oct 2021 are assessed but not reportable
+      counting: one reportable situation per loan, however many RL failures
+    Prudential:
+      APS220:
+        effective_from: 2022-01-01                 # Not engaged for decisions before this date
+        products: all_credit
+        breach_citation: {"45(a)": income and cash flows, "45(b)": commitments and total indebtedness}
+        association_block: "paras 41, 42, 43, 45(a,b,d), APG220 para 36"
+      APG223:
+        products: residential_mortgage
+        breach_citation: "para 41 – assessment and verification of income, living expenses and debt commitments"
+        association_block: "paras 38–46 incl. 41(a–g), 42(a–e)"
+      rule: assessed even where RL is not breached and even where an exception or override was applied
+    BCoP_Licence:
+      "BCoP para 67": {trigger: RL breached; not cited otherwise}
+      "BCoP para 68": {trigger: guarantor present AND RL breached}
+      "BCoP para 70": {trigger: an applicant does not receive a substantial benefit; count only that applicant}
+      "BCoP training/competence": {trigger: cohort-level training failure only; never for one-off human error}
+      "ACL 233714": {note: administrative association, sometimes on no-breach outcomes; not a breach finding}
+    thresholds:
+      serviceability_buffer_33pct:
+        applies_to: residential_mortgage
+        basis: Group Compliance Training – Responsible Lending (Apr 2026); CA template guidance
+        definition: tolerance for conservatism in mortgage serviceability (rate buffers, income shading, excluded income)
+        rule: corrected deficit under 33% of total estimated liability buffers → NCCP and BCoP not breached; 33% or more → NCCP, BCoP and Prudential breached
+        MQ_rating: {Low: services and DTI < 10, Medium: deficit < 33% of buffers or DTI > 10, High: deficit > 33%}
+      non_mortgage: no buffer rule; corrected serviceability failure with no valid override → RL breached
+    exception_layers:
+      verification_exception: {example: VAEH, covers: verification method only}
+      credit_override: {example: Credit approval or serviceability override, effect: NCCP and BCoP not breached; Prudential still assessed}
+      coverage: an exception given on the uncorrected facts does not cover errors found after it was given
+      authority_limits: case fact, not register data; test under fact 5
+    inputs_outside_serviceability:                 # Policy-only boundary (fact 3)
+      - genuine savings                            # credit policy / prudential indicator (n=2)
+      - valuation risk rating referral, e.g. RR4   # n=1
+      - PACE referral for combined YTD casual income where servicing is unaffected   # n=1
+    misconduct_and_fraud:
+      rule: false documents or customer fraud are not an RL breach unless the banker was aware, complicit, or should reasonably have made further inquiries
+      other_pathways: [s31 unlicensed persons, s129 no assessment, APP 6 privacy]
+
+    APPENDIX C — PATTERN TABLE
+    (Pattern | What changes the outcome | RL | Prudential | BCoP/Licence | Basis)
+    - Full breach | Corrected serviceability fails (mortgages: 33% or more of buffers); no override covers
+      the corrected facts; lending proceeded | Breached: s128, s130, s131, s133 | Breached: APS 220
+      45(a)/(b) per defect, APG 223 para 41 (mortgages) | Breached: para 67; para 68 only if guarantor |
+      Established
+    - Threshold (mortgages only) | Corrected deficit under 33% of liability buffers | Not breached:
+      s128, s130, s131, s133 | Breached: APS 220 45(a)/(b) per defect, APG 223 para 41 | Not breached:
+      para 67 | Established
+    - Exception | A valid credit override covers the corrected facts | Not breached: s128, s130, s131,
+      s133 | Breached: APS 220 45(a)/(b) per defect | Not breached: para 67 | Established
+    - Policy only | Defective input not used in serviceability | Not breached: s128, s130, s131, s133 |
+      Not breached: APS 220, APG 223 | Not breached: para 67 | Established
+    - Hindsight | Only a later event | Not breached: s128, s130, s131, s133 | Not breached: APS 220,
+      APG 223 | Not engaged | Established
+    - Didn't proceed | Withdrawn, or corrected before unconditional approval | Not breached: s128, s130,
+      s131, s133 | Not observed | Not observed | Observed, n=3
+    - Permitted reassessment | Credit reassessment under documented guidance restores a pass on
+      information held at the time | Not breached: s128, s130, s131, s133 | Not breached |
+      Not breached | Observed, n=1
+    - Misconduct / fraud | Banker aware, complicit, or should reasonably have inquired; corrected
+      serviceability fails | Breached: s128, s130, s131, s133 | Breached: APS 220, APG 223 (mortgages) |
+      Breached: para 67 | Observed, n=1
+    For personal loans and cards, APG 223 is Not engaged and there is no 33% buffer. "Not observed"
+    means the cell is derived from its conditions and can't reach Reasonable confidence from the pattern.
+
+# REFERENCE INCIDENT DATA
+
+# ================================================================ REFERENCE EXAMPLES
+reference_examples:
+  purpose: >
+    Reference incident records supplied to help the model apply the
+    assessment methodology. These records contain incident facts only.
+    They do not supply a completed Compliance Assessment or known outcome.
+
+  rules:
+    - "Use the examples to understand the structure and nature of incident evidence."
+    - "Do not infer an assessment outcome merely because a new incident resembles an example."
+    - "Apply the obligation register, evidence rules and assessment steps to each incident independently."
+    - "Missing information in an example remains missing and must not be inferred."
+
+  examples:
+
+    - example_id: "EXAMPLE_001"
+      input:
+        INC_ID: "INC000365033"
+        INC_DESC: "Incident Summary: As part of 2LOD, Mortgage Credit Quality & Review perform Mortgage Hindsight reviews over a sample of settled mortgage loans applications which are assessed against their adherence to One Bank Multi Brand Policy & Standards.  These reviews assess whether the OVA authority holder has acted within their designated authority level and have adhered to mortgage credit policies.   Mortgage Credit Quality & Review have identified a breach in consumer mortgage adherence.  A review was completed on a loan application which was approved 05/03/2026 and settled 20/03/2026. It was found lender had materially understated primary residence expense for mooring license as $446pa whilst review of the Lender Assist shows marina fees of $13792.49 paid in October 2025 which was not addressed despite lender noting they had reviewed accounts back to July. In addition, applicant has an ABN which has not been addressed by way of financials of profitability declaration.  Servicing had originally been approved as an exception by credit with a reduction of rental income buffer, however with the post settlement identification of an error an adjustment for expenses would see servicing fail by greater than 33% of total estimated liability buffers.   Security for this loan does not involve guarantors.  Product: Investment loan  Errors identified: HSAN3 – Material understatement of primary residence costs at $446 p.a (mooring license). Lender has noted checking Lender Assist transactions dating back to July but has failed to address marina fees of $13,792.49 paid in October. HSAN5 – ATO income statement for employer shows the applicant has an ABN (active).  No financials provided nor declaration made re profitability of the sole trader business.     · Timeline of Events: 05/03/2026 Loan approved 20/03/2026 Loan settled     · Incident identified: Internal monitoring and review.    · Action Taken (Rectification activities) so far:  Lender and their one up have been notified.     · Customer Impact (if known at verification stage)     · Estimated Number of customer -  One application 1 customers     · How are they impacted?  Responsible lending – customers have potentially been placed in an unsuitable financial position.       · Are they known to be vulnerable? - no extra care flags in customer profile     · Financial Impact (to customer or Bank)  -? Potential Financial impact nil"
+        INC_NAME: "Home Lending_WBC_NSW Regional/ACT_Mortgage Hindsight Outcome-Financial Situation Verification (FSV) error - failure to validate expenses and sole trader to policy resulting in loan settling with servicing not me"
+        INC_INCDNT_CAUSE: "non adherence to once bank multi brand policy , understand what to look for on an income statement and Lender Assist  Training provided however lender/s did not apply training hence further training required"
+        INC_DT_INCDNT_OCCRD: "00:00.0"
+        INC_PRD_LVL_2: "Mortgages"
+        INC_BASE_EVNT_TYP_2: "7.1 - Transaction Capture, Execution and Maintenance"
+        NUM_OF_CUST_IMPCTD: "1"
+        INC_BULK_INC: "No"
+        NEAR_MISS: "No"
+        INC_PRCSS: "Capture and Document Transactions"
+        INC_ROOT_CAUSE_LVL_1: "People"
+        INC_ROOT_CAUSE_LVL_2: "Human Error"
+        INC_THRD_PRTY_SUPPLR_CAUSED_OR_IMPCTD: "blank"
+        INC_PRMRY_CAUSED_BU: "Westpac Group / Consumer Division / Retail Banking / Home Lending / WBC NSW Regional Retail Lending"
+
+    - example_id: "EXAMPLE_002"
+      input:
+        INC_ID: "INC000374212"
+        INC_DESC: "· Incident Summary Mortgage Quality (MQ) perform a quality assurance review over a sample of approved mortgage applications, which are reviewed against their adherence to components of Westpac’s regulatory obligations and to One Bank Multi Brand Policy & Standards.   An application was selected for a Mortgage Quality review on a loan which was approved 13/03/2026 and settled 29/08/2026.  It was found non base income had been overstated. Servicing has been recalculated correcting the assessed income and is found not to be met.   Deficit is less than 33% of total estimated liability buffers, and a medium-rated outcome has been applied.  Loan has settled and is not able to be rectified.  Security for this loan does not involve guarantors.  Error: Non-Base Income Overstated - In OBP Overtime amount is loaded as $30,232.03/Yearly and Verified Overtime amount is $28,304.42/Yearly. Lender has used pay increase method. However, provided lender calculator in that “Last pay slip with lower base pay amount is mentioned $2610.78/Fortnightly However, pay slip dated 18/02/2026 Base pay is $2689.28/Fortnightly. So, Overtime amount will mismatch. MQ recalculated serviceability and serviceability is failing and surplus not evident.  Product:  · Timeline of Event. 18/09/2025 Loan capture 13/03/2026 Loan approved 29/08/2026 Loan settled    · Incident identified: Internal – monitoring and controls     · Action Taken (Rectification activities) so far (if known at verification stage):  · Lender and their one up have been notified by an alert via Conduct Risk Portal (CRP)    · Customer Impact (if known at verification stage)     · Estimated Number of customer -  One application, 1 customer     · How are they impacted: Responsible lending – customers have potentially been placed in an unsuitable financial position.       · Are they known to be vulnerable? - Not known to be vulnerable no extra care flags     · Financial Impact (to customer or Bank) (if known at verification stage and how was this derived)  - Potential Financial impact - Nil     · Similar Incident: IN364035 INC00036514 INC000364273"
+        INC_NAME: "Home Lending_WBC_VIC/TAS_Mortgage Quality Review-FSV error - failure to validate income to policy resulting in loan settling with servicing not met and a Medium rated Mortgage Quality outcome."
+        INC_INCDNT_CAUSE: "In attention t detail with incorrect addition of base figures which resulted in overstatement of non base. Lender is aware of process but made a simple addition error."
+        INC_DT_INCDNT_OCCRD: "00:00.0"
+        INC_PRD_LVL_2: "Mortgages"
+        INC_BASE_EVNT_TYP_2: "7.1 - Transaction Capture, Execution and Maintenance"
+        NUM_OF_CUST_IMPCTD: "1"
+        INC_BULK_INC: "No"
+        NEAR_MISS: "No"
+        INC_PRCSS: "Capture and Document Transactions"
+        INC_ROOT_CAUSE_LVL_1: "People"
+        INC_ROOT_CAUSE_LVL_2: "Human Error"
+        INC_THRD_PRTY_SUPPLR_CAUSED_OR_IMPCTD: "blank"
+        INC_PRMRY_CAUSED_BU: "Westpac Group / Consumer Division / Retail Banking / Home Lending / WBC VicTAS Retail Lending"
+
+    - example_id: "EXAMPLE_003"
+      input:
+        INC_ID: "INC000366466"
+        INC_DESC: "Background: The Consumer Finance Operations Verification Team perform income and/or liability verification on applications to assist in meeting our Responsible Lending requirements.  Incident/Factual Summary: On 17/05/2025 a customer submitted Credit Card application CC8214952263.  On 26/05/2026 a CNX Manila team member actioned the application and it was approved for $7,000.  On 04/06/2026 during a Quality Assurance check it was identified that an error had been made during the assessment of the application, at this point the funds had been accessed.  The Manila team member verified the customers income incorrectly by accepting incomplete rental documents. There are two properties that team member has incorrectly verified: 1st rental property does not have full 3 months statements. Customer has provided 5 x fortnightly rental statements which means 1 more fortnightly rental statement is required. 2nd property, customer provided 1 x rental statement, 1 x extension and 1 x residential contract from the Vendor which are unacceptable.  On the same day the application was reviewed by a Verification Authority Exception Holder (VAEH) team member who was unable to make an exception. Although the customers credit report showed the liability had a $0 limit and $0 repayment, there was no evidence to confirm the facility was closed. Action required was sent back to the team member to contact the customer and request a closure letter.   On the same day the application was reviewed by a Verification Authority Exception Holder (VAEH) team member who was able to reverify the rental income through the customers recent WBC home loan application. Testing serviceability the application had a deficit of $22. It was referred to the Credit team for review to see if a serviceability override exception could be made.  On 04/06/2026 a Credit team member reviewed the customers application and before considering an exception needed additional information from the customer.   The customer was contacted and confirmed the additional information as requested from the credit team member. The application was referred back to the credit team for a decision.   On 09/06/2026 the application was rereviewed by a credit team member who applied a serviceability override exception to the small deficit. The application could remain approved.   Note: - Incident identified through control CTL000147551. - Team member with business < 12 months.   Actions taken to rectify/prevent reoccurrence: 1. VAEH reviewed, and reverified income. 2. Application referred to Credit team for review.  3. Customer contacted and confirmed additional information.  4. Credit team rereviewed and applied exception - application can remain approved.  5. Review of Support Procedure conducted by Rectification Manager to ensure there is no GAP. Procedure advises 3 months of rental statements required for verification. No GAP identified.  6. Feedback and training have not been provided to the team member as they are no longer with CFO."
+        INC_NAME: "CFO - WBC - Rental income verified using incomplete documents - CC8214952263"
+        INC_INCDNT_CAUSE: "Human Error > Team member failed to use the correct documents required for rental verification"
+        INC_DT_INCDNT_OCCRD: "00:00.0"
+        INC_PRD_LVL_2: "Retail Cards"
+        INC_BASE_EVNT_TYP_2: "7.3 - Customer Intake and Documentation"
+        NUM_OF_CUST_IMPCTD: "1"
+        INC_BULK_INC: "No"
+        NEAR_MISS: "No"
+        INC_PRCSS: "Take on and Maintain Clients/Customers, Counterparties & Trade Relationships"
+        INC_ROOT_CAUSE_LVL_1: "External"
+        INC_ROOT_CAUSE_LVL_2: "Third Party Supplier / Service Provider Failure"
+        INC_THRD_PRTY_SUPPLR_CAUSED_OR_IMPCTD: "CNX Manila"
+        INC_PRMRY_CAUSED_BU: "Westpac Group / Consumer Division / Consumer Finance / Consumer Finance Operations"
+
+    - example_id: "EXAMPLE_004"
+      input:
+        INC_ID: "INC000366530"
+        INC_DESC: "This matter relates to Mortgage Hindsight outcome \"HSAN7- HGS Genuine Savings: The 5% genuine savings requirement of $38,791 under the General Stream (land: $350,000; build: $425,824) has not been verified in accordance with policy requirements\"   For application SUB142020262357973 (BSA): As at Unconditional Approval on 20/04/2026: Contract of Sale = $350,000 Build Cost = $435,368.56 ($435,369 rounded up in Origination System) (Original Build Contract $404,462.56 plus Variations $21,362.00 plus Fencing Quote $9,544.00) Purchase & Build cost = $785,368.56 ($785,369 rounded up in Origination System)   Genuine savings [03.25 Genuine Savings, Equity and Customer Contribution - 2.1.1 Amount to be verified] requirement applicable to the loan application: \"Verify 5% of the total of land purchase plus construction costs (regardless of the valuation result)\"   5% Genuine Savings amount = $39,268.45  Responsible Lending Start Date 13/03/2026  Genuine Savings attempted to be verified via three 'Tier 1' Methods, namely: - Savings accumulated - Savings accumulated - Deposit paid to Builder / Developer / Real estate agent  Policy [03.25 Genuine Savings, Equity and Customer Contribution - 2.1.2 Acceptable 'Tier 1' sources of genuine savings] requires: \"2.1.2 Acceptable 'Tier 1' sources of genuine savings The below 'Tier 1' sources may be used singularly or in combination and: • must have been accumulated over or held for a minimum of 3 months (excluding Historical rental payments) • if combined, the total amounts verified must be a minimum of the required 5% • must be evident at the Responsible Lending Start Date • verification documents must comply with Document Standards\"  Two Documents were provided to for Genuine Savings: 1. MA & FA CBA Netbank Saver Account x7327 Transaction Listing 01/01/2026 to 12/03/26 with document dated 13/03/26 (142020262357973_Multi_LEN_BNK_TXNL_0001_January - March 2026 Savings TransactionSummary.pdf): Time Period = 2 months 12 days, does not pass policy requirement of 3 months by 19 days Start Balance 01/01/2026 $14,018.24 Lowest Balance 01/01/2026 $14,018.24 End Balance 04/03/26 $20,323.18 Savings Held = $14,018.24 Savings Accumulated = $6,304.94  2. Document provided 18/03/26 Deposit document receipt 15/09/25 (EMAIL_C79730912201709_Deposit+Receipt+Land.pdf) Deposit amount $10,000 Genuine Savings Policy requirement of Deposit receipt AND evidence of funds held prior was not met, i.e. policy requirement: \" • Deposit receipt issued by the Builder / Developer or Real Estate Agent, evidencing: • Amount of deposit paid by one or more of the borrowers, and • Date of payment AND • Evidence of funds held prior to payment of deposit via: • Account statement / transaction listing; or • Internal system extract or enquiry; or • Investment certificate; or • Share registry statement\"   If including all non-compliant dollar amounts Savings Held $14,018.24 plus Savings Accumulated $6,304.94 plus Deposit Paid $10,000 the amount totals $30,323.18 which is $8,945.27 less than the required $39.268.45 5% Genuine Savings amount.  If excluding the Deposit payment the Genuine savings totals $20,323.18 resulting in $18,945.27 ;ess than the required 5% Genuine Savings amount.   Additional Notes: As at Conditional Approval on 23/03/26 Applicants did not hold any internal transaction Accounts to verify any possible additional Genuine Savings.  Identification: The incident was identified internally by a Credit Manager in the Quality & Review team on 27/05/2026. It was identified because of a second line Credit Quality & Review check on the settled loan application.  Impact: Compliance to assess contravention of Mortgage Credit Policy"
+        INC_NAME: "MO OBP Originations - BCA Onshore - Responsible Lending - Financial Situation Verification FSV - Mortgage Hindsight - Genuine Savings not verified"
+        INC_INCDNT_CAUSE: "Likely cause is Credit Assessor did not remember to complete Genuine Savings until the final moments prior to providing Unconditional Approval. There were no Missing Information Requests (MIRs) or file notes regarding Genuine Savings Verification.  At First Touch on 17/03/26 Assessor MIR’d Broker regarding a contribution shortfall. Next day on 18/03/26 broker provided the $10k deposit document attached to the genuine savings verification task.  Assessor First Touch File Pending note dated 17/03/2026 17:10 did not include to verify genuine savings so it can be assumed that Credit Assessor did not factor in the 5% genuine savings requirement during Enrichment Assessment.  On 20/04/26 16:36 Unconditional Approval was given. ~30 minutes prior the The $10k deposit document was re-attached to the “Verification for HGS - Genuine Savings” verification task “ZZ Account Transaction Listing” document drawers visible to that verification task, FA at 04:02:38 PM & MA 04:09:46 PM, which indicates at that moment Assessor was aware of their actions to satisfy policy requirements."
+        INC_DT_INCDNT_OCCRD: "00:00.0"
+        INC_PRD_LVL_2: "Mortgages"
+        INC_BASE_EVNT_TYP_2: "7.1 - Transaction Capture, Execution and Maintenance"
+        NUM_OF_CUST_IMPCTD: "1"
+        INC_BULK_INC: "No"
+        NEAR_MISS: "No"
+        INC_PRCSS: "Capture and Document Transactions"
+        INC_ROOT_CAUSE_LVL_1: "People"
+        INC_ROOT_CAUSE_LVL_2: "Human Error"
+        INC_THRD_PRTY_SUPPLR_CAUSED_OR_IMPCTD: "No"
+        INC_PRMRY_CAUSED_BU: "Westpac Group / Consumer Division / Mortgages / Mortgage Operations"
+
+    - example_id: "EXAMPLE_005"
+      input:
+        INC_ID: "INC000341409"
+        INC_DESC: "INCIDENT SUMMARY At the request of the Case Manager from Collections/Customer assist a credit review was undertaken of a loan to ascertain if there were any issues with the original lend.  On 03/04/2023 a single branch-based lender completed all verifications and approved a loan under his delegated lending authority for a sole applicant. On 06/04/2023 the loan settled, and the funds were disbursed. The purpose of the loan was to refinance an internal home loan and an equity release of $31K to assist with home renovations. The review has confirmed serviceability was verified to policy and serviceability met with no undisclosed liabilities evident.  On 22/09/2023 Westpac assist was approved due to the customer becoming unemployed, assist was extended 19/12/2023 but was declined 08/03/2024. Litigation activities commenced 29/05/2025. Customer's hardship has been caused by unemployment.  The credit review has identified the lend was considered fair and reasonable at the time. However, they have noted that 'with the benefit of hindsight' the loan is now considered as not fair and reasonable due to the refinance home loan history and overdrawn account. Namely: -between 08/09/2022 and 04/03/2023 there were 5 internal refinances with cash out of $86.5K for renovations and $45.1K to refinance a flexi personal loan. A prudent lender would have asked more questions about the full cost of the renovations during the second renovation application if costs had been underestimated previously. -transaction account was overdrawn between 20/1/2023 to 01/03/2023 and there were transfers made from the home loan to this account to reduce the debit balance.  All loans were completed by the same lender.  It cannot be determined whether or not the lender did query the repeated request for funds for property renovations however lender did address the overdrawn account in comments in OBP which evidences an enquiry made of the customers and it may be additional enquiries were made about the renovations and not recorded in OBP notes or Our Customer Conversation (OCC).  The reasons for the multiple requests for additional renovations funds are not known however the timing of them coincides with changes in the geo-political climate which did see increased costs in construction.  Loans approved were as follows: 08/09/2022 SUBxxxxxxxx0873802 refinance home loan and flexi personal loan and $20K equity release for renovation 25/10/2022 SUBxxxxxxxx0911401 refinance home loan and $10K equity release for renovations 24/11/2022 SUBxxxxxxxx0936863 refinance home loan and $10K equity release for renovations 24/12/2022 SUBxxxxxxxx0963060 refinance home loan and $15K equity release for renovations 03/04/2023 SUBxxxxxxxx1076575 refinance home loan and $31K equity release for renovations   · Incident identified: Internal review.    · Action Taken (Rectification activities) so far (if known at verification stage):      · Customer Impact (if known at verification stage)     · Estimated Number of customer -  One application 1 customer      · How are they impacted?  Responsible lending – customers have potentially been placed in an unsuitable financial position.       · Are they known to be vulnerable? - at time of the approval not known to be vulnerable, due to unemployment experiencing hardship"
+        INC_NAME: "Home Lending_WBC_VIC/TAS_ Credit review - numerous cash out request for renovations"
+        INC_INCDNT_CAUSE: "Further information was required."
+        INC_DT_INCDNT_OCCRD: "00:00.0"
+        INC_PRD_LVL_2: "Mortgages"
+        INC_BASE_EVNT_TYP_2: "4.1 - Suitability, Disclosure and Fiduciary"
+        NUM_OF_CUST_IMPCTD: "1"
+        INC_BULK_INC: "No"
+        NEAR_MISS: "No"
+        INC_PRCSS: "Deliver Products and Services"
+        INC_ROOT_CAUSE_LVL_1: "Processes"
+        INC_ROOT_CAUSE_LVL_2: "Process Design"
+        INC_THRD_PRTY_SUPPLR_CAUSED_OR_IMPCTD: "blank"
+        INC_PRMRY_CAUSED_BU: "Westpac Group / Consumer Division / Retail Banking / VicTAS / WBC VicTAS Retail Banking"
+
+
