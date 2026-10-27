@@ -1,49 +1,101 @@
-PS C:\Users\m061400\ai-test\rl_compliance\scripts> python .\p3_population_prep.py
-Source: incidents_population_20271027_v2.xlsx | rows=5,333
+"""Phase 4 - RL triage across the population (+ reference cases). Parallel and resumable."""
+import json, time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import pandas as pd
+from rl_config import ROOT, MODEL, REASONING_EFFORT, load_prompt, get_client
+from rl_core import run_one, validate_triage, flatten_triage, LOG_FIELDS
 
-(a) POPULATION: 5,329 | reference cases outside it added for assessment: 4 | other rows outside: 0
-duplicate INC_IDs: 0
+WORKERS = 12
+IN_JSONL = ROOT / "02_prepared" / "population_model_ready.jsonl"
+RAW = ROOT / "03_runs" / "triage" / "raw_responses"
+CKPT = ROOT / "03_runs" / "triage" / "triage_checkpoint.jsonl"
+LOG = ROOT / "03_runs" / "triage" / "run_log_population.csv"
+ROUTES_CSV = ROOT / "03_runs" / "triage" / "triage_routes.csv"     # input to Phase 5
+OUT_B = ROOT / "04_outputs" / "b_rl_identification.xlsx"
+B_COLS = ["INC_ID", "Route", "RL markers", "Marker source fields", "Other pathways", "Reason"]
 
-by month of INC_ENTRY_DT:
-Month
-2026-04    340
-2026-05    925
-2026-06    900
-2026-07    943
-2026-08    842
-2026-09    818
-2026-10    561
 
-by INC_FLDR_LVL_2 (13 values, top 20):
-INC_FLDR_LVL_2
-Consumer Division                       2513
-UNITE and Customer Operations           1003
-Business and Wealth Division             916
-WNZL                                     305
-WIB                                      242
-Technology                               146
-Risk                                      63
-Data Digital and AI                       55
-People Team                               40
-Finance                                   35
-Legal                                      7
-Corporate Affairs and Sustainability       3
-Secretariat                                1
+def load_done():
+    done = {}
+    if CKPT.exists():
+        for l in CKPT.read_text(encoding="utf-8").splitlines():
+            if l.strip():
+                r = json.loads(l)
+                done[r["INC_ID"]] = r
+    return done
 
-INC_STUS:
-INC_STUS
-Closed               3704
-Rectification        1549
-Pending Closure        41
-Verification           25
-Pending Ownership       9
-Unassigned              1
 
-Unassigned: 1
-INC_DESC under 200 chars: 60 (blank: 0)
-INC_BULK_INC = Yes: 720 | NEAR_MISS = Yes: 0
-CA exists split: pending CA dataset (Phase 6)
+def main():
+    recs = [json.loads(l) for l in IN_JSONL.read_text(encoding="utf-8").splitlines() if l.strip()]
+    meta = {r["INC_ID"]: r for r in recs}
+    done = load_done()
+    # Resume: skip anything already answered; only API errors are re-sent (malformed stays flagged).
+    todo = [r for r in recs if r["INC_ID"] not in done or done[r["INC_ID"]]["status"] == "api_error"]
+    system, ver, sha = load_prompt("triage")
+    client, auth = get_client()
+    print(f"{MODEL} effort={REASONING_EFFORT['triage']} | {ver} {sha} | records={len(recs):,} "
+          f"already done={len(recs) - len(todo):,} to run={len(todo):,} | workers={WORKERS}", flush=True)
 
-prep: recommendation tail cut=1,003 (left actions blank=1) | 'Updated by' residual=6
+    def work(rec):
+        try:
+            d, log = run_one(client, "triage", rec["INC_ID"], system, ver, sha, rec["triage_user_message"],
+                             validate_triage, RAW, prefix="pop_")
+            return {"INC_ID": rec["INC_ID"], "status": log["status"], "parsed": d, "log": log}
+        except Exception as e:
+            log = {k: "" for k in LOG_FIELDS}
+            log.update(INC_ID=rec["INC_ID"], step="triage", status="api_error", error=f"{type(e).__name__}: {e}"[:300])
+            return {"INC_ID": rec["INC_ID"], "status": "api_error", "parsed": None, "log": log}
 
-Wrote population_model_ready.jsonl (5,333 records), a_population.xlsx, preflight.xlsx
+    t0, n, stats = time.time(), 0, {}
+    with open(CKPT, "a", encoding="utf-8") as f, ThreadPoolExecutor(WORKERS) as ex:
+        for fu in as_completed([ex.submit(work, r) for r in todo]):
+            res = fu.result()
+            f.write(json.dumps(res, ensure_ascii=False, default=str) + "\n")
+            f.flush()
+            done[res["INC_ID"]] = res
+            n += 1
+            stats[res["status"]] = stats.get(res["status"], 0) + 1
+            if n % 100 == 0 or n == len(todo):
+                el = time.time() - t0
+                print(f"  {n:,}/{len(todo):,} {stats} elapsed={el / 60:.1f}m "
+                      f"eta={el / n * (len(todo) - n) / 60:.1f}m", flush=True)
+
+    b_rows, route_rows, logs = [], [], []
+    for inc, rec in meta.items():
+        r = done.get(inc)
+        if not r:
+            continue
+        logs.append(r["log"])
+        if r["status"] == "ok":
+            fl = flatten_triage(inc, r["parsed"])
+        else:
+            fl = {c: "" for c in B_COLS}
+            fl.update(INC_ID=inc, Route=f"Failed ({r['status']})")
+        route_rows.append({"INC_ID": inc, "Route": fl["Route"], "in_population": rec["in_population"],
+                           "is_reference": rec["is_reference"], "INC_ENTRY_DT": rec["INC_ENTRY_DT"]})
+        if rec["in_population"]:
+            b_rows.append(fl)
+
+    pd.DataFrame(logs, columns=LOG_FIELDS).to_csv(LOG, index=False)
+    rt = pd.DataFrame(route_rows)
+    rt.to_csv(ROUTES_CSV, index=False)
+    pd.DataFrame(b_rows, columns=B_COLS).to_excel(OUT_B, index=False)
+
+    pop = rt[rt["in_population"]].copy()
+    pop["Month"] = pop["INC_ENTRY_DT"].str[:7]
+    print(f"\n(a) population triaged: {len(pop):,} of {sum(r['in_population'] for r in recs):,}")
+    print("\nRoute (population):\n" + pop["Route"].value_counts().to_string())
+    print("\nRoute by month:\n" + pd.crosstab(pop["Route"], pop["Month"], margins=True).to_string())
+    ref = rt[rt["is_reference"]][["INC_ID", "Route", "in_population"]]
+    print("\nReference cases:\n" + ref.to_string(index=False))
+    lg = pd.DataFrame(logs)
+    print(f"\nretried={int(lg['retried'].astype(str).eq('True').sum())} "
+          f"fenced={int(lg['fenced'].astype(str).eq('True').sum())} "
+          f"cost=US${pd.to_numeric(lg['cost_usd'], errors='coerce').sum():.2f}")
+    errs = lg[lg["status"] != "ok"][["INC_ID", "status", "error"]]
+    print("failures:\n" + (errs.to_string(index=False) if len(errs) else "  none"))
+    print(f"\nWrote {OUT_B.name}, {ROUTES_CSV.name}, {LOG.name}")
+
+
+if __name__ == "__main__":
+    main()
