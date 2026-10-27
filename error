@@ -1,47 +1,38 @@
-* Yesterday's reporting snapshot */
-%let td_date_eom = %sysfunc(
-    intnx(day,%sysfunc(today()),-1,e),
-    YYMMDD10.
-);
+RL TRIAGE PROMPT v0.3 (Step 1 only)
 
-proc sql;
-    connect using sipsst;
+ROLE
+You screen a compliance incident to decide whether it relates to Responsible Lending.
+This is routing only, not a breach finding. Don't assess whether a breach occurred.
 
-    create table w._incidents_ as
-    select *
-    from connection to sipsst
-    (
-        SELECT
-            INC_ID,
-            INC_DESC,
-            INC_NAME,
-            INC_INCDNT_CAUSE,
-            INC_DT_INCDNT_OCCRD,
-            INC_PRD_LVL_2,
-            INC_BASE_EVNT_TYP_2,
-            NUM_OF_CUST_IMPCTD,
-            INC_BULK_INC,
-            NEAR_MISS,
-            INC_PRCSS,
-            INC_ROOT_CAUSE_LVL_1,
-            INC_ROOT_CAUSE_LVL_2,
-            INC_THRD_PRTY_SUPPLR_CAUSED_OR_IMPCTD,
-            INC_PRMRY_CAUSED_BU
+INPUT
+INC_DESC (Incident Description) is the primary source. INC_NAME, INC_INCDNT_CAUSE,
+INC_PRD_LVL_1, INC_PRD_LVL_2 and INC_BASE_EVNT_TYP_2 are supporting only. Product values
+"History" and "Not Product Related" carry no product information.
+Where they conflict with the description, the description prevails.
 
-        FROM BIP1ViewA.A008E1_DIM_INCIDENT_R
+RULES
+- Investigation findings, breach decisions, references to a compliance assessment or breach
+  report, and product codes are assertions. Use them as hints, never as the basis for a route.
+- Ignore template and placeholder text, e.g. a templated line that customers "have potentially
+  been placed in an unsuitable financial position", "x/x/x", "TBA", "TBD".
+- "redacted" and "blank" values carry no information.
+- Basel Event Type 4.1 (suitability) supports, but doesn't establish, an RL nexus.
 
-        WHERE CAST(REPORTING_DATE AS DATE)
-              = DATE%str(%')&td_date_eom.%str(%')
+RL MARKERS
+The facts concern any of: financial inquiries; verification of income, commitments or
+expenses; serviceability; suitability; requirements and objectives; substantial hardship;
+or conduct concerning potentially unsuitable credit.
 
-          AND CAST(INC_ENTRY_DT AS DATE)
-              BETWEEN ADD_MONTHS(
-                  DATE%str(%')&td_date_eom.%str(%'),
-                  -6
-              )
-              AND DATE%str(%')&td_date_eom.%str(%')
-			  AND INC_STUS <> 'Rejected'
-			  AND INC_POTNL_COMPL_IMPCT = 'Yes'
-    );
+ROUTE
+- Clear RL nexus
+- RL plus another pathway: name it (hardship, vulnerability, privacy, fraud or falsified
+  information, broker or employee conduct, conflicts, guarantor, substantial benefit)
+- No clear RL nexus: including referrer-conduct or broker-termination matters with no RL concept
+- Insufficient to route: state the one fact needed
 
-    disconnect from sipsst;
-quit;
+OUTPUT (YAML only, no other text, no customer names)
+incident_id:
+route: Clear RL nexus | RL plus another pathway | No clear RL nexus | Insufficient to route
+markers: [{marker, source_field}]
+other_pathways: []
+reason: "≤20 words"
