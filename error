@@ -1,78 +1,102 @@
-PS C:\Users\m061400\ai-test\rl_compliance\scripts> python .\p1_prepare_reference.py
-Source: incidents_population_20271027_v2.xlsx
-rows=5,333 cols=25
-missing required columns: none
-duplicate INC_ID rows: 0
-INC_ENTRY_DT: non-blank=5,333 unparseable=0
-INC_DT_INCDNT_OCCRD: non-blank=5,332 unparseable=0
-INC_OWNR_ACCEP_DT: non-blank=5,298 unparseable=0
-INC_LAST_PRCSS_UPD_DT: non-blank=2,974 unparseable=0
-INC_DESC: max_len=3,989 at_excel_cap=0
-INC_NAME: max_len=356 at_excel_cap=0
-INC_INCDNT_CAUSE: max_len=3,729 at_excel_cap=0
-INC_ACTNS_TO_RECTFY_OR_PRVNT_REO: max_len=3,993 at_excel_cap=0
-INC_LAST_PRCSS_UPD: max_len=3,760 at_excel_cap=0
-eligible population (window, compl=Yes, not Rejected): 5,329 | rows outside: 4
-INC_LAST_PRCSS_UPD: contains 'Updated by'=2,725 prefix_removed=2,725 residual_after=6
-INC_ACTNS_TO_RECTFY_OR_PRVNT_REO: compliance-recommendation tail removed in 0 records
+"""Phase 3 - population preflight and model-ready preparation. No model calls."""
+import json
+from datetime import datetime
+import pandas as pd
+from rl_config import ROOT
+from p1_prepare_reference import (SRC, REF_IDS, SUPPLIER, PROMPT_CONTENT, TRIAGE_FIELDS, CONTROL, LATER,
+                                  DATE_COLS, WIN_START, WIN_END, fmt, prep_actns, prep_upd)
 
-reference IDs found: 10/10 | missing: []
+OLD_SRC = ROOT / "00_source" / "incidents" / "incidents_population_20261027.xlsx"
+OUT_JSONL = ROOT / "02_prepared" / "population_model_ready.jsonl"
+OUT_A = ROOT / "04_outputs" / "a_population.xlsx"
+OUT_PF = ROOT / "04_outputs" / "preflight.xlsx"
 
-      INC_ID  in_population INC_ENTRY_DT  desc_len  n_blank_fields  actns_tail_removed  upd_prefix_removed  upd_residual_updated_by         upd_label  actns_blank  upd_blank
-INC000365033           True   2026-05-21      2404               1               False                   0                        0    timing unknown        False       True
-INC000374212           True   2026-09-01      2109               1               False                   0                        0    timing unknown        False       True
-INC000366466           True   2026-06-04      3016               0               False                   1                        0 after CA creation        False      False
-INC000366530           True   2026-06-05      3689               0               False                   1                        0 after CA creation        False      False
-INC000341409          False   2025-08-22      3308               1               False                   0                        0    timing unknown        False       True
-INC000358150          False   2026-02-25      1811               0               False                   1                        0 after CA creation        False      False
-INC000372012           True   2026-08-06      2451               1               False                   0                        0    timing unknown        False       True
-INC000369888           True   2026-07-13      3739               1               False                   1                        0 after CA creation        False      False
-INC000357929          False   2026-02-23      1034               1               False                   1                        0 after CA creation        False      False
-INC000362030          False   2026-04-13       925               1               False                   0                        0 after CA creation        False      False
 
-blank fields by reference case:
-  INC000365033: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
-  INC000374212: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
-  INC000366466: none
-  INC000366530: none
-  INC000341409: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
-  INC000358150: none
-  INC000372012: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
-  INC000369888: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
-  INC000357929: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
-  INC000362030: INC_THRD_PRTY_SUPPLR_CAUSED_OR_I
+def build(row):
+    inc = row["INC_ID"]
+    v = {c: fmt(row[c]) for c in PROMPT_CONTENT}
+    actns, cut = prep_actns(row["INC_ACTNS_TO_RECTFY_OR_PRVNT_REO"])
+    upd, _, n_res = prep_upd(row["INC_LAST_PRCSS_UPD"])
+    upd_dt, acc = row["INC_LAST_PRCSS_UPD_DT"], row["INC_OWNR_ACCEP_DT"]
+    lbl = "after CA creation" if pd.notna(upd_dt) and pd.notna(acc) and upd_dt > acc else "timing unknown"
+    tri = "\n".join([f"INC_ID: {inc}"] + [f"{c}: {v[c]}" for c in TRIAGE_FIELDS])
+    tpl = "\n".join(
+        ["record_basis: Current record", "mode: A", "triage_route: <<TRIAGE_ROUTE>>",
+         "instruction: Take triage_route as Step 1 and start at Step 2.", f"INC_ID: {inc}"]
+        + [f"{c}: {v[c]}" for c in PROMPT_CONTENT]
+        + [f"INC_ACTNS_TO_RECTFY_OR_PRVNT_REO (timing unknown): {actns}",
+           f"INC_LAST_PRCSS_UPD ({fmt(upd_dt)}, {lbl}): {upd}"])
+    return tri, tpl, cut, actns == "blank", n_res
 
-Wrote: reference_model_ready.jsonl, reference_prep_summary.csv, reference_message_preview.txt (preview is local only)
-PS C:\Users\m061400\ai-test\rl_compliance\scripts> python .\p2_reference_run.py
-10 cases | gpt-5.4 effort={'triage': 'medium', 'assessment': 'medium'} | triage_v0.3 77b45b02a25f | assessment_v0.4 641c8ff0150f
 
-  INC000365033: route=Clear RL nexus | assessment=ok
-  INC000374212: route=Clear RL nexus | assessment=ok
-  INC000366466: route=Clear RL nexus | assessment=ok
-  INC000366530: route=Clear RL nexus | assessment=ok
-  INC000341409: route=RL plus another pathway | assessment=ok
-  INC000358150: route=Clear RL nexus | assessment=ok
-  INC000372012: route=Clear RL nexus | assessment=ok
-  INC000369888: route=Clear RL nexus | assessment=ok
-  INC000357929: route=Insufficient to route | assessment=ok
-  INC000362030: route=Clear RL nexus | assessment=ok
+def main():
+    df = pd.read_excel(SRC, dtype={"INC_ID": str})
+    if SUPPLIER not in df.columns:
+        alt = [c for c in df.columns if c.startswith(SUPPLIER)]
+        df = df.rename(columns={alt[0]: SUPPLIER})
+    df["INC_ID"] = df["INC_ID"].str.strip()
+    for c in DATE_COLS:
+        df[c] = pd.to_datetime(df[c], errors="coerce")
+    d = df["INC_ENTRY_DT"].dt.normalize()
+    df["in_population"] = (d.between(WIN_START, WIN_END)
+                           & (df["INC_POTNL_COMPL_IMPCT"].astype(str).str.strip() == "Yes")
+                           & (df["INC_STUS"].astype(str).str.strip() != "Rejected"))
+    df["Month"] = df["INC_ENTRY_DT"].dt.strftime("%Y-%m")
+    pop = df[df["in_population"]]
 
-      INC_ID in_pop                   route  t_att a_status  a_att  a_secs                       q2                   pattern                       RL                     Prud                     BCoP                    overall  n_unres                  resolvers
-INC000365033      Y          Clear RL nexus      1       ok      1    32.4    Reasonable confidence Full breach (Established)                 Breached                 Breached                 Breached       Multi-cluster breach        0            
-INC000374212      Y          Clear RL nexus      1       ok      1    71.5  Insufficient confidence   Threshold (Established)             Not breached    Insufficient evidence             Not breached             Assessor-ready        1               Source owner
-INC000366466      Y          Clear RL nexus      1       ok      1    53.1    Reasonable confidence   Exception (Established)             Not breached                 Breached              Not engaged     Prudential breach only        0            
-INC000366530      Y          Clear RL nexus      1       ok      1    25.7    Reasonable confidence Policy only (Established)             Not breached             Not breached              Not engaged       No compliance breach        0            
-INC000341409      N RL plus another pathway      1       ok      1    87.9  Insufficient confidence   Unmatched (Established)    Insufficient evidence    Insufficient evidence    Insufficient evidence             Assessor-ready        4 Assessor; Incident raiser~
-INC000358150      N          Clear RL nexus      1       ok      1    48.0  Insufficient confidence   Unmatched (Established)    Insufficient evidence                 Breached    Insufficient evidence Assessor-ready (an unreso~        2            Incident raiser
-INC000372012      Y          Clear RL nexus      1       ok      1    46.3  Insufficient confidence   Unmatched (Established)             Not breached             Not breached    Insufficient evidence             Assessor-ready        1               Source owner
-INC000369888      Y          Clear RL nexus      1       ok      1    54.9  Insufficient confidence   Unmatched (Established)    Insufficient evidence                 Breached    Insufficient evidence             Assessor-ready        5 Incident raiser; Source o~
-INC000357929      N   Insufficient to route      1       ok      1    23.9 Not assessable from JUNO              Unmatched () Not assessable from JUNO Not assessable from JUNO Not assessable from JUNO   Not assessable from JUNO        2               Source owner
-INC000362030      N          Clear RL nexus      1       ok      1    65.0  Insufficient confidence   Unmatched (Established)    Insufficient evidence                 Breached    Insufficient evidence             Assessor-ready        3            Incident raiser
+    print(f"Source: {SRC.name} | rows={len(df):,}")
+    print(f"\n(a) POPULATION: {len(pop):,} | reference cases outside it added for assessment: "
+          f"{int((~df['in_population'] & df['INC_ID'].isin(REF_IDS)).sum())} | "
+          f"other rows outside: {int((~df['in_population'] & ~df['INC_ID'].isin(REF_IDS)).sum())}")
+    print(f"duplicate INC_IDs: {int(pop['INC_ID'].duplicated().sum())}")
 
-calls: triage {'ok': 10} | assessment {'ok': 10}
-retried: 0 | fenced: 0 | finish!=stop: 0
-assessment latency s: mean=50.9 max=87.9 | tokens/call: prompt=6272 completion=5194
-cost: US$0.92
-errors: none
+    by_month = pop["Month"].value_counts().sort_index()
+    print("\nby month of INC_ENTRY_DT:\n" + by_month.to_string())
+    by_folder = pop["INC_FLDR_LVL_2"].fillna("blank").value_counts()
+    print(f"\nby INC_FLDR_LVL_2 ({len(by_folder)} values, top 20):\n" + by_folder.head(20).to_string())
+    status = pop["INC_STUS"].fillna("blank").value_counts()
+    print("\nINC_STUS:\n" + status.to_string())
+    print(f"\nUnassigned: {int((pop['INC_STUS'] == 'Unassigned').sum()):,}")
+    desc_len = pop["INC_DESC"].fillna("").astype(str).str.strip().str.len()
+    print(f"INC_DESC under 200 chars: {int((desc_len < 200).sum()):,} (blank: {int((desc_len == 0).sum())})")
+    print(f"INC_BULK_INC = Yes: {int((pop['INC_BULK_INC'].astype(str).str.strip() == 'Yes').sum()):,} | "
+          f"NEAR_MISS = Yes: {int((pop['NEAR_MISS'].astype(str).str.strip() == 'Yes').sum()):,}")
+    print("CA exists split: pending CA dataset (Phase 6)")
 
-Wrote 04_outputs\reference_b_rl_identification.xlsx, reference_c_preliminary_ca.xlsx, reference_c_unresolved.xlsx and run logs in 03_runs
+    if OLD_SRC.exists():
+        old = set(pd.read_excel(OLD_SRC, usecols=["INC_ID"], dtype={"INC_ID": str})["INC_ID"].str.strip())
+        new = set(pop["INC_ID"])
+        print(f"\nvs earlier 15-col file: earlier={len(old):,} | in both={len(old & new):,} | "
+              f"earlier only={len(old - new):,} | new only={len(new - old):,}")
+
+    run = df[df["in_population"] | df["INC_ID"].isin(REF_IDS)]
+    stamp = datetime.now().isoformat(timespec="seconds")
+    n_cut = n_blank = n_res = 0
+    with open(OUT_JSONL, "w", encoding="utf-8") as f:
+        for _, row in run.iterrows():
+            tri, tpl, cut, ablank, res = build(row)
+            n_cut += cut
+            n_blank += cut and ablank
+            n_res += res > 0
+            f.write(json.dumps({"INC_ID": row["INC_ID"], "in_population": bool(row["in_population"]),
+                                "is_reference": row["INC_ID"] in REF_IDS, "INC_ENTRY_DT": fmt(row["INC_ENTRY_DT"]),
+                                "source_file": SRC.name, "prepared_at": stamp,
+                                "triage_user_message": tri, "assessment_user_template": tpl},
+                               ensure_ascii=False) + "\n")
+    print(f"\nprep: recommendation tail cut={n_cut:,} (left actions blank={n_blank:,}) | "
+          f"'Updated by' residual={n_res}")
+
+    a = pop[["INC_ID", "INC_ENTRY_DT", "Month", "INC_FLDR_LVL_2", "INC_PRD_LVL_1", "INC_PRD_LVL_2", "INC_STUS"]].copy()
+    a["INC_ENTRY_DT"] = a["INC_ENTRY_DT"].dt.strftime("%Y-%m-%d")
+    a["CA exists"] = "pending CA join"
+    a.to_excel(OUT_A, index=False)
+    with pd.ExcelWriter(OUT_PF) as w:
+        by_month.rename("count").to_frame().to_excel(w, sheet_name="by_month")
+        by_folder.rename("count").to_frame().to_excel(w, sheet_name="by_folder")
+        pd.crosstab(pop["INC_FLDR_LVL_2"].fillna("blank"), pop["Month"]).to_excel(w, sheet_name="folder_x_month")
+        status.rename("count").to_frame().to_excel(w, sheet_name="status")
+    print(f"\nWrote {OUT_JSONL.name} ({len(run):,} records), {OUT_A.name}, {OUT_PF.name}")
+
+
+if __name__ == "__main__":
+    main()
