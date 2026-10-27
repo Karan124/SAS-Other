@@ -1,159 +1,103 @@
-"""
-Phase 0 - readiness check. Read-only: prints a report, writes nothing.
-Does not print incident text or credential values.
-"""
-import sys, os, hashlib, importlib, textwrap
-from pathlib import Path
+PS C:\Users\M061400\ai-test\rl_compliance\scripts> python .\p0_readiness.py
 
-ROOT = Path(r"C:\Users\M061400\ai-test\rl_compliance")
+======================================================================
+1. Python and packages
+======================================================================
+Python: 3.12.10
+  pandas     OK  3.0.5
+  openpyxl   OK  3.1.5
+  yaml       MISSING
+  openai     OK  3.0.0
 
-FOLDERS = [
-    r"00_source\incidents", r"00_source\compliance_assessments", r"01_prompt",
-    r"02_prepared", r"03_runs\triage\raw_responses", r"03_runs\assessment\raw_responses",
-    r"04_outputs", r"05_validation", r"05_validation\spot_checks", r"scripts",
-]
+======================================================================
+2. Folders
+======================================================================
+  OK      00_source\incidents
+  OK      00_source\compliance_assessments
+  OK      01_prompt
+  OK      02_prepared
+  OK      03_runs\triage\raw_responses
+  OK      03_runs\assessment\raw_responses
+  OK      04_outputs
+  OK      05_validation
+  OK      05_validation\spot_checks
+  OK      scripts
 
-PROMPTS = {
-    "triage":     ("triage_v0.3.txt",     "RL TRIAGE PROMPT v0.3",
-                   ["ROUTE", "OUTPUT (YAML only"]),
-    "assessment": ("assessment_v0.4.txt", "RESPONSIBLE LENDING PRELIMINARY BREACH ASSESSMENT PROMPT v0.4",
-                   ["APPENDIX B", "APPENDIX C", "FINAL CHECKS", "Mode A"]),
-}
+======================================================================
+3. Prompts (dedented text that will be sent)
+======================================================================
+  triage: MISSING C:\Users\M061400\ai-test\rl_compliance\01_prompt\triage_v0.3.txt
+  assessment: MISSING C:\Users\M061400\ai-test\rl_compliance\01_prompt\assessment_v0.4.txt
 
-PROMPT_CONTENT = [
-    "INC_DESC", "INC_NAME", "INC_INCDNT_CAUSE", "INC_DT_INCDNT_OCCRD", "INC_PRD_LVL_1", "INC_PRD_LVL_2",
-    "INC_BASE_EVNT_TYP_2", "NUM_OF_CUST_IMPCTD", "INC_BULK_INC", "NEAR_MISS", "INC_PRCSS",
-    "INC_ROOT_CAUSE_LVL_1", "INC_ROOT_CAUSE_LVL_2", "INC_THRD_PRTY_SUPPLR_CAUSED_OR_I",
-    "INC_PRMRY_CAUSED_BU", "INC_IDENTFCTN_SRC_TYP",
-]
-LATER_FACTS = ["INC_ACTNS_TO_RECTFY_OR_PRVNT_REO", "INC_LAST_PRCSS_UPD", "INC_LAST_PRCSS_UPD_DT"]
-CONTROL = ["INC_ID", "INC_ENTRY_DT", "INC_POTNL_COMPL_IMPCT", "INC_STUS", "EFF_END_DT",
-           "INC_FLDR_LVL_2", "INC_OWNR_ACCEP_DT"]
-DATE_COLS = ["INC_ENTRY_DT", "INC_DT_INCDNT_OCCRD", "INC_OWNR_ACCEP_DT", "INC_LAST_PRCSS_UPD_DT", "EFF_END_DT"]
+======================================================================
+4. API configuration (presence only, values not shown)
+======================================================================
+  OPENAI_API_KEY               -
+  OPENAI_BASE_URL              -
+  OPENAI_ORG_ID                -
+  AZURE_OPENAI_ENDPOINT        -
+  AZURE_OPENAI_API_KEY         -
+  AZURE_OPENAI_API_VERSION     -
+  OPENAI_API_VERSION           -
+  AZURE_OPENAI_DEPLOYMENT      -
+  AZURE_CLIENT_ID              -
+  AZURE_TENANT_ID              -
 
-CA_FIELDS = ["CA ID", "CA creation date", "CA Status", "Compliance Assessment Summary",
-             "Compliance Impact Classification", "Inc. Compliance Assessment SubMandate Association List",
-             "Breach Reporting ID", "Breach Reporting Breach Report Stage"]
+======================================================================
+5. Incident extracts
+======================================================================
 
-ENV_VARS = ["OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_ORG_ID", "AZURE_OPENAI_ENDPOINT",
-            "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_API_VERSION", "OPENAI_API_VERSION",
-            "AZURE_OPENAI_DEPLOYMENT", "AZURE_CLIENT_ID", "AZURE_TENANT_ID"]
+  FILE: incidents_population_20261027.xlsx
+    sheets: ['Sheet1'] (reading first)
+    rows=6,157 cols=15
+    third-party supplier column(s): ['INC_THRD_PRTY_SUPPLR_CAUSED_OR_I']
+    missing required columns: ['INC_PRD_LVL_1', 'INC_IDENTFCTN_SRC_TYP', 'INC_ACTNS_TO_RECTFY_OR_PRVNT_REO', 'INC_LAST_PRCSS_UPD', 'INC_LAST_PRCSS_UPD_DT', 'INC_ENTRY_DT', 'INC_POTNL_COMPL_IMPCT', 'INC_STUS', 'EFF_END_DT', 'INC_FLDR_LVL_2', 'INC_OWNR_ACCEP_DT']
+    INC_ID unique=6,157 rows in duplicated IDs=0
+    reference IDs present: 6/10 ['INC000365033', 'INC000374212', 'INC000366466', 'INC000366530', 'INC000372012', 'INC000369888']
+    INC_DT_INCDNT_OCCRD: dtype=datetime64[us] non-null=6,156 sample=['2023-05-30 00:00:00', '2026-07-17 00:00:00', '2026-07-01 00:00:00']
 
-REF_IDS = ["INC000365033", "INC000374212", "INC000366466", "INC000366530", "INC000341409",
-           "INC000358150", "INC000372012", "INC000369888", "INC000357929", "INC000362030"]
+  FILE: reference_incidents_raw.csv
+    rows=5 cols=15
+    third-party supplier column(s): ['INC_THRD_PRTY_SUPPLR_CAUSED_OR_IMPCTD']
+    missing required columns: ['INC_PRD_LVL_1', 'INC_IDENTFCTN_SRC_TYP', 'INC_ACTNS_TO_RECTFY_OR_PRVNT_REO', 'INC_LAST_PRCSS_UPD', 'INC_LAST_PRCSS_UPD_DT', 'INC_ENTRY_DT', 'INC_POTNL_COMPL_IMPCT', 'INC_STUS', 'EFF_END_DT', 'INC_FLDR_LVL_2', 'INC_OWNR_ACCEP_DT']
+    INC_ID unique=5 rows in duplicated IDs=0
+    reference IDs present: 5/10 ['INC000365033', 'INC000374212', 'INC000366466', 'INC000366530', 'INC000341409']
+    INC_DT_INCDNT_OCCRD: dtype=str non-null=5 sample=['00:00.0', '00:00.0', '00:00.0']
 
+======================================================================
+6. CA dataset (headers only, no content read)
+======================================================================
+  No CA files found (needed only at Phase 6).
 
-def hdr(t):
-    print("\n" + "=" * 70 + f"\n{t}\n" + "=" * 70)
+Done.
 
+The dataset is here -> C:\Users\M061400\ai-test\rl_compliance\00_source\incidents\incidents_population_20261027
 
-def main():
-    hdr("1. Python and packages")
-    print("Python:", sys.version.split()[0])
-    pd = None
-    for mod in ["pandas", "openpyxl", "yaml", "openai"]:
-        try:
-            m = importlib.import_module(mod)
-            print(f"  {mod:10s} OK  {getattr(m, '__version__', '?')}")
-            if mod == "pandas":
-                pd = m
-        except ImportError:
-            print(f"  {mod:10s} MISSING")
+How to access Open AI models:
 
-    hdr("2. Folders")
-    for f in FOLDERS:
-        p = ROOT / f
-        print(f"  {'OK     ' if p.is_dir() else 'MISSING'} {f}")
+# ─────────────────────────────────────────────────────────────────────────────
+#  CONFIG
+# ─────────────────────────────────────────────────────────────────────────────
 
-    hdr("3. Prompts (dedented text that will be sent)")
-    for key, (fname, first, markers) in PROMPTS.items():
-        p = ROOT / "01_prompt" / fname
-        if not p.exists():
-            print(f"  {key}: MISSING {p}")
-            continue
-        txt = textwrap.dedent(p.read_text(encoding="utf-8")).strip()
-        sha = hashlib.sha256(txt.encode("utf-8")).hexdigest()[:12]
-        line1 = txt.splitlines()[0] if txt else ""
-        print(f"  {key}: {len(txt):,} chars | sha256[:12]={sha}")
-        print(f"    first line OK: {line1.startswith(first)}  ({line1[:70]!r})")
-        for mk in markers:
-            print(f"    contains {mk!r}: {mk in txt}")
+AZURE_ENDPOINT  = "https://ai.eng.azure.srv.westpac.com.au"
+API_VERSION     = "2024-10-21"
+MODEL           = "gpt-5.4"
+REASONING_EFFORT = "medium"
+MAX_COMPLETION_TOKENS = 12000
 
-    hdr("4. API configuration (presence only, values not shown)")
-    for v in ENV_VARS:
-        print(f"  {v:28s} {'set' if os.environ.get(v) else '-'}")
+PRODUCTS_DIR = Path(r"C:\Users\m061400\ai-test\big_table\products")
 
-    if pd is None:
-        print("\npandas missing: stopping before data checks.")
-        return
+JSONL_FILE    = PRODUCTS_DIR / "holocentric_missing_product_llm_payload.jsonl"
+CLEANED_FILE  = PRODUCTS_DIR / "holocentric_products_cleaned.xlsx"
+CHECKPOINT    = PRODUCTS_DIR / "holocentric_product_inference_checkpoint.jsonl"
+RESULTS_FILE  = PRODUCTS_DIR / "holocentric_product_inference_results.xlsx"
+COMPLETE_FILE = PRODUCTS_DIR / "holocentric_products_complete.xlsx"
 
-    hdr("5. Incident extracts")
-    inc_dir = ROOT / "00_source" / "incidents"
-    files = sorted([*inc_dir.glob("*.xlsx"), *inc_dir.glob("*.csv")]) if inc_dir.is_dir() else []
-    if not files:
-        print("  No .xlsx/.csv files found.")
-    for f in files:
-        print(f"\n  FILE: {f.name}")
-        try:
-            if f.suffix.lower() == ".xlsx":
-                xl = pd.ExcelFile(f)
-                print(f"    sheets: {xl.sheet_names} (reading first)")
-                df = xl.parse(xl.sheet_names[0])
-            else:
-                df = pd.read_csv(f, low_memory=False)
-        except Exception as e:
-            print(f"    READ ERROR: {type(e).__name__}: {e}")
-            continue
-        cols = set(df.columns)
-        print(f"    rows={len(df):,} cols={len(df.columns)}")
+BATCH_SIZE    = 1     # one process per call — simplest and most reliable
+RETRY_COUNT   = 3
+RETRY_BASE    = 5     # seconds base for exponential backoff
+INTER_BATCH_SLEEP = 0.5
 
-        # supplier column: truncated vs full name
-        thrd = [c for c in df.columns if c.startswith("INC_THRD_PRTY_SUPPLR_CAUSED_OR_I")]
-        print(f"    third-party supplier column(s): {thrd}")
-        need = [c for c in PROMPT_CONTENT if c != "INC_THRD_PRTY_SUPPLR_CAUSED_OR_I"] + LATER_FACTS + CONTROL
-        missing = [c for c in need if c not in cols]
-        print(f"    missing required columns: {missing if missing else 'none'}")
-
-        if "INC_ID" in cols:
-            dup = df["INC_ID"].duplicated(keep=False).sum()
-            print(f"    INC_ID unique={df['INC_ID'].nunique():,} rows in duplicated IDs={dup}")
-            present_refs = [r for r in REF_IDS if r in set(df["INC_ID"].astype(str))]
-            print(f"    reference IDs present: {len(present_refs)}/10 {present_refs}")
-        if "EFF_END_DT" in cols:
-            print(f"    EFF_END_DT values (top 3): {df['EFF_END_DT'].astype(str).value_counts().head(3).to_dict()}")
-        if "INC_STUS" in cols:
-            print(f"    INC_STUS: {df['INC_STUS'].value_counts(dropna=False).to_dict()}")
-        if "INC_POTNL_COMPL_IMPCT" in cols:
-            print(f"    INC_POTNL_COMPL_IMPCT: {df['INC_POTNL_COMPL_IMPCT'].value_counts(dropna=False).to_dict()}")
-
-        for c in DATE_COLS:
-            if c not in cols:
-                continue
-            s = df[c]
-            nn = s.dropna()
-            sample = [str(x) for x in nn.head(3).tolist()]
-            print(f"    {c}: dtype={s.dtype} non-null={len(nn):,} sample={sample}")
-            if c == "INC_ENTRY_DT" and len(nn):
-                d = pd.to_datetime(nn, errors="coerce")
-                print(f"      parsed min={d.min()} max={d.max()} unparseable={d.isna().sum()}")
-
-    hdr("6. CA dataset (headers only, no content read)")
-    ca_dir = ROOT / "00_source" / "compliance_assessments"
-    ca_files = sorted([*ca_dir.glob("*.xlsx"), *ca_dir.glob("*.csv")]) if ca_dir.is_dir() else []
-    if not ca_files:
-        print("  No CA files found (needed only at Phase 6).")
-    for f in ca_files:
-        try:
-            hdrs = (pd.read_excel(f, nrows=0) if f.suffix.lower() == ".xlsx"
-                    else pd.read_csv(f, nrows=0)).columns.tolist()
-            miss = [c for c in CA_FIELDS if c not in hdrs]
-            id_cols = [c for c in hdrs if "INC" in c.upper()]
-            print(f"  {f.name}: {len(hdrs)} cols | missing spec fields: {miss if miss else 'none'} | INC key candidates: {id_cols}")
-        except Exception as e:
-            print(f"  {f.name}: READ ERROR {type(e).__name__}: {e}")
-
-    print("\nDone.")
-
-
-if __name__ == "__main__":
-    main()
+INPUT_PRICE_USD_PER_M  = 1.75
+OUTPUT_PRICE_USD_PER_M = 14.00
+AUD_USD_RATE           = 0.65
