@@ -26,3 +26,27 @@ Next steps.
 Join the CA dataset to measure triage recall, cluster agreement and confidence calibration.
 Review whether “substantial hardship” should route to RL on its own.
 Consider making the most commonly missing facts mandatory in incident capture for RL-type incidents.
+
+
+"""One-row-per-incident combined view of population, triage, assessment and unresolved items."""
+import pandas as pd
+from rl_config import ROOT
+
+O = ROOT / "04_outputs"
+rd = lambda f: pd.read_excel(O / f, dtype=str, keep_default_na=False)
+
+a, b, c, u = rd("a_population.xlsx"), rd("b_rl_identification.xlsx"), rd("c_preliminary_ca.xlsx"), rd("c_unresolved.xlsx")
+
+u["item"] = "[" + u["Resolver"] + " | " + u["Type"] + "] " + u["Question or item"]
+uu = u.groupby("INC_ID").agg(**{"Unresolved count": ("item", "size"),
+                                "Unresolved items": ("item", "\n".join))}.reset_index()
+
+b = b.rename(columns={"Route": "Triage route", "Reason": "Triage reason"})
+c = c.drop(columns=["Route", "CA exists"])
+
+df = (a.merge(b, on="INC_ID", how="left")
+       .merge(c, on="INC_ID", how="left")
+       .merge(uu, on="INC_ID", how="left"))
+df["Assessed"] = df["Q2 confidence"].ne("") & df["Q2 confidence"].notna()
+df.to_excel(O / "combined_results.xlsx", index=False, freeze_panes=(1, 1))
+print(f"Wrote combined_results.xlsx: {len(df):,} rows, {int(df['Assessed'].sum()):,} assessed")
