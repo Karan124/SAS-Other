@@ -1,52 +1,87 @@
-RL Compliance Incidents: preliminary run (27 Oct 2026)
+# Control Rationalisation at Pace
 
-What we did. We ran the RL triage prompt (v0.3) and preliminary assessment prompt (v0.4) over every compliance incident entered 20 Apr to 20 Oct 2026 with potential compliance impact (excluding Rejected). We used gpt-5.4 in our Azure tenancy, with one incident per call. Assessment covered incidents routed to RL plus 10 reference cases. Inputs were limited to the spec’s field allowlist, with compliance-recommendation text and closure fields excluded. All raw responses and run logs are retained. Total model cost was about US$100.
+## Outcome and Next Steps
 
-Results.
+### Overall conclusion
 
-(a) Population: 5,329 incidents (2 blocked by the Azure content filter).
-(b) RL identified: 912 (17%): 460 Clear RL nexus, 452 RL plus another pathway.
-(c) Assessable with reasonable confidence: 64 (7% of b). A further 95 were within stated bounds, 430 had insufficient confidence, and 322 were not assessable from JUNO.
+The proof of concept demonstrates that an AI\-enabled methodology can rationalise and strengthen Westpac's key control environment by up to 60%.
 
-What it tells us.
+---
 
-Most RL incidents can’t be assessed preliminarily from the JUNO record alone. The model raised 2,316 unresolved items: about half are facts the raiser could supply, and half are evidence held outside JUNO, such as credit files, override records and settlement status.
-Reasonable confidence is concentrated in well-documented mortgage review incidents, matching established patterns (threshold, policy only, full breach, exception).
-Triage is over-inclusive for hardship and vulnerability matters. Many “RL plus another pathway” incidents involve no lending decision.
+## 1\. Outcomes from the Proof of Concept
 
-Limitations.
+### Payments controls population
 
-Results have not yet been validated against completed Compliance Assessments, so (c) reflects the model’s confidence, not proven accuracy. The CA-exists split is also pending.
-We used the current record, including later updates, not the record as it stood at CA creation.
-Outputs from the reasoning model may vary slightly on re-run.
-12 assessments carry internal consistency flags, reported rather than corrected.
+- Payments controls currently in scope: **1,379**
+- Modelled reduction: **62%**
+- Modelled end\-state Payments controls: **516**
 
-Next steps.
+### Key insights
 
-Join the CA dataset to measure triage recall, cluster agreement and confidence calibration.
-Review whether “substantial hardship” should route to RL on its own.
-Consider making the most commonly missing facts mandatory in incident capture for RL-type incidents.
+1. **Control relevance**
+    - **38% of controls linked to Payments Risk are not relevant or key for the risk class.**
+2. **Contextual data limitations**
+    - **50% of controls lack the contextual data required for effective automated rationalisation.**
+    - Examples of required contextual data include: 
+        - corresponding process data
+        - product data
+        - systems data
+3. **Consolidation opportunity**
+    - **Up to 40% of controls can be consolidated** by addressing: 
+        - duplicate controls
+        - fragmented controls
+        - redundant controls
 
+---
 
-"""One-row-per-incident combined view of population, triage, assessment and unresolved items."""
-import pandas as pd
-from rl_config import ROOT
+## 2\. Next Steps: Controls Rationalisation at Scale
 
-O = ROOT / "04_outputs"
-rd = lambda f: pd.read_excel(O / f, dtype=str, keep_default_na=False)
+The proposed approach consists of two components:
 
-a, b, c, u = rd("a_population.xlsx"), rd("b_rl_identification.xlsx"), rd("c_preliminary_ca.xlsx"), rd("c_unresolved.xlsx")
+### 2.1 One\-off Uplift
 
-u["item"] = "[" + u["Resolver"] + " | " + u["Type"] + "] " + u["Question or item"]
-uu = u.groupby("INC_ID").agg(**{"Unresolved count": ("item", "size"),
-                                "Unresolved items": ("item", "\n".join))}.reset_index()
+**Objective:** Rationalise end\-to\-end controls across each Delivery Unit to enable automated, effective risk intelligence.
 
-b = b.rename(columns={"Route": "Triage route", "Reason": "Triage reason"})
-c = c.drop(columns=["Route", "CA exists"])
+Required actions:
 
-df = (a.merge(b, on="INC_ID", how="left")
-       .merge(c, on="INC_ID", how="left")
-       .merge(uu, on="INC_ID", how="left"))
-df["Assessed"] = df["Q2 confidence"].ne("") & df["Q2 confidence"].notna()
-df.to_excel(O / "combined_results.xlsx", index=False, freeze_panes=(1, 1))
-print(f"Wrote combined_results.xlsx: {len(df):,} rows, {int(df['Assessed'].sum()):,} assessed")
+1. **Standardise risk\-class inputs**
+    - Standardise inputs including obligation requirements and control requirements.
+2. **Improve contextual data quality**
+    - Uplift minimum process and product data quality across Delivery Units.
+    - The objective is to enable consistent rationalisation outcomes.
+3. **Industrialise the rationalisation methodology**
+    - Industrialise and apply the controls rationalisation model.
+    - Use the model to establish Delivery Unit implementation roadmaps.
+
+---
+
+### 2.2 Continuous Integrity
+
+**Objective:** Establish continuous controls validation to support sustainable controls maintenance.
+
+Required capabilities:
+
+1. **Automation, gap remediation and benchmarking**
+    - Drive automation.
+    - Remediate control gaps.
+    - Prioritise a "single best way" approach through AI\-enabled best\-of\-breed benchmarking.
+2. **Automated impact assessment**
+    - Automate assessment of: 
+        - new obligations
+        - new controls
+        - changes to the existing control environment
+3. **Continuous monitoring**
+    - Continuously monitor the control environment.
+
+---
+
+## Logical Interpretation
+
+The proof of concept identifies three distinct opportunities within the control environment:
+
+- **Remove or reconsider controls that are not relevant or key to the applicable risk class.**
+- **Consolidate controls that are duplicated, fragmented or redundant.**
+- **Improve contextual process, product and system data so that control rationalisation can be performed reliably and increasingly through automation.**
+
+The proposed target state extends beyond a one\-off reduction in control numbers. It combines an initial rationalisation and data\-quality uplift with an ongoing capability for control validation, impact assessment, benchmarking and monitoring.
+
