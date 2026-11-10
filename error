@@ -1,87 +1,1178 @@
-# Control Rationalisation at Pace
+<title>Payments Controls PoC</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@300;400;500;600;700&display=swap">
 
-## Outcome and Next Steps
+<style>
+/* ── Westpac brand palette + dark data aesthetic ──────────────────────────
+   Layout: full-bleed sections, sticky nav, visual-first
+   Type: Inter (all roles) · IBM Plex Mono (data/code)
+   Color: Westpac Red #DA2032 · Deep charcoal bg · light foreground
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  --bg:       #111214;
+  --bg2:      #1a1c1f;
+  --bg3:      #242629;
+  --border:   #2e3035;
+  --fg:       #f0f1f3;
+  --fg2:      #9499a3;
+  --fg3:      #55595f;
+  --red:      #DA2032;
+  --red-lt:   #f5424f;
+  --red-dk:   #a51827;
+  --amber:    #f59e0b;
+  --green:    #22c55e;
+  --blue:     #38bdf8;
+  --purple:   #a78bfa;
+  --font:     'Inter', sans-serif;
+  --mono:     'IBM Plex Mono', monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:     #f4f4f5;
+    --bg2:    #ffffff;
+    --bg3:    #e9eaec;
+    --border: #d1d4d9;
+    --fg:     #0f1013;
+    --fg2:    #454952;
+    --fg3:    #8a8f99;
+    --red:    #DA2032;
+    --red-lt: #c01a2a;
+    --red-dk: #8e0d1b;
+    --amber:  #d97706;
+    --green:  #16a34a;
+    --blue:   #0284c7;
+    --purple: #7c3aed;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg:     #f4f4f5; --bg2: #ffffff; --bg3: #e9eaec; --border: #d1d4d9;
+  --fg:     #0f1013; --fg2: #454952; --fg3: #8a8f99;
+  --red:    #DA2032; --red-lt: #c01a2a; --red-dk: #8e0d1b;
+  --amber:  #d97706; --green: #16a34a; --blue: #0284c7; --purple: #7c3aed;
+  color-scheme: light;
+}
 
-### Overall conclusion
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.6;
+  overflow-x: hidden;
+}
 
-The proof of concept demonstrates that an AI\-enabled methodology can rationalise and strengthen Westpac's key control environment by up to 60%.
+/* ── NAV ───────────────────────────────────────────────────────────────── */
+#nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center;
+  overflow-x: auto; scrollbar-width: none;
+}
+#nav::-webkit-scrollbar { display: none; }
+.nav-brand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 20px; border-right: 1px solid var(--border);
+  flex-shrink: 0; height: 48px;
+}
+/* Westpac W logo drawn inline */
+.nav-w {
+  width: 22px; height: 22px; flex-shrink: 0;
+}
+.nav-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--fg2); white-space: nowrap;
+}
+.nav-items {
+  display: flex; flex: 1; overflow-x: auto; scrollbar-width: none;
+}
+.nav-items::-webkit-scrollbar { display: none; }
+.nav-btn {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--fg3); font-family: var(--font); font-size: 11px;
+  font-weight: 500; letter-spacing: .05em; text-transform: uppercase;
+  padding: 0 14px; height: 48px; cursor: pointer; white-space: nowrap;
+  transition: color .15s, border-color .15s;
+}
+.nav-btn:hover { color: var(--fg); }
+.nav-btn.active { color: var(--red); border-bottom-color: var(--red); }
+.nav-end {
+  padding: 0 14px; border-left: 1px solid var(--border);
+  flex-shrink: 0; height: 48px; display: flex; align-items: center;
+}
+.theme-btn {
+  background: var(--bg3); border: 1px solid var(--border);
+  color: var(--fg2); font-size: 12px; padding: 4px 10px;
+  border-radius: 5px; cursor: pointer; transition: background .15s;
+}
+.theme-btn:hover { background: var(--border); color: var(--fg); }
 
----
+/* ── SECTIONS ──────────────────────────────────────────────────────────── */
+section {
+  min-height: 100vh;
+  padding: 100px max(28px, env(safe-area-inset-left,0px)) 72px;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 48px;
+}
+.inner { max-width: 1000px; margin: 0 auto; }
 
-## 1\. Outcomes from the Proof of Concept
+/* eyebrow */
+.eyebrow {
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .18em; text-transform: uppercase; color: var(--red);
+  display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+}
+.eyebrow::before {
+  content: ''; width: 20px; height: 2px; background: var(--red); flex-shrink: 0;
+}
+h1 {
+  font-size: clamp(2.2rem,5.5vw,4rem); font-weight: 700; line-height: 1.1;
+  letter-spacing: -.025em; text-wrap: balance; margin-bottom: 20px;
+}
+h2 {
+  font-size: clamp(1.6rem,3.5vw,2.6rem); font-weight: 700; line-height: 1.12;
+  letter-spacing: -.02em; text-wrap: balance; margin-bottom: 16px;
+}
+p { color: var(--fg2); font-size: .9rem; max-width: 60ch; }
 
-### Payments controls population
+/* ── HERO ──────────────────────────────────────────────────────────────── */
+#hero {
+  min-height: 100vh;
+  display: flex; align-items: center;
+  background:
+    radial-gradient(ellipse 70% 50% at 50% -10%, color-mix(in srgb, var(--red) 18%, transparent), transparent 65%),
+    var(--bg);
+  position: relative; overflow: hidden;
+}
+/* animated grid */
+#hero-canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  pointer-events: none; opacity: .35;
+}
+.hero-inner {
+  max-width: 1000px; margin: 0 auto; position: relative; z-index: 1;
+  padding: 0 max(28px, env(safe-area-inset-left,0px));
+}
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--red);
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+  padding: 5px 14px; border-radius: 100px; margin-bottom: 24px;
+}
+.pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--red); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
 
-- Payments controls currently in scope: **1,379**
-- Modelled reduction: **62%**
-- Modelled end\-state Payments controls: **516**
+.hero-title .red { color: var(--red); }
+.hero-sub { font-size: 1rem; color: var(--fg2); max-width: 50ch; margin-bottom: 44px; font-weight: 300; }
 
-### Key insights
+/* stat strip */
+.stat-strip {
+  display: flex; gap: 1px; background: var(--border);
+  border: 1px solid var(--border); border-radius: 10px;
+  overflow: hidden; margin-bottom: 32px; flex-wrap: wrap;
+}
+.stat-cell {
+  flex: 1 1 150px; background: var(--bg2); padding: 20px 22px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.stat-num {
+  font-size: 2.2rem; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.stat-num.red    { color: var(--red); }
+.stat-num.amber  { color: var(--amber); }
+.stat-num.green  { color: var(--green); }
+.stat-num.blue   { color: var(--blue); }
+.stat-lbl {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--fg3);
+}
+.scroll-cue {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 10px; color: var(--fg3); letter-spacing: .08em;
+}
+.scroll-ring {
+  width: 20px; height: 20px; border: 1px solid var(--border); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  animation: bob 2s ease-in-out infinite;
+}
+@keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(4px)} }
 
-1. **Control relevance**
-    - **38% of controls linked to Payments Risk are not relevant or key for the risk class.**
-2. **Contextual data limitations**
-    - **50% of controls lack the contextual data required for effective automated rationalisation.**
-    - Examples of required contextual data include: 
-        - corresponding process data
-        - product data
-        - systems data
-3. **Consolidation opportunity**
-    - **Up to 40% of controls can be consolidated** by addressing: 
-        - duplicate controls
-        - fragmented controls
-        - redundant controls
+/* ── PIPELINE VISUAL (approach section) ─────────────────────────────────── */
+.pipeline {
+  margin-top: 40px; display: flex; flex-direction: column; gap: 0;
+}
+.pl-step {
+  display: grid; grid-template-columns: 60px 1fr; gap: 0;
+  opacity: 0; transform: translateX(-16px);
+  transition: opacity .5s ease, transform .5s ease;
+}
+.pl-step.visible { opacity: 1; transform: none; }
+.pl-left {
+  display: flex; flex-direction: column; align-items: center;
+}
+.pl-num {
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 2px solid var(--red); background: var(--bg2);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  color: var(--red); flex-shrink: 0; z-index: 1;
+}
+.pl-line {
+  flex: 1; width: 2px; background: linear-gradient(var(--red-dk), var(--border));
+  margin: 2px 0;
+}
+.pl-step:last-child .pl-line { display: none; }
+.pl-body { padding: 8px 0 32px 20px; min-width: 0; }
+.pl-tag {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--red); margin-bottom: 3px;
+}
+.pl-title { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+.pl-text { font-size: .83rem; color: var(--fg2); line-height: 1.55; }
 
----
+/* ── VISUAL: 4-system constellation ────────────────────────────────────── */
+#constellation-wrap {
+  margin-top: 32px; border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden; background: var(--bg2);
+}
 
-## 2\. Next Steps: Controls Rationalisation at Scale
+/* ── CHIPS ─────────────────────────────────────────────────────────────── */
+.chip {
+  display: inline-block; font-family: var(--mono); font-size: 9px;
+  font-weight: 600; padding: 2px 8px; border-radius: 100px; letter-spacing: .04em;
+}
+.chip-red    { background: color-mix(in srgb,var(--red)    15%,transparent); color: var(--red);    border: 1px solid color-mix(in srgb,var(--red)    30%,transparent); }
+.chip-amber  { background: color-mix(in srgb,var(--amber)  15%,transparent); color: var(--amber);  border: 1px solid color-mix(in srgb,var(--amber)  30%,transparent); }
+.chip-green  { background: color-mix(in srgb,var(--green)  15%,transparent); color: var(--green);  border: 1px solid color-mix(in srgb,var(--green)  30%,transparent); }
+.chip-blue   { background: color-mix(in srgb,var(--blue)   15%,transparent); color: var(--blue);   border: 1px solid color-mix(in srgb,var(--blue)   30%,transparent); }
+.chip-purple { background: color-mix(in srgb,var(--purple) 15%,transparent); color: var(--purple); border: 1px solid color-mix(in srgb,var(--purple) 30%,transparent); }
 
-The proposed approach consists of two components:
+/* ── TECHNIQUE TABS ─────────────────────────────────────────────────────── */
+.tab-row { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 14px; }
+.tab-btn {
+  background: var(--bg3); border: 1px solid var(--border);
+  color: var(--fg2); font-family: var(--font); font-size: .78rem; font-weight: 500;
+  padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: all .12s;
+}
+.tab-btn:hover { color: var(--fg); }
+.tab-btn.on { background: color-mix(in srgb,var(--red) 12%,var(--bg2)); border-color: var(--red); color: var(--red); }
+.tab-panel { display: none; }
+.tab-panel.on { display: block; }
 
-### 2.1 One\-off Uplift
+/* ── CARDS ─────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 22px;
+}
+.card + .card { margin-top: 10px; }
+.card-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px; margin-top: 10px;
+}
+.card h3 { font-size: .9rem; font-weight: 600; margin-bottom: 8px; }
+.card p { font-size: .82rem; }
 
-**Objective:** Rationalise end\-to\-end controls across each Delivery Unit to enable automated, effective risk intelligence.
+/* code */
+.codeblock {
+  font-family: var(--mono); font-size: .75rem;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 6px; padding: 12px 14px; margin-top: 10px;
+  color: var(--blue); overflow-x: auto; white-space: pre; line-height: 1.6;
+}
 
-Required actions:
+/* ── FINDING CARDS ─────────────────────────────────────────────────────── */
+.finding-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px; margin-top: 28px;
+}
+.fc {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 20px 18px; position: relative;
+  overflow: hidden; transition: transform .18s, border-color .18s;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.fc::after {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+}
+.fc-retain::after  { background: var(--green); }
+.fc-redundant::after { background: var(--red); }
+.fc-psf::after   { background: var(--amber); }
+.fc-cco::after   { background: var(--purple); }
+.fc-unclear::after { background: var(--fg3); }
+.fc:hover { transform: translateY(-2px); border-color: var(--fg3); }
+.fc-icon { font-size: 1.5rem; line-height: 1; }
+.fc-name {
+  font-size: .88rem; font-weight: 700; color: var(--fg); line-height: 1.2;
+  /* no truncation — full text visible */
+}
+.fc-retain .fc-name  { color: var(--green); }
+.fc-redundant .fc-name { color: var(--red); }
+.fc-psf .fc-name   { color: var(--amber); }
+.fc-cco .fc-name   { color: var(--purple); }
+.fc-unclear .fc-name { color: var(--fg3); }
+.fc-desc { font-size: .75rem; color: var(--fg2); line-height: 1.45; }
 
-1. **Standardise risk\-class inputs**
-    - Standardise inputs including obligation requirements and control requirements.
-2. **Improve contextual data quality**
-    - Uplift minimum process and product data quality across Delivery Units.
-    - The objective is to enable consistent rationalisation outcomes.
-3. **Industrialise the rationalisation methodology**
-    - Industrialise and apply the controls rationalisation model.
-    - Use the model to establish Delivery Unit implementation roadmaps.
+/* ── BIG NUMBERS ───────────────────────────────────────────────────────── */
+.bn-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1px; background: var(--border); border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden; margin-top: 30px;
+}
+.bn-cell {
+  background: var(--bg2); padding: 24px 20px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.bn-num {
+  font-size: 2.4rem; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.bn-label { font-size: .78rem; font-weight: 600; color: var(--fg); }
+.bn-sub { font-family: var(--mono); font-size: .68rem; color: var(--fg3); }
 
----
+/* ── PROGRESS ───────────────────────────────────────────────────────────── */
+.prog-list { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
+.prog-row { display: flex; flex-direction: column; gap: 4px; }
+.prog-head { display: flex; justify-content: space-between; align-items: baseline; }
+.prog-name { font-size: .78rem; font-weight: 500; color: var(--fg); }
+.prog-pct { font-family: var(--mono); font-size: .72rem; color: var(--fg3); }
+.prog-track { height: 7px; background: var(--bg3); border-radius: 100px; overflow: hidden; }
+.prog-fill { height: 100%; border-radius: 100px; width: 0; transition: width 1.3s cubic-bezier(.4,0,.2,1); }
 
-### 2.2 Continuous Integrity
+/* ── CHALLENGES ─────────────────────────────────────────────────────────── */
+.ch-list { display: flex; flex-direction: column; gap: 8px; margin-top: 28px; }
+.ch {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden; cursor: pointer;
+}
+.ch-hd {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 18px; user-select: none;
+}
+.ch-icon {
+  width: 30px; height: 30px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0;
+}
+.ci-r { background: color-mix(in srgb,var(--red)    12%,transparent); }
+.ci-a { background: color-mix(in srgb,var(--amber)  12%,transparent); }
+.ci-b { background: color-mix(in srgb,var(--blue)   12%,transparent); }
+.ci-p { background: color-mix(in srgb,var(--purple) 12%,transparent); }
+.ci-g { background: color-mix(in srgb,var(--green)  12%,transparent); }
+.ch-ttl { font-weight: 600; font-size: .88rem; flex: 1; }
+.ch-caret { font-size: 11px; color: var(--fg3); transition: transform .2s; }
+.ch.open .ch-caret { transform: rotate(180deg); }
+.ch-body {
+  display: none; padding: 0 18px 16px 60px;
+  font-size: .82rem; color: var(--fg2); line-height: 1.6;
+}
+.ch.open .ch-body { display: block; }
 
-**Objective:** Establish continuous controls validation to support sustainable controls maintenance.
+/* ── NEXT STEPS ─────────────────────────────────────────────────────────── */
+.horizon {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px; margin-top: 30px;
+}
+.hz {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 22px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.hz-n {
+  font-size: 2.6rem; font-weight: 700; line-height: 1;
+  color: var(--border); font-variant-numeric: tabular-nums;
+}
+.hz-title { font-weight: 700; font-size: .95rem; }
+.hz-desc { font-size: .82rem; color: var(--fg2); line-height: 1.55; }
+.hz-tag { margin-top: auto; }
 
-Required capabilities:
+/* ── FOOTER ─────────────────────────────────────────────────────────────── */
+footer {
+  padding: 24px max(28px, env(safe-area-inset-left,0px));
+  background: var(--bg2); border-top: 1px solid var(--border);
+  display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+}
+footer span { font-family: var(--mono); font-size: 10px; color: var(--fg3); }
 
-1. **Automation, gap remediation and benchmarking**
-    - Drive automation.
-    - Remediate control gaps.
-    - Prioritise a "single best way" approach through AI\-enabled best\-of\-breed benchmarking.
-2. **Automated impact assessment**
-    - Automate assessment of: 
-        - new obligations
-        - new controls
-        - changes to the existing control environment
-3. **Continuous monitoring**
-    - Continuously monitor the control environment.
+/* ── RESPONSIVE ─────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  section { padding-top: 80px; padding-bottom: 56px; }
+  h1 { font-size: 1.9rem; }
+  h2 { font-size: 1.5rem; }
+  .stat-strip { flex-direction: column; }
+  .bn-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+</style>
 
----
+<!-- NAV -->
+<nav id="nav">
+  <div class="nav-brand">
+    <!-- Westpac W mark -->
+    <svg class="nav-w" viewBox="0 0 44 44" fill="none">
+      <rect width="44" height="44" rx="6" fill="#DA2032"/>
+      <path d="M6 11 L13 33 L19 18 L22 28 L25 18 L31 33 L38 11" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+    <span class="nav-title">Payments Controls PoC</span>
+  </div>
+  <div class="nav-items">
+    <button class="nav-btn" onclick="goTo('hero')">Overview</button>
+    <button class="nav-btn" onclick="goTo('problem')">Problem</button>
+    <button class="nav-btn" onclick="goTo('approach')">Approach</button>
+    <button class="nav-btn" onclick="goTo('techniques')">Techniques</button>
+    <button class="nav-btn" onclick="goTo('challenges')">Challenges</button>
+    <button class="nav-btn" onclick="goTo('outcomes')">Outcomes</button>
+    <button class="nav-btn" onclick="goTo('next')">Next Steps</button>
+  </div>
+  <div class="nav-end">
+    <button class="theme-btn" onclick="toggleTheme()">◑</button>
+  </div>
+</nav>
 
-## Logical Interpretation
+<!-- ════ HERO ════ -->
+<section id="hero">
+  <canvas id="hero-canvas"></canvas>
+  <div class="hero-inner">
+    <div class="hero-pill"><span class="pulse"></span>Risk Data Office · 2026 Proof of Concept</div>
+    <h1 class="hero-title">
+      1,379 controls.<br>
+      <span class="red">Mapped. Rationalised. Prioritised.</span>
+    </h1>
+    <p class="hero-sub">AI-powered control rationalisation at Westpac scale using embeddings, two-pass language models, and a consolidated data architecture.</p>
+    <div class="stat-strip">
+      <div class="stat-cell">
+        <span class="stat-num red counter" data-t="1379">0</span>
+        <span class="stat-lbl">Controls in scope</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-num green counter" data-t="62">0</span>
+        <span class="stat-lbl">% Modelled reduction</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-num amber counter" data-t="516">0</span>
+        <span class="stat-lbl">Controls post-rationalisation</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-num blue counter" data-t="4">0</span>
+        <span class="stat-lbl">Source systems unified</span>
+      </div>
+    </div>
+    <div class="scroll-cue"><div class="scroll-ring">↓</div>Scroll to explore</div>
+  </div>
+</section>
 
-The proof of concept identifies three distinct opportunities within the control environment:
+<!-- ════ PROBLEM ════ -->
+<section id="problem">
+  <div class="inner">
+    <div class="eyebrow">01 · The Problem</div>
+    <h2>Three systems. Partial linkage. No complete picture.</h2>
+    <p>Payments controls data lived across JUNO, Holocentric, and Alfabet. A deterministic linkage existed between Holocentric and JUNO, but only at the L3 activity level. L2 process linkage was not possible because of a missing UUID, leaving a significant portion of controls without a process anchor.</p>
 
-- **Remove or reconsider controls that are not relevant or key to the applicable risk class.**
-- **Consolidate controls that are duplicated, fragmented or redundant.**
-- **Improve contextual process, product and system data so that control rationalisation can be performed reliably and increasingly through automation.**
+    <!-- animated constellation -->
+    <div id="constellation-wrap" style="height:300px; position:relative; border:1px solid var(--border); border-radius:10px; overflow:hidden; margin-top:32px; background:var(--bg2);">
+      <canvas id="constellation" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+    </div>
 
-The proposed target state extends beyond a one\-off reduction in control numbers. It combines an initial rationalisation and data\-quality uplift with an ongoing capability for control validation, impact assessment, benchmarking and monitoring.
+    <div class="card-row" style="margin-top:20px">
+      <div class="card">
+        <div style="font-size:1.8rem;margin-bottom:6px">708</div>
+        <h3>Payments controls</h3>
+        <p>Across 75 products and 28 control objective groups described entirely in natural language.</p>
+      </div>
+      <div class="card">
+        <div style="font-size:1.4rem;margin-bottom:6px">L3 only</div>
+        <h3>Process linkage</h3>
+        <p>The Holocentric to JUNO linkage was deterministic but capped at L3 activity level. Controls without a Holocentric linkage were excluded or evaluated manually.</p>
+      </div>
+      <div class="card">
+        <div style="font-size:1.8rem;margin-bottom:6px">3</div>
+        <h3>Source systems</h3>
+        <p>JUNO (control register, nature data), Holocentric (process models), and Alfabet (application architecture). No shared key across all three.</p>
+      </div>
+    </div>
+  </div>
+</section>
 
+<!-- ════ APPROACH ════ -->
+<section id="approach">
+  <div class="inner">
+    <div class="eyebrow">02 · Our Approach</div>
+    <h2>Five steps. One pipeline.</h2>
+    <p>Each stage built on the last, from raw data consolidation through to structured recommendations.</p>
+
+    <div class="pipeline" id="pipeline">
+      <div class="pl-step">
+        <div class="pl-left"><div class="pl-num">01</div><div class="pl-line"></div></div>
+        <div class="pl-body">
+          <div class="pl-tag">Foundation</div>
+          <div class="pl-title">Build the Big Table</div>
+          <div class="pl-text">Consolidated JUNO, Holocentric, and Alfabet into one enriched record per control. Nature alignment (Preventative / Detective) was read from JUNO's CTRL_NATRE field. Process linkage came from Holocentric at L3 activity level only. Controls absent from the Holocentric linkage file were excluded from automated assessment.</div>
+        </div>
+      </div>
+      <div class="pl-step">
+        <div class="pl-left"><div class="pl-num">02</div><div class="pl-line"></div></div>
+        <div class="pl-body">
+          <div class="pl-tag">Semantic Layer</div>
+          <div class="pl-title">Generate 3,072-Dimensional Embeddings</div>
+          <div class="pl-text">Every control's name + objective text was encoded by <code>text-embedding-3-large</code>. Cosine similarity across all within-scope pairs surfaced semantic matches; identical wording not required.</div>
+        </div>
+      </div>
+      <div class="pl-step">
+        <div class="pl-left"><div class="pl-num">03</div><div class="pl-line"></div></div>
+        <div class="pl-body">
+          <div class="pl-tag">Dimension 1: 75 Products</div>
+          <div class="pl-title">Product-Level Rationalisation</div>
+          <div class="pl-text">Similar controls passed to GPT-5.4 in sub-batches of 5. Each control classified: Retain / Redundant / Process-Split Fragmentation / Common Control Opportunity. Structured rationale, group IDs, and confidence ratings for every output row.</div>
+        </div>
+      </div>
+      <div class="pl-step">
+        <div class="pl-left"><div class="pl-num">04</div><div class="pl-line"></div></div>
+        <div class="pl-body">
+          <div class="pl-tag">Dimension 2: 28 Control Groups</div>
+          <div class="pl-title">Two-Pass Best-of-Breed Selection</div>
+          <div class="pl-text">Pass 1: per-control design assessment against group-specific principles. Pass 2: relative ranking across Automated and Manual populations, selecting one best-of-breed per group. Nature alignment (Preventative / Detective) sourced from JUNO, never inferred by the model.</div>
+        </div>
+      </div>
+      <div class="pl-step">
+        <div class="pl-left"><div class="pl-num">05</div><div class="pl-line"></div></div>
+        <div class="pl-body">
+          <div class="pl-tag">Output + Validation</div>
+          <div class="pl-title">SME Review and Traceable Findings</div>
+          <div class="pl-text">Rather than using multiple LLMs to reduce hallucinations, the PoC relied on human SME validation as the quality gate. Risk and Compliance subject matter experts reviewed findings before any conclusions were accepted. Per-group Excel workbooks with full LLM audit log and prompt versioning for traceability.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════ TECHNIQUES ════ -->
+<section id="techniques">
+  <div class="inner">
+    <div class="eyebrow">03 · Technical Deep Dive</div>
+    <h2>What made it possible</h2>
+    <p>Five components, each solving a problem no simpler approach could handle at this scale.</p>
+
+    <div style="margin-top:28px">
+      <div class="tab-row">
+        <button class="tab-btn on" onclick="showTab('emb',this)">Embeddings</button>
+        <button class="tab-btn" onclick="showTab('twopass',this)">Two-Pass LLM</button>
+        <button class="tab-btn" onclick="showTab('bigtable',this)">Big Table</button>
+        <button class="tab-btn" onclick="showTab('uf',this)">Group Deduplication</button>
+        <button class="tab-btn" onclick="showTab('cp',this)">Checkpointing</button>
+      </div>
+
+      <!-- EMBEDDINGS -->
+      <div class="tab-panel on" id="tab-emb">
+        <div class="card">
+          <h3>text-embedding-3-large &nbsp;·&nbsp; 3,072 dimensions</h3>
+          <p>Keyword search fails when controls describe the same risk in different language. Embeddings encode <em>meaning</em>: semantically similar controls cluster in vector space regardless of wording. We computed cosine similarity for all pairs within each product and control group scope, then fed the high-similarity candidates to GPT-5.4 for context-aware classification.</p>
+          <div id="embed-vis" style="margin-top:16px; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--bg3);">
+            <canvas id="embed-canvas" style="display:block;width:100%;" height="220"></canvas>
+          </div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--fg3);margin-top:6px">Illustrative 2D projection. Controls cluster by semantic purpose, not keyword overlap.</div>
+        </div>
+        <div class="card-row">
+          <div class="card"><span class="chip chip-blue" style="margin-bottom:6px">Dimension 1</span><h3>75 product scopes</h3><p>All pairs within each product scope saved with no similarity threshold, so no control was silently excluded from assessment.</p></div>
+          <div class="card"><span class="chip chip-amber" style="margin-bottom:6px">Dimension 2</span><h3>28 control objective groups</h3><p>Controls compared within each of the 28 control objective groups, covering the full 708 payments controls population.</p></div>
+        </div>
+      </div>
+
+      <!-- TWO PASS -->
+      <div class="tab-panel" id="tab-twopass">
+        <div class="card">
+          <h3>Pass 1: Design assessment per control</h3>
+          <p>Each control assessed against its group's design principles (CT4 Automated: 7 principles; CT4 Manual: 6 different principles). Sub-batches of 5 per LLM call for quality and targeted retry. Output: design strength rating per principle, red flags, objective alignment, overall comments.</p>
+        </div>
+        <div class="card">
+          <h3>Pass 2: Relative ranking</h3>
+          <p>Full population passed for ranking. Automated and Manual populations treated separately. Nature alignment gate: a Not Aligned control cannot rank first if any Aligned control exists.</p>
+          <div class="codeblock">Ranking criteria:
+  1. Design strength + expected nature alignment (source-driven)
+  2. Control objective alignment
+  3. Coverage breadth  (products × apps × processes)</div>
+        </div>
+      </div>
+
+      <!-- BIG TABLE -->
+      <div class="tab-panel" id="tab-bigtable">
+        <div class="card">
+          <h3>Multi-signal linkage · no shared key</h3>
+          <p>JUNO held the control register and nature data (CTRL_NATRE). Holocentric provided process model nodes linked to JUNO deterministically at L3 activity level only; no L2 process linkage was possible due to a missing UUID. Alfabet provided application architecture. Controls absent from the Holocentric linkage file were excluded from automated assessment.</p>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">
+            <span class="chip chip-red">Control_ID (JUNO)</span>
+            <span class="chip chip-red">CTRL_NATRE (JUNO)</span>
+            <span class="chip chip-amber">l3_process_UUID (Holocentric)</span>
+            <span class="chip chip-amber">Product_Scope (JUNO)</span>
+            <span class="chip chip-green">n_linked_apps (Alfabet)</span>
+            <span class="chip chip-green">n_linked_products</span>
+            <span class="chip chip-blue">CT_Group</span>
+            <span class="chip chip-purple">n_linked_processes (L3 only)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- UNION FIND -->
+      <div class="tab-panel" id="tab-uf">
+        <div class="card">
+          <h3>The collision problem</h3>
+          <p>When one prompt contained two independent fragmentation groups, the model assigned "P-1" to both. Naive grouping would merge unrelated controls.</p>
+          <div class="codeblock">Control A → P-1  ← Maker/checker flow
+Control B → P-1  ← Reconciliation flow  ← WRONG GROUP
+Control C → P-1  ← Maker/checker flow</div>
+        </div>
+        <div class="card">
+          <h3>Fix: union-find over membership lists</h3>
+          <p>We built a graph from each control's declared group members, then ran union-find to identify true connected components. Each component was renumbered sequentially; no two disconnected components share an ID.</p>
+          <div class="codeblock">reconcile_group_ids():
+  1. Build edges from fragmented_control_id_group
+  2. Union-find → true components
+  3. Renumber P-1/P-2, CC-1/CC-2, R-1/R-2…
+  4. Verify: zero ID conflicts remain</div>
+        </div>
+      </div>
+
+      <!-- CHECKPOINT -->
+      <div class="tab-panel" id="tab-cp">
+        <div class="card">
+          <h3>Resilience across hundreds of LLM calls</h3>
+          <p>JSONL checkpoint after every batch. On connection errors (stale proxy at <code>127.0.0.1:9000</code>): 90-second wait then fresh client, not a backoff retry on the same dead connection. Every checkpoint record carries a prompt version hash. Stale records are ignored and regenerated on resume.</p>
+          <div class="codeblock">PROMPT_VERSION = "2026-08-20-nature-gated-v1"
+
+# Resume: records without current version → regenerated
+# Connection error → sleep(90) → new AzureOpenAI()
+# API error → exponential backoff on same client</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════ CHALLENGES ════ -->
+<section id="challenges">
+  <div class="inner">
+    <div class="eyebrow">04 · Challenges</div>
+    <h2>What we ran into. How we fixed it.</h2>
+
+    <div class="ch-list">
+      <div class="ch" onclick="openCh(this)">
+        <div class="ch-hd">
+          <div class="ch-icon ci-r">🔗</div>
+          <div class="ch-ttl">Stale proxy connections</div>
+          <div class="ch-caret">▼</div>
+        </div>
+        <div class="ch-body">Azure OpenAI calls through the internal proxy hit stale TCP connections. Standard backoff retried on the same dead connection. <strong>Fix:</strong> detect connection errors separately → 90s sleep → create a fresh <code>AzureOpenAI</code> client. Never reuse a client across retry calls.</div>
+      </div>
+      <div class="ch" onclick="openCh(this)">
+        <div class="ch-hd">
+          <div class="ch-icon ci-a">👻</div>
+          <div class="ch-ttl">Orphaned controls missing from output</div>
+          <div class="ch-caret">▼</div>
+        </div>
+        <div class="ch-body">Controls with no high-similarity neighbours were silently excluded when we filtered pairs below a threshold. <strong>Fix:</strong> remove the threshold entirely. Absorb orphaned controls into batch 0 so every control in scope gets assessed.</div>
+      </div>
+      <div class="ch" onclick="openCh(this)">
+        <div class="ch-hd">
+          <div class="ch-icon ci-p">🔀</div>
+          <div class="ch-ttl">Group ID collisions</div>
+          <div class="ch-caret">▼</div>
+        </div>
+        <div class="ch-body">When a single prompt held two independent fragmentation groups, the model assigned "P-1" to both. Post-processing merged unrelated controls. <strong>Fix:</strong> union-find algorithm over declared membership lists. True connected components, renumbered sequentially.</div>
+      </div>
+      <div class="ch" onclick="openCh(this)">
+        <div class="ch-hd">
+          <div class="ch-icon ci-b">📊</div>
+          <div class="ch-ttl">Missing process linkage and data gaps</div>
+          <div class="ch-caret">▼</div>
+        </div>
+        <div class="ch-body">Controls without a Holocentric process linkage could not be automatically assessed against process context. They were either excluded from the automated run or escalated for manual SME evaluation. 50% of controls overall lacked sufficient contextual data, which became a key PoC finding defining what a data uplift programme must address before scaling.</div>
+      </div>
+      <div class="ch" onclick="openCh(this)">
+        <div class="ch-hd">
+          <div class="ch-icon ci-g">🎯</div>
+          <div class="ch-ttl">LLM-inferred nature alignment was inconsistent</div>
+          <div class="ch-caret">▼</div>
+        </div>
+        <div class="ch-body">Early prompts asked the model to infer Preventative vs Detective. Same control classified differently across runs. <strong>Fix:</strong> source-driven: read <code>CTRL_NATRE</code> from JUNO, compare to expected nature for the control objective group, deterministic Aligned / Not Aligned flag. This flag gates best-of-breed eligibility.</div>
+      </div>
+      <div class="ch" onclick="openCh(this)">
+        <div class="ch-hd">
+          <div class="ch-icon ci-a">🧑‍💼</div>
+          <div class="ch-ttl">Hallucination risk: SME validation over multi-model ensemble</div>
+          <div class="ch-caret">▼</div>
+        </div>
+        <div class="ch-body">In production we would use self-consistency techniques, running the same prompt across multiple model calls and taking the majority verdict, to reduce hallucinations. For the PoC, we relied on human SME validation instead. Risk and Compliance subject matter experts reviewed all LLM findings before any conclusions were accepted. This kept the PoC grounded in domain expertise rather than pure model output.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════ OUTCOMES ════ -->
+<section id="outcomes">
+  <div class="inner">
+    <div class="eyebrow">05 · Outcomes</div>
+    <h2>What the data told us</h2>
+
+    <div class="bn-grid">
+      <div class="bn-cell">
+        <div class="bn-num" style="color:var(--red)">1,379</div>
+        <div class="bn-label">Controls in scope</div>
+        <div class="bn-sub">Payments risk class · 75 products</div>
+      </div>
+      <div class="bn-cell">
+        <div class="bn-num" style="color:var(--blue)">38%</div>
+        <div class="bn-label">Not payments-relevant</div>
+        <div class="bn-sub">Scope reduction before analysis</div>
+      </div>
+      <div class="bn-cell">
+        <div class="bn-num" style="color:var(--amber)">50%</div>
+        <div class="bn-label">Lack contextual data</div>
+        <div class="bn-sub">Data uplift needed</div>
+      </div>
+      <div class="bn-cell">
+        <div class="bn-num" style="color:var(--green)">62%</div>
+        <div class="bn-label">Modelled reduction</div>
+        <div class="bn-sub">1,379 → 516 controls</div>
+      </div>
+    </div>
+
+    <!-- animated bar + breakdown side by side -->
+    <div style="display:flex;gap:16px;margin-top:20px;flex-wrap:wrap;align-items:flex-start">
+      <div class="card" style="flex:1 1 240px">
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg3);margin-bottom:14px">Modelled reduction</div>
+        <!-- SVG bar -->
+        <svg id="bar-svg" viewBox="0 0 280 160" width="100%" style="overflow:visible">
+          <line x1="10" y1="140" x2="270" y2="140" stroke="var(--border)" stroke-width="1"/>
+          <!-- before bar -->
+          <rect id="bar-before" x="30" y="140" width="80" height="0" fill="var(--red)" rx="4" opacity=".9"/>
+          <text x="70" y="12" text-anchor="middle" font-size="13" font-weight="700" fill="var(--fg)" font-family="Inter,sans-serif" id="lbl-before">1,379</text>
+          <!-- after bar -->
+          <rect id="bar-after" x="170" y="140" width="80" height="0" fill="var(--green)" rx="4" opacity=".9"/>
+          <text x="210" y="85" text-anchor="middle" font-size="13" font-weight="700" fill="var(--fg)" font-family="Inter,sans-serif" id="lbl-after" opacity="0">516</text>
+          <!-- x labels -->
+          <text x="70" y="156" text-anchor="middle" font-size="10" fill="var(--fg2)" font-family="Inter,sans-serif">Current</text>
+          <text x="210" y="156" text-anchor="middle" font-size="10" fill="var(--fg2)" font-family="Inter,sans-serif">Rationalised</text>
+          <!-- reduction label -->
+          <text x="140" y="66" text-anchor="middle" font-size="10" fill="var(--amber)" font-weight="600" font-family="Inter,sans-serif" id="lbl-pct" opacity="0">↓ 62%</text>
+        </svg>
+      </div>
+
+      <div class="card" style="flex:1 1 240px">
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg3);margin-bottom:14px">Finding breakdown</div>
+        <div class="prog-list" id="prog-block">
+          <div class="prog-row"><div class="prog-head"><span class="prog-name">Retain</span><span class="prog-pct">~40%</span></div><div class="prog-track"><div class="prog-fill" style="background:var(--green)" data-w="40"></div></div></div>
+          <div class="prog-row"><div class="prog-head"><span class="prog-name">Common Control Opportunity</span><span class="prog-pct">~25%</span></div><div class="prog-track"><div class="prog-fill" style="background:var(--purple)" data-w="25"></div></div></div>
+          <div class="prog-row"><div class="prog-head"><span class="prog-name">Process-Split Fragmentation</span><span class="prog-pct">~20%</span></div><div class="prog-track"><div class="prog-fill" style="background:var(--amber)" data-w="20"></div></div></div>
+          <div class="prog-row"><div class="prog-head"><span class="prog-name">Redundant</span><span class="prog-pct">~10%</span></div><div class="prog-track"><div class="prog-fill" style="background:var(--red)" data-w="10"></div></div></div>
+          <div class="prog-row"><div class="prog-head"><span class="prog-name">Unclear</span><span class="prog-pct">~5%</span></div><div class="prog-track"><div class="prog-fill" style="background:var(--fg3)" data-w="5"></div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="finding-grid">
+      <div class="fc fc-retain">
+        <div class="fc-icon">✅</div>
+        <div class="fc-name">Retain</div>
+        <div class="fc-desc">Distinct and necessary. Unique risk coverage. Cannot be safely consolidated.</div>
+      </div>
+      <div class="fc fc-redundant">
+        <div class="fc-icon">🗑️</div>
+        <div class="fc-name">Redundant</div>
+        <div class="fc-desc">No incremental coverage. Another control already mitigates the same risk more effectively.</div>
+      </div>
+      <div class="fc fc-psf">
+        <div class="fc-icon">🔗</div>
+        <div class="fc-name">Process-Split Fragmentation</div>
+        <div class="fc-desc">Multiple controls forming stages of one end-to-end activity, artificially separated.</div>
+      </div>
+      <div class="fc fc-cco">
+        <div class="fc-icon">⚡</div>
+        <div class="fc-name">Common Control Opportunity</div>
+        <div class="fc-desc">Same activity running independently across products or business units. Standardise into one.</div>
+      </div>
+      <div class="fc fc-unclear">
+        <div class="fc-icon">❓</div>
+        <div class="fc-name">Unclear</div>
+        <div class="fc-desc">Insufficient data to classify confidently. Data uplift required before automated assessment.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════ NEXT STEPS ════ -->
+<section id="next">
+  <div class="inner">
+    <div class="eyebrow">06 · Next Steps</div>
+    <h2>From PoC to production</h2>
+    <p>Two parallel workstreams convert findings into lasting change, plus a third that scales the entire capability.</p>
+
+    <div class="horizon">
+      <div class="hz">
+        <div class="hz-n">01</div>
+        <div class="hz-title">One-off controls uplift</div>
+        <div class="hz-desc">Act on PoC findings: retire redundancies, merge fragmented controls, standardise Common Control Opportunities. Requires engagement with control owners to execute rationalisation decisions.</div>
+        <div class="hz-tag"><span class="chip chip-amber">Near-term</span></div>
+      </div>
+      <div class="hz">
+        <div class="hz-n">02</div>
+        <div class="hz-title">Data quality programme</div>
+        <div class="hz-desc">50% of controls lacked sufficient contextual data. A structured uplift (richer objectives, complete application linkage, process step narratives) is a prerequisite for high-confidence automation at scale.</div>
+        <div class="hz-tag"><span class="chip chip-red">Foundational</span></div>
+      </div>
+      <div class="hz">
+        <div class="hz-n">03</div>
+        <div class="hz-title">Continuous integrity capability</div>
+        <div class="hz-desc">Scale from 1,379 payments controls to the full 7,500+ Westpac inventory. Run periodically to detect new redundancies, emerging fragmentation, and drift from best-of-breed baselines.</div>
+        <div class="hz-tag"><span class="chip chip-blue">Strategic</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:20px; border-color: color-mix(in srgb, var(--red) 30%, var(--border));">
+      <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <h3 style="color:var(--red);margin-bottom:8px">The bigger picture</h3>
+          <p>This PoC shows that AI-assisted control rationalisation is not just possible; it is necessary at Westpac's scale. Manual review of 26,000+ pairs is not feasible. The Risk Data Office now has a replicable, auditable, and scalable methodology ready to run on the full control inventory.</p>
+        </div>
+        <div style="text-align:center;padding:20px 28px;background:var(--bg3);border-radius:8px;border:1px solid var(--border);flex-shrink:0">
+          <div style="font-size:2.4rem;font-weight:700;color:var(--green)">7,500+</div>
+          <div style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg3);margin-top:4px">Controls in full inventory</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <span>Risk Data Office · Payments Controls PoC · 2026</span>
+  <span>GPT-5.4 · text-embedding-3-large · 3,072 dimensions · Azure OpenAI · SME validated</span>
+</footer>
+
+<script>
+// ── THEME ──────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const r = document.documentElement;
+  const t = r.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+  r.setAttribute('data-theme', t);
+  try { localStorage.setItem('poc-theme', t); } catch(e) {}
+  redrawAll();
+}
+try {
+  const s = localStorage.getItem('poc-theme');
+  if (s) document.documentElement.setAttribute('data-theme', s);
+} catch(e) {}
+
+// ── NAV ACTIVE ─────────────────────────────────────────────────────────────
+function goTo(id) { document.getElementById(id).scrollIntoView({ behavior: 'smooth' }); }
+const secs = document.querySelectorAll('section');
+const nbtns = document.querySelectorAll('.nav-btn');
+function updateNav() {
+  let cur = '';
+  secs.forEach(s => { if (window.scrollY >= s.offsetTop - 60) cur = s.id; });
+  nbtns.forEach(b => {
+    const id = b.getAttribute('onclick').match(/'([^']+)'/)?.[1];
+    b.classList.toggle('active', id === cur);
+  });
+}
+window.addEventListener('scroll', updateNav, { passive: true });
+updateNav();
+
+// ── TABS ──────────────────────────────────────────────────────────────────
+function showTab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('on'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('on'));
+  document.getElementById('tab-' + id).classList.add('on');
+  btn.classList.add('on');
+}
+
+// ── ACCORDIONS ────────────────────────────────────────────────────────────
+function openCh(el) {
+  const was = el.classList.contains('open');
+  document.querySelectorAll('.ch.open').forEach(c => c.classList.remove('open'));
+  if (!was) el.classList.add('open');
+}
+
+// ── COUNTERS ──────────────────────────────────────────────────────────────
+function animNum(el) {
+  const target = parseInt(el.dataset.t);
+  const dur = 1600;
+  const t0 = performance.now();
+  (function step(now) {
+    const p = Math.min((now - t0) / dur, 1);
+    const e = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.floor(e * target).toLocaleString();
+    if (p < 1) requestAnimationFrame(step);
+    else el.textContent = target.toLocaleString();
+  })(t0);
+}
+const counters = document.querySelectorAll('.counter');
+const cObs = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting && !e.target.dataset.done) {
+      e.target.dataset.done = '1';
+      animNum(e.target);
+    }
+  });
+}, { threshold: .3 });
+counters.forEach(c => cObs.observe(c));
+
+// ── PROGRESS BARS ─────────────────────────────────────────────────────────
+const prog = document.getElementById('prog-block');
+const pObs = new IntersectionObserver(es => {
+  if (es[0].isIntersecting) {
+    document.querySelectorAll('.prog-fill').forEach(f => f.style.width = f.dataset.w + '%');
+    pObs.disconnect();
+  }
+}, { threshold: .2 });
+if (prog) pObs.observe(prog);
+
+// ── TIMELINE STEP REVEAL ──────────────────────────────────────────────────
+const steps = document.querySelectorAll('.pl-step');
+const stObs = new IntersectionObserver(es => {
+  es.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: .2 });
+steps.forEach((s, i) => { s.style.transitionDelay = (i * 0.1) + 's'; stObs.observe(s); });
+
+// ── ANIMATED BAR CHART ────────────────────────────────────────────────────
+const barSection = document.getElementById('outcomes');
+let barDone = false;
+const barObs = new IntersectionObserver(es => {
+  if (es[0].isIntersecting && !barDone) {
+    barDone = true;
+    const H_MAX = 120;
+    const dur = 1400;
+    const t0 = performance.now();
+    (function step(now) {
+      const p = Math.min((now - t0) / dur, 1);
+      const e = 1 - Math.pow(1 - p, 3);
+      const hBefore = e * H_MAX;
+      const hAfter  = e * H_MAX * (516/1379);
+      const bB = document.getElementById('bar-before');
+      const bA = document.getElementById('bar-after');
+      if (bB) { bB.setAttribute('y', 140 - hBefore); bB.setAttribute('height', hBefore); }
+      if (bA) { bA.setAttribute('y', 140 - hAfter);  bA.setAttribute('height', hAfter); }
+      if (p > .6) {
+        const a = document.getElementById('lbl-after');
+        const r = document.getElementById('lbl-pct');
+        const lblY = 140 - hAfter - 12;
+        if (a) { a.setAttribute('y', Math.max(lblY, 10)); a.setAttribute('opacity', ((p-.6)/.4).toFixed(2)); }
+        if (r) { r.setAttribute('opacity', ((p-.6)/.4).toFixed(2)); }
+      }
+      if (p < 1) requestAnimationFrame(step);
+    })(t0);
+  }
+}, { threshold: .3 });
+barObs.observe(barSection);
+
+// ── HERO CANVAS (animated particles) ─────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('hero-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let W, H, pts;
+  function resize() {
+    W = canvas.width  = canvas.offsetWidth;
+    H = canvas.height = canvas.offsetHeight;
+  }
+  function initPts() {
+    pts = Array.from({length: 60}, () => ({
+      x: Math.random() * W, y: Math.random() * H,
+      vx: (Math.random() - .5) * .3, vy: (Math.random() - .5) * .3,
+    }));
+  }
+  function getColor(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    const fg3 = getColor('--fg3');
+    const red = getColor('--red');
+    // move
+    pts.forEach(p => {
+      p.x = (p.x + p.vx + W) % W;
+      p.y = (p.y + p.vy + H) % H;
+    });
+    // lines
+    ctx.lineWidth = .5;
+    for (let i = 0; i < pts.length; i++) {
+      for (let j = i + 1; j < pts.length; j++) {
+        const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
+        const d = Math.sqrt(dx*dx + dy*dy);
+        if (d < 100) {
+          ctx.strokeStyle = `rgba(218,32,50,${.15 * (1 - d/100)})`;
+          ctx.beginPath(); ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[j].x, pts[j].y); ctx.stroke();
+        }
+      }
+    }
+    // dots
+    pts.forEach(p => {
+      ctx.fillStyle = fg3;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 1.5, 0, Math.PI*2); ctx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
+  resize(); initPts();
+  window.addEventListener('resize', () => { resize(); initPts(); });
+  draw();
+})();
+
+// ── CONSTELLATION (problem section) ───────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('constellation');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const nodes = [
+    { label: 'JUNO',       sub: 'Control Register',     col: '#DA2032' },
+    { label: 'Holocentric', sub: 'Process Models (L3)', col: '#f59e0b' },
+    { label: 'Alfabet',    sub: 'App Architecture',     col: '#38bdf8' },
+  ];
+  const BIG = { label: 'Big Table', sub: 'Unified Control Record', col: '#ffffff' };
+  let W, H, t = 0;
+  function resize() {
+    W = canvas.width  = canvas.offsetWidth * (window.devicePixelRatio || 1);
+    H = canvas.height = canvas.offsetHeight * (window.devicePixelRatio || 1);
+    canvas.style.width  = canvas.offsetWidth + 'px';
+    canvas.style.height = canvas.offsetHeight + 'px';
+  }
+  function getVar(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+  function draw() {
+    t += .008;
+    ctx.clearRect(0, 0, W, H);
+    const bg2 = getVar('--bg2');
+    ctx.fillStyle = bg2; ctx.fillRect(0, 0, W, H);
+
+    const scale = W / (window.devicePixelRatio || 1) < 500 ? .6 : 1;
+    const cx = W / 2, cy = H / 2;
+    const orbitR = Math.min(W, H) * .3 * scale;
+
+    // positions
+    const positions = nodes.map((n, i) => {
+      const angle = (i / 3) * Math.PI * 2 + t * .4;
+      return { x: cx + Math.cos(angle) * orbitR, y: cy + Math.sin(angle) * orbitR, ...n };
+    });
+    const centre = { x: cx, y: cy, ...BIG };
+
+    // lines to centre
+    const pct = (Math.sin(t * 2) + 1) / 2; // 0–1 pulse
+    positions.forEach(p => {
+      const grad = ctx.createLinearGradient(p.x, p.y, cx, cy);
+      grad.addColorStop(0, p.col + '60');
+      grad.addColorStop(1, '#ffffff40');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 1 * scale;
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(cx, cy); ctx.stroke();
+      ctx.setLineDash([]);
+      // moving dot on line
+      const mx = p.x + (cx - p.x) * ((t * .5) % 1);
+      const my = p.y + (cy - p.y) * ((t * .5) % 1);
+      ctx.fillStyle = p.col;
+      ctx.beginPath(); ctx.arc(mx, my, 3 * scale, 0, Math.PI*2); ctx.fill();
+    });
+
+    // draw outer nodes
+    positions.forEach(p => {
+      const r = 24 * scale;
+      ctx.fillStyle = p.col + '20';
+      ctx.strokeStyle = p.col;
+      ctx.lineWidth = 1.5 * scale;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = p.col;
+      ctx.font = `bold ${12 * scale}px Inter,sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(p.label, p.x, p.y);
+      ctx.fillStyle = getVar('--fg3');
+      ctx.font = `${9 * scale}px Inter,sans-serif`;
+      ctx.fillText(p.sub, p.x, p.y + 18 * scale);
+    });
+
+    // centre node (pulsing)
+    const cr = (32 + Math.sin(t * 3) * 3) * scale;
+    ctx.fillStyle = '#ffffff15';
+    ctx.strokeStyle = '#ffffff60';
+    ctx.lineWidth = 1.5 * scale;
+    ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${12 * scale}px Inter,sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Big Table', cx, cy - 7 * scale);
+    ctx.fillStyle = getVar('--fg3');
+    ctx.font = `${9 * scale}px Inter,sans-serif`;
+    ctx.fillText('Unified Record', cx, cy + 8 * scale);
+
+    requestAnimationFrame(draw);
+  }
+  resize();
+  new ResizeObserver(resize).observe(canvas.parentElement);
+  draw();
+})();
+
+// ── EMBEDDING VIS ─────────────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('embed-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const clusters = [
+    { label: 'Exception Monitoring', col: '#DA2032', cx: .18, cy: .38,
+      pts: [[.09,.26],[.14,.22],[.12,.34],[.19,.19],[.22,.28],[.08,.40],[.16,.44],[.20,.34],[.10,.48],[.25,.22]] },
+    { label: 'Maker-Checker Validation', col: '#38bdf8', cx: .65, cy: .30,
+      pts: [[.56,.22],[.60,.30],[.68,.22],[.72,.28],[.58,.38],[.74,.36],[.64,.44],[.70,.48],[.52,.32],[.76,.22]] },
+    { label: 'Reconciliation', col: '#22c55e', cx: .35, cy: .70,
+      pts: [[.28,.64],[.32,.72],[.38,.66],[.42,.74],[.30,.78],[.36,.82],[.44,.70],[.26,.76]] },
+    { label: 'Auth & Approval', col: '#f59e0b', cx: .78, cy: .70,
+      pts: [[.72,.64],[.76,.72],[.82,.66],[.86,.74],[.74,.78],[.80,.82],[.88,.68]] },
+  ];
+  let W, H;
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    W = canvas.parentElement.clientWidth;
+    H = 220;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.scale(dpr, dpr);
+  }
+  function getVar(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+  function drawEmbed() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = getVar('--bg3'); ctx.fillRect(0, 0, W, H);
+    // faint grid
+    ctx.strokeStyle = getVar('--border'); ctx.lineWidth = .5; ctx.setLineDash([2,4]);
+    for (let x = 0; x < W; x += 50) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 50) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+    ctx.setLineDash([]);
+    // blobs
+    clusters.forEach(c => {
+      const gx = c.cx * W, gy = c.cy * H;
+      const g = ctx.createRadialGradient(gx,gy,0,gx,gy,60);
+      g.addColorStop(0, c.col+'30'); g.addColorStop(1, c.col+'00');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(gx, gy, 60, 0, Math.PI*2); ctx.fill();
+    });
+    // dots
+    clusters.forEach(c => {
+      c.pts.forEach(([px,py]) => {
+        ctx.fillStyle = c.col + 'cc';
+        ctx.beginPath(); ctx.arc(px*W, py*H, 3.5, 0, Math.PI*2); ctx.fill();
+      });
+    });
+    // labels
+    ctx.textAlign = 'center';
+    clusters.forEach(c => {
+      ctx.font = `600 10px ${getVar('--mono') || 'monospace'}`;
+      ctx.fillStyle = c.col;
+      ctx.fillText(c.label, c.cx * W, c.cy * H - 50);
+    });
+  }
+  resize(); drawEmbed();
+  new ResizeObserver(() => { ctx.setTransform(1,0,0,1,0,0); resize(); drawEmbed(); }).observe(canvas.parentElement);
+  new MutationObserver(() => { ctx.setTransform(1,0,0,1,0,0); resize(); drawEmbed(); })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+})();
+
+function redrawAll() {
+  // theme change — canvases redraw on next frame via their own observers
+}
+</script>
