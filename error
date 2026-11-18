@@ -522,7 +522,16 @@ h2 {
   <div class="inner">
     <div class="tag-pill"><span class="pulse"></span>Risk Data Office · Payments Controls PoC</div>
     <h1>How AI helped us<br>rationalise 1,379 controls.</h1>
-    <p class="sub">A technical walkthrough of the methodology, the data linkage, and what we found.</p>
+    <div style="margin-top:28px;display:flex;gap:16px;flex-wrap:wrap;max-width:720px">
+      <div style="flex:1 1 280px;background:color-mix(in srgb,var(--wb-red) 10%,transparent);border:1px solid color-mix(in srgb,var(--wb-red) 30%,transparent);border-radius:10px;padding:16px 20px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--wb-red);margin-bottom:8px">The problem</div>
+        <div style="font-size:.92rem;color:var(--fg);line-height:1.6">Westpac's payments control inventory had grown to 1,379 controls with no systematic way to identify duplication, fragmentation, or controls misaligned to payments risk.</div>
+      </div>
+      <div style="flex:1 1 280px;background:color-mix(in srgb,var(--wb-teal) 10%,transparent);border:1px solid color-mix(in srgb,var(--wb-teal) 30%,transparent);border-radius:10px;padding:16px 20px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--wb-teal);margin-bottom:8px">What we did</div>
+        <div style="font-size:.92rem;color:var(--fg);line-height:1.6">We built an AI pipeline using semantic embeddings and a two-pass LLM to link controls to process data, classify them against 28 objective types, and surface rationalisation findings at scale.</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -795,7 +804,7 @@ h2 {
       </div>
       <div style="display:flex;align-items:center;justify-content:center;padding:0 4px;font-size:1.3rem;color:var(--wb-purple)">+</div>
       <div class="ex-ctrl">
-        <div class="ec-id">Trade Finance</div>
+        <div class="ec-id">CTL000041562 · Trade Finance</div>
         <div class="ec-name">System-enforced maker/checker — outbound free-format SWIFT messages</div>
         <div class="ec-obj">Same system-enforced segregation of duties pattern across a different platform and transaction type.</div>
         <div class="ec-tags">
@@ -1126,4 +1135,3 @@ function animateFunnel() {
   draw();
 })();
 </script>
-
