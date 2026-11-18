@@ -1,32 +1,83 @@
-I am preparing a visual presentation on an AI-powered control rationalisation proof of concept. I need you to extract three to five concrete worked examples from the attached data files that I can use as illustration slides. Each example should show a control going through the analysis pipeline and receiving a specific finding.
-
-For each example, please provide exactly the following fields, nothing more:
-
 Control details
-
-Control ID
-Control name (verbatim from the data)
-Control objective text (verbatim, truncated to two sentences maximum if long)
-Product or business area it belongs to
+ Control ID: CTL000041538
+ Control name (verbatim from the data): LoanIQ - system-enforced maker/checker of payments
+ Control objective text (verbatim, truncated to two sentences maximum if long): The objective of the control is to ensure that payments processed using LoanIQ are subject to system-enforced maker/checker. System-enforced segregation mitigates the risk of internal fraud, theft and robbery by preventing the release of manual or repaired payments by the same user (7.2.2).
+ Product or business area it belongs to: Trade Finance / Customer and Corporate Services
 
 What it was compared against
-
-One or two other control names it was grouped or compared with
-The similarity signal that brought them together (e.g. same product scope, similar objective text, same control objective group)
+ One or two other control names it was grouped or compared with: System-enforced maker/checker for outbound free-format SWIFT messages; system-enforced maker/checker for manual payments in BankTrade
+ The similarity signal that brought them together (e.g. same product scope, similar objective text, same control objective group): Same preventative maker/checker pattern, system-enforced segregation of duties, and common fraud and payment-error objective.
 
 The finding
-
-Finding type: one of Retain, Redundant, Process-Split Fragmentation, Common Control Opportunity, or Unclear
-One sentence explaining why that finding was assigned
-Whether it had a Holocentric process linkage (yes / no / partial)
-Nature alignment status: Aligned or Not Aligned (from CTRL_NATRE in JUNO)
+ Finding type: one of Retain, Redundant, Process-Split Fragmentation, Common Control Opportunity, or Unclear: Common Control Opportunity
+ One sentence explaining why that finding was assigned: The controls implement the same system-enforced maker/checker capability across different platforms and transaction types, creating an opportunity to standardise the design and evidence requirements without removing the individual implementations.
+ Whether it had a Holocentric process linkage (yes / no / partial): yes
+ Nature alignment status: Aligned or Not Aligned (from CTRL_NATRE in JUNO): Aligned
 
 Coverage data (if available)
+ Number of linked applications: Not available
+ Number of linked products: 1
+ Number of linked L3 processes: 1
 
-Number of linked applications
-Number of linked products
-Number of linked L3 processes
+Control details
+ Control ID: CTL000041583
+ Control name (verbatim from the data): Daily Nostro and Vostro Account Reconciliation
+ Control objective text (verbatim, truncated to two sentences maximum if long): This control is performed to ensure all Nostro (Non-AU) and Vostro (AU) Accounts are reconciled and in a timely manner. This control also ensures reconciliation includes automated and manual matching are performed, completed and signed off by the reconciler in TLM.
+ Product or business area it belongs to: International Payments / Customer and Corporate Services
 
-Please aim for variety across finding types. If you can find one Redundant, one Common Control Opportunity, and one Process-Split Fragmentation example, those three would be ideal as they tell the most interesting story. Avoid any control whose name or objective text would be commercially sensitive if shown in a slide.
+What it was compared against
+ One or two other control names it was grouped or compared with: Daily Nostro Investigation and 6 monthly verification of data source.
+ The similarity signal that brought them together (e.g. same product scope, similar objective text, same control objective group): Same TLM-based Nostro/Vostro population, shared reconciliation trigger, and sequential reconciliation and exception-management activities.
 
-Return your answer as a numbered list, one block per example, using the field names above.
+The finding
+ Finding type: one of Retain, Redundant, Process-Split Fragmentation, Common Control Opportunity, or Unclear: Process-Split Fragmentation
+ One sentence explaining why that finding was assigned: This control completes the reconciliation and identifies outstanding items, while the compared control investigates and escalates the resulting exceptions, making them split stages of one end-to-end control.
+ Whether it had a Holocentric process linkage (yes / no / partial): yes
+ Nature alignment status: Aligned or Not Aligned (from CTRL_NATRE in JUNO): Aligned
+
+Coverage data (if available)
+ Number of linked applications: Not available
+ Number of linked products: 1
+ Number of linked L3 processes: 1
+
+Control details
+ Control ID: CTL000041584
+ Control name (verbatim from the data): Daily Nostro Investigation and 6 monthly verification of data source.
+ Control objective text (verbatim, truncated to two sentences maximum if long): Part 1. Ensure all Open Investigation cases are actioned accurately and on a timely manner, including breaks that may be subject to client money obligations. Ensure material risk items, aging risks items and cash breaks are being escalated for Management's attention.
+ Product or business area it belongs to: Financial Markets / Customer and Corporate Services
+
+What it was compared against
+ One or two other control names it was grouped or compared with: Daily Nostro and Vostro Account Reconciliation
+ The similarity signal that brought them together (e.g. same product scope, similar objective text, same control objective group): Same TLM reconciliation lifecycle, with one control generating unreconciled exceptions and the other investigating, ageing, and escalating those exceptions.
+
+The finding
+ Finding type: one of Retain, Redundant, Process-Split Fragmentation, Common Control Opportunity, or Unclear: Process-Split Fragmentation
+ One sentence explaining why that finding was assigned: Its primary daily activity continues the exception-management stage of the same reconciliation process, although its six-monthly data-source verification remains an additional control element.
+ Whether it had a Holocentric process linkage (yes / no / partial): yes
+ Nature alignment status: Aligned or Not Aligned (from CTRL_NATRE in JUNO): Aligned
+
+Coverage data (if available)
+ Number of linked applications: Not available
+ Number of linked products: 9
+ Number of linked L3 processes: 1
+
+Control details
+ Control ID: CTL019187
+ Control name (verbatim from the data): Issuance of Confirmations - Calypso
+ Control objective text (verbatim, truncated to two sentences maximum if long): The objective of this control is to ensure accuracy of confirmations auto generated through Calypso or manually generated by WIB Operations (WIBO). Inaccurate or delayed in issuing confirmations to counterparties increases the risk of internal/ external fraud and market misconduct.
+ Product or business area it belongs to: Financial Markets / Customer and Corporate Services
+
+What it was compared against
+ One or two other control names it was grouped or compared with: NZIO - Issuance of confirmations - Calypso; Manual Issuance of Confirmations - Murex
+ The similarity signal that brought them together (e.g. same product scope, similar objective text, same control objective group): Same control-objective group for provision of confirmations and notifications, the same L3 confirmation process, and similar objectives concerning accurate and timely trade confirmations.
+
+The finding
+ Finding type: one of Retain, Redundant, Process-Split Fragmentation, Common Control Opportunity, or Unclear: Unclear
+ One sentence explaining why that finding was assigned: The controls have strong objective and process similarity, but the available data does not establish whether differences in platform, jurisdiction, and manual versus automated confirmation activity justify separate controls or support consolidation.
+ Whether it had a Holocentric process linkage (yes / no / partial): yes
+ Nature alignment status: Aligned or Not Aligned (from CTRL_NATRE in JUNO): Aligned
+
+Coverage data (if available)
+ Number of linked applications: Not available
+ Number of linked products: 8
+ Number of linked L3 processes: 1
