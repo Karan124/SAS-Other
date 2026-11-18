@@ -1,1 +1,1129 @@
-e
+<title>Payments Controls PoC</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap">
+
+<style>
+/* ── WESTPAC BRAND TOKENS ─────────────────────────────────── */
+:root {
+  /* Westpac Group brand palette */
+  --wb-red:      #DA2032;   /* Westpac Red */
+  --wb-red-dk:   #A5192B;
+  --wb-red-lt:   #F5B8BE;
+  --wb-navy:     #002E5D;   /* Westpac Dark Navy */
+  --wb-navy2:    #004B87;   /* Mid Navy */
+  --wb-teal:     #00A99D;   /* Westpac Teal */
+  --wb-teal-dk:  #007A73;
+  --wb-gold:     #F5A623;   /* Westpac Gold / amber */
+  --wb-green:    #2D9B4F;
+  --wb-purple:   #6B4EA0;
+  --wb-blue:     #0078D4;
+
+  /* Page colours — dark navy theme */
+  --bg:    #001A36;         /* deep navy */
+  --bg2:   #002347;         /* card bg */
+  --bg3:   #002E5D;         /* elevated */
+  --border:#003D7A;
+  --fg:    #EEF4FF;
+  --fg2:   #A0B4CC;
+  --fg3:   #5A7A99;
+
+  color-scheme: dark;
+  --font: 'Inter', sans-serif;
+}
+
+/* single-theme dark — no light flip */
+body { background: var(--bg); color: var(--fg); }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  font-family: var(--font);
+}
+
+/* ── DECK ───────────────────────────────────────────────────── */
+#deck { width: 100%; height: 100%; position: relative; }
+
+.slide {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: max(32px, env(safe-area-inset-left,0px));
+  opacity: 0; pointer-events: none;
+  transition: opacity .45s ease, transform .45s ease;
+  transform: translateY(28px);
+  overflow: hidden;
+}
+.slide.active  { opacity: 1; pointer-events: all; transform: none; }
+.slide.exit-up   { opacity: 0; transform: translateY(-28px); }
+.slide.exit-down { opacity: 0; transform: translateY(28px); }
+
+/* ── NAV ───────────────────────────────────────────────────── */
+#nav {
+  position: fixed; bottom: max(28px, env(safe-area-inset-bottom,0px));
+  left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; z-index: 200;
+  background: color-mix(in srgb, var(--bg3) 92%, transparent);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: 100px; padding: 8px 18px;
+}
+.dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--border); cursor: pointer;
+  transition: background .2s, transform .2s;
+}
+.dot.on { background: var(--wb-red); transform: scale(1.35); }
+.nav-arr {
+  background: none; border: none; color: var(--fg3);
+  font-size: 15px; cursor: pointer; padding: 2px 5px;
+  transition: color .15s;
+}
+.nav-arr:hover { color: var(--fg); }
+
+/* ── SHARED INNER ───────────────────────────────────────────── */
+.inner { max-width: 920px; width: 100%; }
+
+.eyebrow {
+  font-size: 11px; font-weight: 600; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--wb-teal);
+  display: flex; align-items: center; gap: 10px; margin-bottom: 18px;
+}
+.eyebrow::before { content:''; width: 22px; height: 2px; background: var(--wb-teal); flex-shrink:0; }
+
+h1 {
+  font-size: clamp(2.6rem, 6vw, 4.6rem);
+  font-weight: 900; line-height: 1.06; letter-spacing: -.03em;
+  text-wrap: balance;
+}
+h2 {
+  font-size: clamp(1.7rem, 3.8vw, 2.8rem);
+  font-weight: 800; line-height: 1.1; letter-spacing: -.025em;
+  text-wrap: balance;
+}
+.sub {
+  font-size: clamp(.95rem, 2vw, 1.1rem);
+  color: var(--fg2); font-weight: 300; line-height: 1.65;
+  max-width: 56ch; margin-top: 14px;
+}
+
+/* chips */
+.chip {
+  font-size: 10px; font-weight: 600; padding: 3px 10px;
+  border-radius: 100px; letter-spacing: .04em; white-space: nowrap;
+}
+.chip-teal   { background: color-mix(in srgb,var(--wb-teal)   14%,transparent); color: var(--wb-teal);   border: 1px solid color-mix(in srgb,var(--wb-teal)   28%,transparent); }
+.chip-red    { background: color-mix(in srgb,var(--wb-red)    14%,transparent); color: var(--wb-red);    border: 1px solid color-mix(in srgb,var(--wb-red)    28%,transparent); }
+.chip-gold   { background: color-mix(in srgb,var(--wb-gold)   14%,transparent); color: var(--wb-gold);   border: 1px solid color-mix(in srgb,var(--wb-gold)   28%,transparent); }
+.chip-green  { background: color-mix(in srgb,var(--wb-green)  14%,transparent); color: var(--wb-green);  border: 1px solid color-mix(in srgb,var(--wb-green)  28%,transparent); }
+.chip-purple { background: color-mix(in srgb,var(--wb-purple) 14%,transparent); color: var(--wb-purple); border: 1px solid color-mix(in srgb,var(--wb-purple) 28%,transparent); }
+.chip-navy   { background: color-mix(in srgb,var(--wb-blue)   14%,transparent); color: var(--wb-blue);   border: 1px solid color-mix(in srgb,var(--wb-blue)   28%,transparent); }
+
+/* callout cards */
+.co {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px 20px;
+  display: flex; gap: 12px; align-items: flex-start; flex: 1 1 220px;
+}
+.co-icon { font-size: 1.3rem; flex-shrink: 0; margin-top: 2px; }
+.co-text { font-size: .88rem; color: var(--fg2); line-height: 1.55; }
+.co-text strong { color: var(--fg); display: block; margin-bottom: 3px; font-size: .92rem; }
+
+/* ═══════════════════════════════════════════════════════════
+   SLIDE 1 — TITLE
+═══════════════════════════════════════════════════════════ */
+#s1 {
+  background:
+    radial-gradient(ellipse 70% 60% at 50% -10%, color-mix(in srgb,var(--wb-navy2) 60%,transparent), transparent 65%),
+    var(--bg);
+}
+#s1 canvas {
+  position:absolute; inset:0; width:100%; height:100%;
+  pointer-events:none; opacity:.5;
+}
+#s1 .inner { position:relative; z-index:1; }
+.hero-stat {
+  font-size: clamp(5rem, 15vw, 12rem); font-weight: 900;
+  line-height: .9; letter-spacing: -.04em; color: var(--wb-navy2);
+  opacity: .22; position: absolute; right: -1vw; top: 50%;
+  transform: translateY(-50%); pointer-events: none; user-select: none;
+}
+.tag-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 600; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--wb-teal);
+  border: 1px solid color-mix(in srgb,var(--wb-teal) 35%,transparent);
+  background: color-mix(in srgb,var(--wb-teal) 8%,transparent);
+  padding: 6px 16px; border-radius: 100px; margin-bottom: 24px;
+  width: fit-content;
+}
+.pulse { width:6px; height:6px; border-radius:50%; background:var(--wb-teal); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+
+/* ═══════════════════════════════════════════════════════════
+   SLIDE 2 — DATA SOURCES
+═══════════════════════════════════════════════════════════ */
+.sys-diagram {
+  display: flex; align-items: center; justify-content: center;
+  gap: 0; margin-top: 32px; flex-wrap: wrap;
+}
+.sys-node {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 14px; padding: 22px 26px; text-align: center;
+  min-width: 150px;
+}
+.sys-node .sn-name { font-size: 1rem; font-weight: 800; margin-bottom: 6px; }
+.sys-node .sn-sub { font-size: .76rem; color: var(--fg3); line-height: 1.5; }
+.sys-connector {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 0 12px; gap: 5px;
+}
+.sc-line {
+  width: 44px; height: 2px; background: var(--border); position: relative;
+}
+.sc-line.ok::after {
+  content: ''; position: absolute; inset: 0; background: var(--wb-teal);
+  transform-origin: left; animation: grow .9s .5s forwards ease-out; transform: scaleX(0);
+}
+@keyframes grow { to { transform: scaleX(1); } }
+.sc-label { font-size: 9px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
+.sc-label.ok { color: var(--wb-teal); }
+
+/* ═══════════════════════════════════════════════════════════
+   SLIDE 3 — PIPELINE (animated)
+═══════════════════════════════════════════════════════════ */
+.pipeline-row {
+  display: flex; align-items: flex-start; gap: 0;
+  margin-top: 36px; flex-wrap: nowrap;
+  overflow-x: auto; padding-bottom: 4px;
+}
+.pv-node {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  flex: 0 0 auto;
+  opacity: 0; transform: translateY(16px);
+  transition: opacity .4s ease, transform .4s ease;
+  min-width: 120px; padding: 0 6px;
+}
+.pv-node.lit { opacity: 1; transform: none; }
+.pv-circle {
+  width: 72px; height: 72px; border-radius: 50%;
+  border: 2px solid var(--border); background: var(--bg2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.7rem; transition: border-color .4s, background .4s, box-shadow .4s;
+  flex-shrink: 0;
+}
+.pv-node.lit .pv-circle {
+  border-color: var(--wb-teal);
+  background: color-mix(in srgb,var(--wb-teal) 10%,var(--bg2));
+  box-shadow: 0 0 24px color-mix(in srgb,var(--wb-teal) 25%,transparent);
+}
+.pv-label {
+  font-size: .82rem; font-weight: 600; color: var(--fg3);
+  text-align: center; max-width: 100px; line-height: 1.3;
+}
+.pv-node.lit .pv-label { color: var(--fg); }
+.pv-desc {
+  font-size: .72rem; color: var(--fg3); text-align: center;
+  max-width: 100px; line-height: 1.4; margin-top: -4px;
+}
+.pv-node.lit .pv-desc { color: var(--fg2); }
+.pv-arrow {
+  font-size: 20px; color: var(--border); padding: 0 2px;
+  margin-top: 24px; flex-shrink: 0;
+  transition: color .4s;
+}
+.pv-arrow.lit { color: var(--wb-teal); }
+
+/* ═══════════════════════════════════════════════════════════
+   SLIDE 4 — EMBEDDING ANIMATION
+═══════════════════════════════════════════════════════════ */
+#s4 { align-items: flex-start; padding-top: max(48px, 5vh); }
+.embed-layout {
+  display: flex; gap: 24px; margin-top: 28px; align-items: flex-start;
+  flex-wrap: wrap;
+}
+.embed-col { flex: 1 1 220px; }
+.embed-col-title {
+  font-size: .78rem; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--fg3); margin-bottom: 12px;
+}
+.ctrl-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px; margin-bottom: 10px;
+  cursor: pointer; transition: border-color .25s, box-shadow .25s;
+  position: relative;
+}
+.ctrl-card.selected {
+  border-color: var(--wb-teal);
+  box-shadow: 0 0 20px color-mix(in srgb,var(--wb-teal) 20%,transparent);
+}
+.ctrl-card.matched {
+  border-color: var(--wb-purple);
+  box-shadow: 0 0 20px color-mix(in srgb,var(--wb-purple) 20%,transparent);
+}
+.cc-id { font-size: 9px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--fg3); margin-bottom: 4px; }
+.cc-name { font-size: .88rem; font-weight: 700; line-height: 1.3; margin-bottom: 6px; }
+.cc-desc { font-size: .75rem; color: var(--fg2); line-height: 1.45; }
+
+.sim-panel {
+  flex: 0 0 220px; display: flex; flex-direction: column; gap: 10px;
+}
+.sim-box {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px;
+}
+.sim-label { font-size: .78rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--fg3); margin-bottom: 10px; }
+.sim-vec {
+  display: flex; gap: 3px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.sim-dim {
+  width: 10px; height: 20px; border-radius: 2px;
+  background: var(--border); transition: background .3s, height .3s;
+  flex-shrink: 0;
+}
+.sim-score-row {
+  display: flex; align-items: center; gap: 8px; padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.sim-name { font-size: .78rem; font-weight: 600; flex: 1; color: var(--fg2); }
+.sim-bar-wrap { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.sim-bar { height: 100%; width: 0%; border-radius: 4px; transition: width 1.2s ease; }
+.sim-bar.high { background: var(--wb-teal); }
+.sim-bar.mid  { background: var(--wb-gold); }
+.sim-bar.low  { background: var(--fg3); }
+.sim-pct { font-size: .82rem; font-weight: 700; min-width: 36px; text-align: right; }
+.sim-pct.high { color: var(--wb-teal); }
+.sim-pct.mid  { color: var(--wb-gold); }
+.sim-pct.low  { color: var(--fg3); }
+
+.embed-explain {
+  font-size: .78rem; color: var(--fg2); line-height: 1.55;
+  background: color-mix(in srgb,var(--wb-navy) 60%,transparent);
+  border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SLIDE 5 — CT CLASSIFICATION
+═══════════════════════════════════════════════════════════ */
+#s5 { align-items: flex-start; padding-top: max(48px, 5vh); }
+.ct-layout { display: flex; gap: 20px; margin-top: 28px; align-items: flex-start; flex-wrap: wrap; }
+.ct-left { flex: 1 1 240px; }
+.ct-right { flex: 2 1 360px; }
+
+.ct-ctrl {
+  background: var(--bg2); border: 1px solid var(--wb-teal);
+  box-shadow: 0 0 24px color-mix(in srgb,var(--wb-teal) 15%,transparent);
+  border-radius: 10px; padding: 16px 18px; margin-bottom: 14px;
+}
+.ct-ctrl .cc-id { color: var(--wb-teal); }
+
+.ct-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.ct-cell {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 7px; padding: 8px 6px;
+  font-size: .72rem; font-weight: 600; text-align: center;
+  color: var(--fg3); transition: all .35s ease;
+  cursor: default;
+}
+.ct-cell.active {
+  background: color-mix(in srgb,var(--wb-purple) 15%,var(--bg2));
+  border-color: var(--wb-purple);
+  color: var(--wb-purple);
+  box-shadow: 0 0 12px color-mix(in srgb,var(--wb-purple) 20%,transparent);
+}
+.ct-cell.scanning {
+  background: color-mix(in srgb,var(--wb-gold) 10%,var(--bg2));
+  border-color: var(--wb-gold);
+  color: var(--wb-gold);
+}
+
+.llm-box {
+  margin-top: 14px;
+  background: color-mix(in srgb,var(--wb-navy) 60%,transparent);
+  border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+  font-size: .82rem; color: var(--fg2); line-height: 1.6;
+  min-height: 60px;
+}
+.llm-box .verdict {
+  color: var(--wb-purple); font-weight: 700; margin-top: 6px;
+  font-size: .88rem;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SLIDE 6 — PROCESS LIFECYCLE ANIMATION
+═══════════════════════════════════════════════════════════ */
+#s6 { align-items: flex-start; padding-top: max(48px, 5vh); }
+.lc-layout { display: flex; gap: 20px; margin-top: 28px; align-items: flex-start; flex-wrap: wrap; }
+.lc-left { flex: 1 1 240px; }
+.lc-right { flex: 2 1 360px; }
+
+.lc-process {
+  background: var(--bg2); border: 1px solid var(--wb-gold);
+  box-shadow: 0 0 20px color-mix(in srgb,var(--wb-gold) 15%,transparent);
+  border-radius: 10px; padding: 14px 16px; margin-bottom: 14px;
+}
+.lc-process .lp-id { font-size: 9px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--wb-gold); margin-bottom: 4px; }
+.lc-process .lp-name { font-size: .88rem; font-weight: 700; line-height: 1.3; margin-bottom: 4px; }
+.lc-process .lp-src { font-size: .72rem; color: var(--fg3); }
+
+.lc-stages {
+  display: flex; flex-direction: column; gap: 7px;
+}
+.lc-stage {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 14px;
+  transition: all .4s ease;
+}
+.lc-stage.active {
+  border-color: var(--wb-gold);
+  background: color-mix(in srgb,var(--wb-gold) 8%,var(--bg2));
+}
+.lc-stage-num {
+  font-size: .68rem; font-weight: 800; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--fg3); min-width: 24px;
+  transition: color .4s;
+}
+.lc-stage.active .lc-stage-num { color: var(--wb-gold); }
+.lc-stage-name {
+  font-size: .84rem; font-weight: 600; color: var(--fg3);
+  transition: color .4s;
+}
+.lc-stage.active .lc-stage-name { color: var(--fg); }
+.lc-stage-cat {
+  margin-left: auto; font-size: .72rem; font-weight: 600;
+  color: var(--fg3); transition: color .4s;
+}
+.lc-stage.active .lc-stage-cat { color: var(--wb-gold); }
+
+.lc-explain {
+  margin-top: 12px;
+  font-size: .78rem; color: var(--fg2); line-height: 1.55;
+  background: color-mix(in srgb,var(--wb-navy) 60%,transparent);
+  border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SLIDE 7 — EXAMPLES (CCO)
+═══════════════════════════════════════════════════════════ */
+.ex-controls {
+  display: flex; gap: 10px; align-items: stretch; flex-wrap: wrap;
+  margin-top: 24px;
+}
+.ex-ctrl {
+  flex: 1 1 220px; background: var(--bg2);
+  border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px;
+}
+.ec-id { font-size: 9px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--fg3); margin-bottom: 6px; }
+.ec-name { font-size: .92rem; font-weight: 700; line-height: 1.3; margin-bottom: 8px; }
+.ec-obj { font-size: .8rem; color: var(--fg2); line-height: 1.5; }
+.ec-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 10px; }
+
+.finding-box {
+  background: var(--bg2); border-radius: 10px; padding: 18px 22px; margin-top: 14px;
+}
+.finding-box.cco { border: 1px solid color-mix(in srgb,var(--wb-purple) 45%,var(--border)); }
+.finding-box.psf { border: 1px solid color-mix(in srgb,var(--wb-gold)   45%,var(--border)); }
+.fb-eyebrow { font-size: 9px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 6px; }
+.cco .fb-eyebrow { color: var(--wb-purple); }
+.psf .fb-eyebrow { color: var(--wb-gold); }
+.fb-title { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+.fb-reason { font-size: .84rem; color: var(--fg2); line-height: 1.6; }
+
+/* ═══════════════════════════════════════════════════════════
+   SLIDE 8 — EXAMPLES (PSF)
+═══════════════════════════════════════════════════════════ */
+.psf-flow {
+  display: flex; align-items: stretch; gap: 0;
+  margin-top: 20px; border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden;
+}
+.psf-step {
+  flex: 1; padding: 18px 16px; background: var(--bg2);
+}
+.psf-step + .psf-step { border-left: 1px solid var(--border); }
+.psf-step .ps-num { font-size: .7rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--wb-gold); margin-bottom: 6px; }
+.psf-step .ps-name { font-size: .9rem; font-weight: 700; line-height: 1.3; margin-bottom: 6px; }
+.psf-step .ps-id { font-size: .7rem; color: var(--fg3); margin-bottom: 8px; }
+.psf-step .ps-desc { font-size: .77rem; color: var(--fg2); line-height: 1.5; }
+
+.psf-split-label {
+  display: flex; align-items: center; gap: 8px; margin: 14px 0;
+}
+.psf-line { flex:1; height:1px; background: color-mix(in srgb,var(--wb-gold) 30%,var(--border)); }
+.psf-split-text { font-size: 9px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--wb-gold); white-space: nowrap; }
+
+/* ═══════════════════════════════════════════════════════════
+   SLIDE 9 — OUTCOMES FUNNEL
+═══════════════════════════════════════════════════════════ */
+.funnel-wrap {
+  margin-top: 30px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; width: 100%;
+}
+.funnel-row {
+  display: flex; align-items: center; gap: 0; width: 100%; max-width: 680px;
+  opacity: 0; transform: translateY(12px);
+  transition: opacity .5s ease, transform .5s ease;
+}
+.funnel-row.lit { opacity: 1; transform: none; }
+.fr-bar {
+  height: 60px; border-radius: 8px; display: flex; align-items: center;
+  padding: 0 20px; gap: 14px; overflow: hidden; position: relative;
+  border: 1px solid var(--border);
+}
+.fr-bar::before {
+  content: ''; position: absolute; inset: 0;
+  transform-origin: left; transform: scaleX(0);
+  transition: transform 1s .3s cubic-bezier(.4,0,.2,1);
+  border-radius: 7px;
+}
+.funnel-row.lit .fr-bar::before { transform: scaleX(1); }
+.fr-bar.total  { width: 100%;  border-color: color-mix(in srgb,var(--wb-red)    35%,var(--border)); }
+.fr-bar.scope  { width: 82%;   border-color: color-mix(in srgb,var(--wb-blue)   35%,var(--border)); }
+.fr-bar.data   { width: 65%;   border-color: color-mix(in srgb,var(--wb-gold)   35%,var(--border)); }
+.fr-bar.result { width: 50%;   border-color: color-mix(in srgb,var(--wb-teal)   35%,var(--border)); }
+.fr-bar.total::before  { background: color-mix(in srgb,var(--wb-red)  18%,transparent); }
+.fr-bar.scope::before  { background: color-mix(in srgb,var(--wb-blue) 18%,transparent); }
+.fr-bar.data::before   { background: color-mix(in srgb,var(--wb-gold) 18%,transparent); }
+.fr-bar.result::before { background: color-mix(in srgb,var(--wb-teal) 18%,transparent); }
+.fr-num {
+  font-size: 1.6rem; font-weight: 900; line-height: 1;
+  font-variant-numeric: tabular-nums; flex-shrink: 0; position: relative; z-index: 1;
+}
+.total .fr-num  { color: var(--wb-red); }
+.scope .fr-num  { color: var(--wb-blue); }
+.data .fr-num   { color: var(--wb-gold); }
+.result .fr-num { color: var(--wb-teal); }
+.fr-text { font-size: .88rem; font-weight: 500; color: var(--fg); position: relative; z-index: 1; line-height: 1.4; }
+.fr-note { font-size: .75rem; color: var(--fg3); line-height: 1.3; position: relative; z-index: 1; }
+
+/* responsive */
+@media (max-width: 640px) {
+  h1 { font-size: 2.2rem; }
+  h2 { font-size: 1.6rem; }
+  .hero-stat { display:none; }
+  .sc-line { width: 22px; }
+  .psf-flow { flex-direction: column; }
+  .psf-step + .psf-step { border-left: none; border-top: 1px solid var(--border); }
+  .ct-grid { grid-template-columns: repeat(3,1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration:.01ms!important; transition-duration:.01ms!important; }
+}
+</style>
+
+<!-- ═══════════ DECK ═══════════ -->
+<div id="deck">
+
+<!-- S1: TITLE -->
+<div class="slide active" id="s1">
+  <canvas id="hero-canvas"></canvas>
+  <div class="hero-stat">62%</div>
+  <div class="inner">
+    <div class="tag-pill"><span class="pulse"></span>Risk Data Office · Payments Controls PoC</div>
+    <h1>How AI helped us<br>rationalise 1,379 controls.</h1>
+    <p class="sub">A technical walkthrough of the methodology, the data linkage, and what we found.</p>
+  </div>
+</div>
+
+<!-- S2: DATA SOURCES -->
+<div class="slide" id="s2">
+  <div class="inner">
+    <div class="eyebrow">01 · Starting point</div>
+    <h2>Three systems. No single shared key.</h2>
+    <div class="sys-diagram">
+      <div class="sys-node">
+        <div class="sn-name" style="color:var(--wb-red)">JUNO</div>
+        <div class="sn-sub">Control register<br>Nature (CTRL_NATRE)<br>~7,500 controls</div>
+      </div>
+      <div class="sys-connector">
+        <div class="sc-line ok"></div>
+        <div class="sc-label ok">L3 linkage only</div>
+      </div>
+      <div class="sys-node">
+        <div class="sn-name" style="color:var(--wb-gold)">Holocentric</div>
+        <div class="sn-sub">Process models<br>~3,885 L3 activities<br>7 lifecycle stages</div>
+      </div>
+      <div class="sys-connector">
+        <div class="sc-line ok"></div>
+        <div class="sc-label ok" style="color:var(--wb-blue)">app matching</div>
+      </div>
+      <div class="sys-node">
+        <div class="sn-name" style="color:var(--wb-blue)">Alfabet</div>
+        <div class="sn-sub">Application<br>architecture</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:24px">
+      <div class="co">
+        <div class="co-icon">⚠️</div>
+        <div class="co-text">
+          <strong>L2 linkage not achievable</strong>
+          Missing UUID between JUNO and Holocentric at L2. Controls without an L3 linkage were excluded from automated assessment or manually evaluated.
+        </div>
+      </div>
+      <div class="co">
+        <div class="co-icon">📌</div>
+        <div class="co-text">
+          <strong>Nature alignment is deterministic</strong>
+          Preventative or Detective nature came from JUNO's CTRL_NATRE field. It was never inferred by the LLM.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- S3: PIPELINE -->
+<div class="slide" id="s3">
+  <div class="inner">
+    <div class="eyebrow">02 · The approach</div>
+    <h2>Five steps from raw data to findings.</h2>
+    <div class="pipeline-row" id="pipeline-vis">
+      <div class="pv-node" data-delay="0">
+        <div class="pv-circle">🗄️</div>
+        <div class="pv-label">Build the Big Table</div>
+        <div class="pv-desc">Join JUNO, Holocentric, Alfabet into one flat dataset per control</div>
+      </div>
+      <div class="pv-arrow" data-arrow>→</div>
+      <div class="pv-node" data-delay="180">
+        <div class="pv-circle">🧮</div>
+        <div class="pv-label">Generate embeddings</div>
+        <div class="pv-desc">text-embedding-3-large, 3,072 dimensions per control</div>
+      </div>
+      <div class="pv-arrow" data-arrow>→</div>
+      <div class="pv-node" data-delay="360">
+        <div class="pv-circle">🔍</div>
+        <div class="pv-label">Cosine similarity</div>
+        <div class="pv-desc">Pairwise comparison within product scope and CT objective groups</div>
+      </div>
+      <div class="pv-arrow" data-arrow>→</div>
+      <div class="pv-node" data-delay="540">
+        <div class="pv-circle">🤖</div>
+        <div class="pv-label">Two-pass LLM</div>
+        <div class="pv-desc">Pass 1: per-control design assessment. Pass 2: ranking + best-of-breed</div>
+      </div>
+      <div class="pv-arrow" data-arrow>→</div>
+      <div class="pv-node" data-delay="720">
+        <div class="pv-circle">👥</div>
+        <div class="pv-label">SME validation</div>
+        <div class="pv-desc">Risk and Compliance experts reviewed all LLM findings</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:22px">
+      <div class="co">
+        <div class="co-icon">📐</div>
+        <div class="co-text">
+          <strong>Dimension 1 — 75 product scopes</strong>
+          Duplication and consolidation opportunity within each product.
+        </div>
+      </div>
+      <div class="co">
+        <div class="co-icon">🎯</div>
+        <div class="co-text">
+          <strong>Dimension 2 — 28 control objective groups (CT1-CT28)</strong>
+          Best-of-breed selection across the 708 payments controls population.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- S4: EMBEDDING ANIMATION -->
+<div class="slide" id="s4">
+  <div class="inner">
+    <div class="eyebrow">03 · Technical depth</div>
+    <h2>Semantic similarity via embeddings.</h2>
+    <div class="embed-layout">
+      <div class="embed-col">
+        <div class="embed-col-title">Controls in scope</div>
+        <div class="ctrl-card selected" id="ec-anchor">
+          <div class="cc-id">CTL000041538 · Anchor</div>
+          <div class="cc-name">LoanIQ: maker/checker of payments</div>
+          <div class="cc-desc">System-enforced segregation prevents release of payments by the same user.</div>
+        </div>
+        <div class="ctrl-card" id="ec-c1" data-score="92">
+          <div class="cc-id">CTL000041562</div>
+          <div class="cc-name">SWIFT maker/checker — outbound free-format</div>
+          <div class="cc-desc">Same preventative segregation, different platform.</div>
+        </div>
+        <div class="ctrl-card" id="ec-c2" data-score="87">
+          <div class="cc-id">CTL000041570</div>
+          <div class="cc-name">BankTrade manual payment authorisation</div>
+          <div class="cc-desc">Maker/checker for manual payments in BankTrade.</div>
+        </div>
+        <div class="ctrl-card" id="ec-c3" data-score="31">
+          <div class="cc-id">CTL000038201</div>
+          <div class="cc-name">Monthly transaction reporting reconciliation</div>
+          <div class="cc-desc">Detective reconciliation — different objective.</div>
+        </div>
+      </div>
+      <div class="sim-panel">
+        <div class="sim-box">
+          <div class="sim-label">Embedding vector (3,072 dims)</div>
+          <div class="sim-vec" id="sim-vec">
+            <!-- filled by JS -->
+          </div>
+        </div>
+        <div class="sim-box">
+          <div class="sim-label">Cosine similarity scores</div>
+          <div id="sim-scores">
+            <div class="sim-score-row">
+              <div class="sim-name">CTL000041562</div>
+              <div class="sim-bar-wrap"><div class="sim-bar high" id="sb1"></div></div>
+              <div class="sim-pct high" id="sp1">0%</div>
+            </div>
+            <div class="sim-score-row">
+              <div class="sim-name">CTL000041570</div>
+              <div class="sim-bar-wrap"><div class="sim-bar mid" id="sb2"></div></div>
+              <div class="sim-pct mid" id="sp2">0%</div>
+            </div>
+            <div class="sim-score-row">
+              <div class="sim-name">CTL000038201</div>
+              <div class="sim-bar-wrap"><div class="sim-bar low" id="sb3"></div></div>
+              <div class="sim-pct low" id="sp3">0%</div>
+            </div>
+          </div>
+        </div>
+        <div class="embed-explain">
+          High cosine similarity (&gt;0.80) flags pairs for LLM classification. Low similarity controls are filtered out before any LLM call, keeping costs down.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- S5: CT CLASSIFICATION -->
+<div class="slide" id="s5">
+  <div class="inner">
+    <div class="eyebrow">04 · Technical depth</div>
+    <h2>Classifying controls across 28 objective types.</h2>
+    <div class="ct-layout">
+      <div class="ct-left">
+        <div class="ct-ctrl">
+          <div class="cc-id" style="color:var(--wb-teal)">Input control</div>
+          <div class="cc-name">LoanIQ: maker/checker of payments</div>
+          <div class="cc-desc" style="font-size:.76rem;color:var(--fg2);margin-top:6px">System-enforced segregation mitigates risk of internal fraud by preventing release of manual or repaired payments by the same user.</div>
+        </div>
+        <div class="llm-box" id="ct-llm-box">
+          <span style="color:var(--fg3);font-style:italic">Scanning CT objective groups...</span>
+        </div>
+      </div>
+      <div class="ct-right">
+        <div class="embed-col-title" style="font-size:.78rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--fg3);margin-bottom:10px">28 Control objective groups (CT1 - CT28)</div>
+        <div class="ct-grid" id="ct-grid">
+          <!-- filled by JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- S6: PROCESS LIFECYCLE -->
+<div class="slide" id="s6">
+  <div class="inner">
+    <div class="eyebrow">05 · Technical depth</div>
+    <h2>Mapping 3,885 processes to lifecycle stages.</h2>
+    <div class="lc-layout">
+      <div class="lc-left">
+        <div class="lc-process">
+          <div class="lp-id">Holocentric · L3 Activity</div>
+          <div class="lp-name">Daily Nostro and Vostro Account Reconciliation</div>
+          <div class="lp-src">International Payments · Financial Markets</div>
+        </div>
+        <div class="lc-explain" id="lc-explain">
+          GPT-5.4 assigned each of the ~3,885 Holocentric L3 processes to one of seven payment lifecycle stages and a category within that stage.
+        </div>
+      </div>
+      <div class="lc-right">
+        <div class="embed-col-title" style="font-size:.78rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--fg3);margin-bottom:10px">Seven payment lifecycle stages</div>
+        <div class="lc-stages" id="lc-stages">
+          <div class="lc-stage" data-stage="0">
+            <div class="lc-stage-num">01</div>
+            <div class="lc-stage-name">Origination</div>
+            <div class="lc-stage-cat">Customer onboarding, mandate capture</div>
+          </div>
+          <div class="lc-stage" data-stage="1">
+            <div class="lc-stage-num">02</div>
+            <div class="lc-stage-name">Authorisation</div>
+            <div class="lc-stage-cat">Approval, limit checking</div>
+          </div>
+          <div class="lc-stage" data-stage="2">
+            <div class="lc-stage-num">03</div>
+            <div class="lc-stage-name">Processing</div>
+            <div class="lc-stage-cat">Settlement, clearing, routing</div>
+          </div>
+          <div class="lc-stage" data-stage="3">
+            <div class="lc-stage-num">04</div>
+            <div class="lc-stage-name">Reconciliation</div>
+            <div class="lc-stage-cat">Nostro/Vostro matching, TLM</div>
+          </div>
+          <div class="lc-stage" data-stage="4">
+            <div class="lc-stage-num">05</div>
+            <div class="lc-stage-name">Exception Management</div>
+            <div class="lc-stage-cat">Break investigation, escalation</div>
+          </div>
+          <div class="lc-stage" data-stage="5">
+            <div class="lc-stage-num">06</div>
+            <div class="lc-stage-name">Reporting</div>
+            <div class="lc-stage-cat">Regulatory and management reporting</div>
+          </div>
+          <div class="lc-stage" data-stage="6">
+            <div class="lc-stage-num">07</div>
+            <div class="lc-stage-name">Governance</div>
+            <div class="lc-stage-cat">Oversight, attestation, review</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- S7: EXAMPLE CCO -->
+<div class="slide" id="s7">
+  <div class="inner">
+    <div class="eyebrow">06 · Example finding</div>
+    <h2>Common Control Opportunity</h2>
+    <div class="ex-controls">
+      <div class="ex-ctrl">
+        <div class="ec-id">CTL000041538 · Trade Finance</div>
+        <div class="ec-name">LoanIQ: system-enforced maker/checker of payments</div>
+        <div class="ec-obj">System-enforced segregation prevents release of manual or repaired payments by the same user (7.2.2).</div>
+        <div class="ec-tags">
+          <span class="chip chip-teal">Preventative</span>
+          <span class="chip chip-teal">Nature aligned</span>
+          <span class="chip chip-navy">L3 linked</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;padding:0 4px;font-size:1.3rem;color:var(--wb-purple)">+</div>
+      <div class="ex-ctrl">
+        <div class="ec-id">Trade Finance</div>
+        <div class="ec-name">System-enforced maker/checker — outbound free-format SWIFT messages</div>
+        <div class="ec-obj">Same system-enforced segregation of duties pattern across a different platform and transaction type.</div>
+        <div class="ec-tags">
+          <span class="chip chip-teal">Preventative</span>
+          <span class="chip chip-teal">Nature aligned</span>
+        </div>
+      </div>
+    </div>
+    <div class="finding-box cco">
+      <div class="fb-eyebrow">Common Control Opportunity</div>
+      <div class="fb-title">Same capability. Different platforms. One design standard.</div>
+      <div class="fb-reason">Both controls implement system-enforced maker/checker across different platforms. The opportunity is to standardise the design and evidence requirements without removing the individual implementations.</div>
+    </div>
+  </div>
+</div>
+
+<!-- S8: EXAMPLE PSF -->
+<div class="slide" id="s8">
+  <div class="inner">
+    <div class="eyebrow">07 · Example finding</div>
+    <h2>Process-Split Fragmentation</h2>
+    <p class="sub" style="margin-top:8px;margin-bottom:0">Two controls registered separately. One end-to-end process.</p>
+    <div class="psf-flow" style="margin-top:18px">
+      <div class="psf-step">
+        <div class="ps-num">Stage 1</div>
+        <div class="ps-name">Daily Nostro and Vostro Account Reconciliation</div>
+        <div class="ps-id">CTL000041583 · International Payments</div>
+        <div class="ps-desc">Reconciles all Nostro and Vostro accounts in TLM. Automated and manual matching completed and signed off by the reconciler.</div>
+        <div class="ec-tags" style="margin-top:10px">
+          <span class="chip chip-teal">Detective</span>
+          <span class="chip chip-teal">Nature aligned</span>
+        </div>
+      </div>
+      <div class="psf-step">
+        <div class="ps-num">Stage 2</div>
+        <div class="ps-name">Daily Nostro Investigation and 6-monthly verification of data source</div>
+        <div class="ps-id">CTL000041584 · Financial Markets</div>
+        <div class="ps-desc">Investigates open exceptions, escalates material breaks and aging cash items to management. Six-monthly data source verification is an additional element.</div>
+        <div class="ec-tags" style="margin-top:10px">
+          <span class="chip chip-teal">Detective</span>
+          <span class="chip chip-teal">Nature aligned</span>
+        </div>
+      </div>
+    </div>
+    <div class="psf-split-label">
+      <div class="psf-line"></div>
+      <div class="psf-split-text">Artificially split across two registered controls</div>
+      <div class="psf-line"></div>
+    </div>
+    <div class="finding-box psf">
+      <div class="fb-eyebrow">Process-Split Fragmentation</div>
+      <div class="fb-reason">Stage 1 identifies outstanding items; Stage 2 investigates and escalates them. These are sequential stages of one reconciliation control, not two independent controls.</div>
+    </div>
+  </div>
+</div>
+
+<!-- S9: OUTCOMES -->
+<div class="slide" id="s9">
+  <div class="inner">
+    <div class="eyebrow">08 · What we found</div>
+    <h2>62% of controls can be rationalised.</h2>
+    <div class="funnel-wrap" id="funnel">
+      <div class="funnel-row">
+        <div class="fr-bar total" style="width:100%">
+          <div class="fr-num">1,379</div>
+          <div class="fr-text">Payments controls in scope</div>
+        </div>
+      </div>
+      <div class="funnel-row">
+        <div class="fr-bar scope" style="width:82%">
+          <div class="fr-num">38%</div>
+          <div class="fr-text">Not relevant or key for the payments risk class</div>
+        </div>
+      </div>
+      <div class="funnel-row">
+        <div class="fr-bar data" style="width:65%">
+          <div class="fr-num">50%</div>
+          <div class="fr-text">Lacked process, product or systems data for automated assessment</div>
+        </div>
+      </div>
+      <div class="funnel-row">
+        <div class="fr-bar result" style="width:50%">
+          <div class="fr-num">516</div>
+          <div class="fr-text">Modelled end-state: 62% reduction</div>
+        </div>
+      </div>
+    </div>
+    <p style="font-size:.8rem;color:var(--fg3);margin-top:14px">Up to 40% of controls can be consolidated by addressing duplicates, fragmentation and redundancy.</p>
+  </div>
+</div>
+
+</div><!-- /deck -->
+
+<!-- NAV -->
+<div id="nav">
+  <button class="nav-arr" onclick="go(-1)">←</button>
+  <div id="dots"></div>
+  <button class="nav-arr" onclick="go(1)">→</button>
+</div>
+
+<script>
+// ═══════════ DECK CONTROLLER ═══════════════════════════════════════
+const slides = Array.from(document.querySelectorAll('.slide'));
+const dotsEl = document.getElementById('dots');
+let cur = 0;
+
+slides.forEach((_, i) => {
+  const d = document.createElement('div');
+  d.className = 'dot' + (i === 0 ? ' on' : '');
+  d.onclick = () => goTo(i);
+  dotsEl.appendChild(d);
+});
+
+function goTo(n, dir) {
+  if (n === cur || n < 0 || n >= slides.length) return;
+  const fwd = dir !== undefined ? dir > 0 : n > cur;
+  const prev = cur;
+  slides[prev].classList.remove('active');
+  slides[prev].classList.add(fwd ? 'exit-up' : 'exit-down');
+  cur = n;
+  slides[cur].classList.add('active');
+  document.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('on', i === cur));
+  setTimeout(() => slides[prev].classList.remove('exit-up', 'exit-down'), 480);
+  onEnter(cur);
+}
+function go(d) { goTo(cur + d, d); }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') go(1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   go(-1);
+});
+let tx = 0, ty = 0;
+document.addEventListener('touchstart', e => { tx = e.touches[0].clientX; ty = e.touches[0].clientY; }, {passive:true});
+document.addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - tx, dy = e.changedTouches[0].clientY - ty;
+  if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 40) go(dy < 0 ? 1 : -1);
+  else if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1);
+}, {passive:true});
+
+// ═══════════ ON-ENTER TRIGGERS ════════════════════════════════════
+const doneMap = {};
+function onEnter(n) {
+  if (doneMap[n]) return;
+  doneMap[n] = true;
+  if (n === 2) animatePipeline();
+  if (n === 3) animateEmbeddings();
+  if (n === 4) animateCT();
+  if (n === 5) animateLifecycle();
+  if (n === 8) animateFunnel();
+}
+onEnter(0);
+
+// ═══════════ PIPELINE ═════════════════════════════════════════════
+function animatePipeline() {
+  const nodes = document.querySelectorAll('.pv-node');
+  const arrows = document.querySelectorAll('.pv-arrow[data-arrow]');
+  nodes.forEach((n, i) => {
+    setTimeout(() => {
+      n.classList.add('lit');
+      if (arrows[i]) arrows[i].classList.add('lit');
+    }, parseInt(n.dataset.delay) || 0);
+  });
+}
+
+// ═══════════ EMBEDDING SIMILARITY ANIMATION ══════════════════════
+function animateEmbeddings() {
+  // build embedding vector vis
+  const vec = document.getElementById('sim-vec');
+  if (vec) {
+    for (let i = 0; i < 28; i++) {
+      const d = document.createElement('div');
+      d.className = 'sim-dim';
+      vec.appendChild(d);
+    }
+    // animate dims lighting up with random heights/colours
+    const dims = vec.querySelectorAll('.sim-dim');
+    dims.forEach((dim, i) => {
+      setTimeout(() => {
+        const h = 8 + Math.random() * 20;
+        dim.style.height = h + 'px';
+        const v = Math.random();
+        if (v > .6) dim.style.background = 'var(--wb-teal)';
+        else if (v > .3) dim.style.background = 'var(--wb-navy2)';
+        else dim.style.background = 'var(--wb-red)';
+      }, i * 40);
+    });
+  }
+
+  // animate similarity bars after a delay
+  const scores = [{id:'sb1',pct:92,pid:'sp1'},{id:'sb2',pct:87,pid:'sp2'},{id:'sb3',pct:31,pid:'sp3'}];
+  scores.forEach((s, i) => {
+    setTimeout(() => {
+      const bar = document.getElementById(s.id);
+      const pct = document.getElementById(s.pid);
+      if (bar) bar.style.width = s.pct + '%';
+      // count up the percentage
+      let v = 0;
+      const step = () => {
+        v = Math.min(v + 2, s.pct);
+        if (pct) pct.textContent = v + '%';
+        if (v < s.pct) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+      // highlight matched cards
+      if (s.pct > 80) {
+        setTimeout(() => {
+          const cards = [document.getElementById('ec-c1'), document.getElementById('ec-c2')];
+          if (cards[i]) cards[i].classList.add('matched');
+        }, 400);
+      }
+    }, 600 + i * 300);
+  });
+}
+
+// ═══════════ CT CLASSIFICATION ANIMATION ═════════════════════════
+function animateCT() {
+  const grid = document.getElementById('ct-grid');
+  const llm  = document.getElementById('ct-llm-box');
+  if (!grid) return;
+
+  const cts = [
+    'CT1 Authorisation','CT2 Maker/Checker','CT3 Segregation of duties','CT4 System access',
+    'CT5 Reconciliation','CT6 Monitoring','CT7 Reporting','CT8 Data quality',
+    'CT9 Limit controls','CT10 Trade capture','CT11 Confirmation','CT12 Settlement',
+    'CT13 Clearing','CT14 Fraud prevention','CT15 AML','CT16 Sanctions',
+    'CT17 Regulatory','CT18 Operational risk','CT19 Credit risk','CT20 Market risk',
+    'CT21 Liquidity','CT22 Change management','CT23 Business continuity','CT24 Outsourcing',
+    'CT25 Data governance','CT26 Model risk','CT27 Conduct','CT28 Audit'
+  ];
+
+  grid.innerHTML = cts.map((ct, i) =>
+    `<div class="ct-cell" id="ctc${i}">${ct}</div>`
+  ).join('');
+
+  // scan through each cell
+  let scanIdx = 0;
+  function scanNext() {
+    if (scanIdx > 0) {
+      const prev = document.getElementById('ctc' + (scanIdx - 1));
+      if (prev) prev.classList.remove('scanning');
+    }
+    if (scanIdx < cts.length) {
+      const cell = document.getElementById('ctc' + scanIdx);
+      if (cell) cell.classList.add('scanning');
+      if (llm) llm.innerHTML = `<span style="color:var(--fg3);font-style:italic">Evaluating ${cts[scanIdx]}...</span>`;
+      scanIdx++;
+      setTimeout(scanNext, scanIdx < 5 ? 120 : 60);
+    } else {
+      // land on CT2
+      const target = document.getElementById('ctc1');
+      if (target) { target.classList.remove('scanning'); target.classList.add('active'); }
+      if (llm) llm.innerHTML = `Objective text matches a system-enforced segregation and authorisation pattern.<div class="verdict">CT2 — Maker/Checker controls</div>`;
+    }
+  }
+  setTimeout(scanNext, 500);
+}
+
+// ═══════════ LIFECYCLE ANIMATION ═════════════════════════════════
+function animateLifecycle() {
+  const stages = document.querySelectorAll('.lc-stage');
+  const explain = document.getElementById('lc-explain');
+  const descs = [
+    'Scanning: does this process relate to customer onboarding or mandate capture?',
+    'Scanning: does this involve authorisation or limit checking?',
+    'Scanning: does this involve settlement or clearing activities?',
+    'Match confirmed: account reconciliation in TLM — Nostro/Vostro matching lifecycle stage.',
+    null, null, null
+  ];
+  let i = 0;
+  function next() {
+    stages.forEach(s => s.classList.remove('active'));
+    if (i < stages.length) {
+      stages[i].classList.add('active');
+      if (explain && descs[i]) explain.textContent = descs[i];
+      if (i < 3) {
+        i++;
+        setTimeout(next, i < 3 ? 500 : 900);
+      } else {
+        if (explain) explain.innerHTML = '<strong style="color:var(--wb-gold)">Stage 4: Reconciliation</strong> — Nostro/Vostro matching, TLM. All 3,885 Holocentric processes were classified this way, enabling the PoC to map every control to its payments lifecycle context.';
+      }
+    }
+  }
+  setTimeout(next, 400);
+}
+
+// ═══════════ FUNNEL ═══════════════════════════════════════════════
+function animateFunnel() {
+  const rows = document.querySelectorAll('.funnel-row');
+  rows.forEach((r, i) => setTimeout(() => r.classList.add('lit'), i * 230));
+}
+
+// ═══════════ HERO PARTICLES ═══════════════════════════════════════
+(function() {
+  const canvas = document.getElementById('hero-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let W, H, pts;
+  function resize() {
+    W = canvas.width  = canvas.offsetWidth;
+    H = canvas.height = canvas.offsetHeight;
+  }
+  function init() {
+    pts = Array.from({length:60}, () => ({
+      x: Math.random() * W, y: Math.random() * H,
+      vx: (Math.random()-.5)*.3, vy: (Math.random()-.5)*.3
+    }));
+  }
+  function draw() {
+    ctx.clearRect(0,0,W,H);
+    pts.forEach(p => { p.x=(p.x+p.vx+W)%W; p.y=(p.y+p.vy+H)%H; });
+    for (let i=0;i<pts.length;i++) {
+      for (let j=i+1;j<pts.length;j++) {
+        const dx=pts[i].x-pts[j].x, dy=pts[i].y-pts[j].y;
+        const d=Math.sqrt(dx*dx+dy*dy);
+        if (d<120) {
+          ctx.strokeStyle=`rgba(0,78,135,${.18*(1-d/120)})`;
+          ctx.lineWidth=.6;
+          ctx.beginPath(); ctx.moveTo(pts[i].x,pts[i].y); ctx.lineTo(pts[j].x,pts[j].y); ctx.stroke();
+        }
+      }
+      ctx.fillStyle='#003D7A';
+      ctx.beginPath(); ctx.arc(pts[i].x,pts[i].y,1.8,0,Math.PI*2); ctx.fill();
+    }
+    requestAnimationFrame(draw);
+  }
+  resize(); init();
+  window.addEventListener('resize', () => { resize(); init(); });
+  draw();
+})();
+</script>
+
